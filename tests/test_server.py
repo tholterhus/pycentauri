@@ -420,3 +420,36 @@ async def test_start_print_request_body_validation(monkeypatch: pytest.MonkeyPat
         r = await client.post("/print/start", json={"filename": "cube.gcode"})
         assert r.status_code == 200
     await server.stop()
+
+
+async def test_stream_raw_serves_octet_stream_with_boundary_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """/stream/raw exists because WebKit cannot fetch() multipart — same
+    MJPEG bytes, but application/octet-stream with the boundary moved to
+    X-Stream-Boundary (normalized: CC1 declares `boundary=--foo`)."""
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+
+    frame = (b"--foo\r\nContent-Type: image/jpeg\r\nContent-Length: 2\r\n\r\n"
+             b"\xff\xd8\r\n")
+
+    class _Cam:
+        async def subscribe(self):  # type: ignore[no-untyped-def]
+            async def gen():
+                yield frame
+                yield frame
+            return "multipart/x-mixed-replace; boundary=--foo", gen()
+
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        app.state.manager.camera = _Cam()
+        r = await client.get("/stream/raw")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/octet-stream"
+        assert r.headers["x-stream-boundary"] == "--foo"
+        assert r.headers["cache-control"] == "no-store"
+        assert r.content == frame + frame
+    await server.stop()

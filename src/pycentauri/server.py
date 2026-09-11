@@ -94,8 +94,20 @@ class PrinterManager:
         # One shared upstream camera connection for all browsers — the
         # printer's MJPEG server starves under connection churn.
         self.camera = mjpeg_broadcast.CameraBroadcaster(
-            lambda: f"http://{self.host}:{self.printer.camera_port}{CAMERA_PATH}"
+            lambda: f"http://{self.host}:{self.printer.camera_port}{CAMERA_PATH}",
+            on_start=self._enable_camera_stream,
+            on_stop=self._disable_camera_stream,
         )
+
+    async def _enable_camera_stream(self) -> None:
+        """Enable frames in CC1 firmware before opening the MJPEG endpoint."""
+        await self.printer.set_video_stream(True)
+        log.info("camera stream enabled (Cmd 386)")
+
+    async def _disable_camera_stream(self) -> None:
+        """Release the printer camera stream after the last local viewer leaves."""
+        await self.printer.set_video_stream(False)
+        log.info("camera stream disabled (Cmd 386)")
 
     @property
     def printer(self) -> Printer:
@@ -507,7 +519,36 @@ def create_app(
             media_type, chunks = await manager.camera.subscribe()
         except mjpeg_broadcast.CameraUnavailable as err:
             raise HTTPException(status_code=502, detail=f"webcam unavailable: {err}") from err
-        return StreamingResponse(chunks, media_type=media_type)
+        return StreamingResponse(
+            chunks, media_type=media_type, headers={"Cache-Control": "no-store"}
+        )
+
+    @app.get("/stream/raw", tags=["read"])
+    async def stream_raw_endpoint(
+        manager: PrinterManager = Depends(get_manager),
+    ) -> StreamingResponse:
+        """The same MJPEG bytes as ``/stream``, as ``application/octet-stream``.
+
+        WebKit (Safari) cannot ``fetch()`` a ``multipart/x-mixed-replace``
+        response — the body errors almost immediately (``TypeError: Load
+        failed``), which the dashboard's fetch-based webcam parser has to
+        survive. The same bytes under a plain binary type stream fine in
+        every engine, and the dashboard parses the multipart framing
+        itself anyway; it only needs the boundary, exposed here in
+        ``X-Stream-Boundary`` (already normalized, leading dashes and all,
+        e.g. ``--foo``).
+        """
+        try:
+            media_type, chunks = await manager.camera.subscribe()
+        except mjpeg_broadcast.CameraUnavailable as err:
+            raise HTTPException(status_code=502, detail=f"webcam unavailable: {err}") from err
+        headers = {"Cache-Control": "no-store"}
+        boundary = mjpeg_broadcast._boundary_of(media_type)
+        if boundary is not None:
+            headers["X-Stream-Boundary"] = boundary.decode("ascii", "ignore")
+        return StreamingResponse(
+            chunks, media_type="application/octet-stream", headers=headers
+        )
 
     @app.get("/discover", tags=["read"])
     async def discover_endpoint() -> list[dict[str, Any]]:

@@ -40,6 +40,7 @@ class Cmd(IntEnum):
     GET_PRINT_HISTORY = 320
     GET_PRINT_HISTORY_DETAIL = 321
     GET_CANVAS_STATUS = 324
+    SET_VIDEO_STREAM = 386
     # Cmd 403 is overloaded — the payload shape dispatches:
     # {"PrintSpeedPct": N}                            → set print speed
     # {"TargetFanSpeed": {"ModelFan":...,"BoxFan":...,"AuxiliaryFan":...}}
@@ -81,6 +82,7 @@ def build_request(
     data: dict[str, Any] | None,
     mainboard_id: str,
     *,
+    allow_empty_mainboard: bool = False,
     request_id: str | None = None,
     envelope_id: str | None = None,
 ) -> dict[str, Any]:
@@ -107,7 +109,7 @@ def build_request(
     discovery response or from the first ``Attributes`` push the printer sends
     after the WebSocket connects.
     """
-    if not mainboard_id:
+    if not mainboard_id and not allow_empty_mainboard:
         raise ValueError("mainboard_id is required for SDCP commands")
     return {
         "Id": envelope_id or mainboard_id,

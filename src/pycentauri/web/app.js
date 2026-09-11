@@ -950,26 +950,215 @@ function wireHistory() {
 }
 
 // ---------------------------------------------------------------------------
-// Webcam resilience — if the MJPEG stream stalls, reload it.
+// Webcam — fetch the MJPEG stream and paint frames into the <img>.
+//
+// This deliberately does not point <img> at /stream. With the browser's
+// native multipart <img>:
+//   * Chrome fires `load` at most once per x-mixed-replace stream, so no
+//     timer can tell a healthy stream from a stalled one;
+//   * every "reload" abandoned the previous in-flight multipart load, and
+//     browsers tear those down late or never — each abandoned stream kept
+//     pulling the full stream rate, so total bandwidth climbed by one
+//     stream per reload (observed: 2 MB/s → 20+ MB/s in ~10 minutes).
+// Fetching ourselves gives exactly one connection per tab, a per-frame
+// callback (deterministic staleness detection) and a real teardown
+// (AbortController).
+//
+// The fetch targets /stream/raw, not /stream: WebKit (Safari) cannot
+// fetch() a multipart/x-mixed-replace response at all — the body errors
+// almost immediately (TypeError: Load failed) — while the same bytes as
+// application/octet-stream stream fine. We parse the multipart framing
+// ourselves either way; the boundary comes from X-Stream-Boundary.
 
-function wireWebcamKeepalive() {
-  const img = $("webcam");
-  let lastChange = Date.now();
-  // Some browsers fire `load` per MJPEG frame (Firefox), others once or
-  // never (Chrome). The staleness reload is therefore a last resort with
-  // a long fuse — on a browser that never re-fires `load`, a short fuse
-  // would tear down a perfectly healthy stream on every tick, and each
-  // reload costs a fresh upstream camera connection.
-  img.addEventListener("load", () => { lastChange = Date.now(); });
-  img.addEventListener("error", () => {
-    setTimeout(() => { img.src = `/stream?t=${Date.now()}`; }, 2000);
-  });
-  setInterval(() => {
-    if (Date.now() - lastChange > 60000) {
-      img.src = `/stream?t=${Date.now()}`;
-      lastChange = Date.now();
+const WEBCAM_STALE_MS = 15000; // mirrors the server's upstream stale timeout
+const WEBCAM_MAX_FRAME_BYTES = 32 * 1024 * 1024;
+
+function mjpegBoundary(res) {
+  // /stream/raw carries the already-normalized boundary prefix here.
+  const explicit = res.headers.get("x-stream-boundary");
+  if (explicit) return explicit;
+  const m = /boundary="?([^";]+)"?/i.exec(res.headers.get("content-type") || "");
+  // The CC1 declares `boundary=--foo` — dashes already included — but emits
+  // plain `--foo` lines, so strip leading dashes before prepending our own.
+  return "--" + (m ? m[1] : "frame").replace(/^-+/, "");
+}
+
+// Byte-sequence search. Naive is fine at MJPEG rates (~2 MB/s).
+function indexOfSeq(buf, seq, from) {
+  outer: for (let i = from; i <= buf.length - seq.length; i++) {
+    for (let j = 0; j < seq.length; j++) {
+      if (buf[i + j] !== seq[j]) continue outer;
     }
-  }, 10000);
+    return i;
+  }
+  return -1;
+}
+
+// Read an MJPEG multipart body, calling onFrame(Uint8Array) with each
+// complete JPEG. Resolves when the body ends (caller reconnects); rejects
+// on abort. Handles split chunks, missing Content-Length, and headerless
+// parts. `pos` always marks the resume point inside `buf`, so any read
+// split is safe.
+async function pumpMjpeg(body, boundary, onFrame) {
+  // `boundary` is the full delimiter line prefix, as returned by
+  // mjpegBoundary() (e.g. "--foo") — already includes its leading dashes.
+  const delim = new TextEncoder().encode(boundary);
+  const BLANK = new Uint8Array([13, 10, 13, 10]);
+  const reader = body.getReader();
+  let buf = new Uint8Array(0);
+  let pos = 0;
+  let phase = "seek"; // seek boundary | parse headers | emit frame data
+  let contentLength = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    // Append the new bytes, dropping everything already parsed.
+    const merged = new Uint8Array(buf.length - pos + value.length);
+    merged.set(buf.subarray(pos), 0);
+    merged.set(value, buf.length - pos);
+    buf = merged;
+    pos = 0;
+
+    let progressed = true;
+    while (progressed) {
+      progressed = false;
+      if (phase === "seek") {
+        const i = indexOfSeq(buf, delim, pos);
+        if (i < 0) {
+          // Bytes before the next boundary are preamble — nothing to
+          // render. Keep only a possible partial delimiter at the tail.
+          buf = buf.subarray(Math.max(pos, buf.length - (delim.length - 1)));
+          pos = 0;
+          break;
+        }
+        pos = i + delim.length;
+        if (buf.length - pos >= 2 && buf[pos] === 45 && buf[pos + 1] === 45) return; // terminal "--"
+        phase = "headers";
+        progressed = true;
+      } else if (phase === "headers") {
+        // The boundary line's CRLF (possibly split across reads).
+        if (buf.length - pos < 2) break;
+        if (buf[pos] === 13 && buf[pos + 1] === 10) pos += 2;
+        // A header block starts with "content-"; anything else means the
+        // part has no headers and the data begins right here.
+        const probe = String.fromCharCode(...buf.subarray(pos, Math.min(buf.length, pos + 7))).toLowerCase();
+        if (probe.length < 7 && "content".startsWith(probe)) break; // undecided yet
+        if (probe === "content") {
+          const headEnd = indexOfSeq(buf, BLANK, pos);
+          if (headEnd < 0) {
+            if (buf.length - pos > 1024) throw new Error("oversized multipart headers");
+            break; // header block still streaming in
+          }
+          const headers = new TextDecoder("latin1").decode(buf.subarray(pos, headEnd));
+          const m = /content-length\s*:\s*(\d+)/i.exec(headers);
+          contentLength = m ? parseInt(m[1], 10) : null;
+          pos = headEnd + 4;
+        } else {
+          contentLength = null;
+        }
+        phase = "data";
+        progressed = true;
+      } else { // data
+        if (contentLength != null) {
+          if (buf.length < pos + contentLength) break; // frame still streaming
+          onFrame(buf.subarray(pos, pos + contentLength));
+          pos += contentLength;
+          if (buf.length - pos >= 2 && buf[pos] === 13 && buf[pos + 1] === 10) pos += 2; // part CRLF
+          phase = "seek";
+          progressed = true;
+        } else {
+          // No Content-Length: the frame ends at the next boundary.
+          const i = indexOfSeq(buf, delim, pos);
+          if (i < 0) {
+            if (buf.length > WEBCAM_MAX_FRAME_BYTES) throw new Error("oversized frame");
+            break;
+          }
+          const end = i >= 2 && buf[i - 2] === 13 && buf[i - 1] === 10 ? i - 2 : i;
+          onFrame(buf.subarray(pos, end));
+          pos = i;
+          phase = "seek";
+          progressed = true;
+        }
+      }
+    }
+    if (pos > 0) {
+      buf = buf.subarray(pos);
+      pos = 0;
+    }
+  }
+}
+
+function wireWebcam() {
+  const img = $("webcam");
+  if (!img) return;
+  let controller = null;
+  let lastFrame = Date.now();
+  let backoffMs = 1000;
+
+  // A hidden tab must not keep pulling the camera stream: nobody watches
+  // it, and every backgrounded tab on the LAN drains the full stream rate
+  // (~2 MB/s each). visibilitychange aborts the fetch (real teardown, the
+  // server drops the subscriber) and gates the reconnect loop until the
+  // tab is visible again — a tab opened in the background starts with
+  // zero camera traffic. SSE status updates are a few bytes per second
+  // and deliberately keep flowing.
+  let wake = null; // resolves when the tab becomes visible again
+
+  function waitVisible() {
+    return new Promise((resolve) => {
+      if (!document.hidden) { resolve(); return; }
+      wake = resolve;
+    });
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      controller?.abort();
+    } else if (wake) {
+      const resolve = wake;
+      wake = null;
+      lastFrame = Date.now(); // fresh staleness window for the reconnect
+      resolve();
+    }
+  });
+
+  async function connect() {
+    for (;;) {
+      await waitVisible();
+      controller = new AbortController();
+      try {
+        const res = await fetch("/stream/raw", { signal: controller.signal, cache: "no-store" });
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+        backoffMs = 1000;
+        await pumpMjpeg(res.body, mjpegBoundary(res), (jpeg) => {
+          lastFrame = Date.now();
+          const url = URL.createObjectURL(new Blob([jpeg], { type: "image/jpeg" }));
+          const previous = img.src;
+          img.src = url;
+          if (previous.startsWith("blob:")) URL.revokeObjectURL(previous);
+        });
+      } catch (_) {
+        // Aborted (watchdog, hidden tab) or network error — reconnect
+        // with backoff; waitVisible() holds the loop while hidden.
+      }
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      backoffMs = Math.min(backoffMs * 2, 10000);
+    }
+  }
+
+  // Staleness watchdog: the printer's camera can stall while the socket
+  // stays open (the server guards the same failure upstream). Aborting
+  // drops our one connection; the loop reconnects. No reloads, so no
+  // abandoned streams to accumulate bandwidth.
+  setInterval(() => {
+    if (Date.now() - lastFrame > WEBCAM_STALE_MS) {
+      lastFrame = Date.now();
+      controller?.abort();
+    }
+  }, 5000);
+
+  connect();
 }
 
 // ---------------------------------------------------------------------------
@@ -1013,7 +1202,7 @@ function noteStatusForPoll(pstatus) {
   wireFiles();
   wireHistory();
   wireRtsp();
-  wireWebcamKeepalive();
+  wireWebcam();
   await loadInfo();
   await loadCanvas();
   await loadFiles();

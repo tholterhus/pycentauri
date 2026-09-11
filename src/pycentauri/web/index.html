@@ -32,7 +32,9 @@
     <section class="viewport-col">
 
       <div class="viewport" role="img" aria-label="Live webcam feed">
-        <img id="webcam" src="/stream" alt="">
+        <!-- No src: app.js fetches /stream itself and paints frames here
+             (a native multipart <img> load can't be torn down reliably). -->
+        <img id="webcam" alt="">
         <div class="viewport-overlay bot">
           <a class="snap-btn" href="/snapshot" download="snapshot.jpg">Save snapshot</a>
         </div>

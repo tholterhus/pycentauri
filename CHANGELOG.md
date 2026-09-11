@@ -4,6 +4,70 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [0.10.0] - 2026-08-30
+
+### Added
+- **Webcam stream pauses in background tabs.** When the dashboard tab is
+  hidden (switched away or minimized), the client aborts its `/stream/raw`
+  fetch — real teardown, the server drops the subscriber — and holds the
+  reconnect loop until the tab is visible again. A tab opened in the
+  background starts with zero camera traffic. The stream is ~2 MB/s, so an
+  unwatched background tab was pure waste on the LAN. Status updates (SSE,
+  a few bytes per second) deliberately keep flowing.
+- **Camera upstream closes when nobody watches.** The broadcaster used to
+  hold the printer's camera connection open for the server's lifetime once
+  anyone had ever subscribed. Now the last subscriber leaving — which, with
+  the background-tab pause, is exactly "every tab hidden or closed" —
+  closes the upstream after a 30 s grace window. Quick tab flips and page
+  reloads stay inside the grace window and keep the single shared
+  connection; an unattended dashboard stops pulling the ~2 MB/s camera
+  stream from the printer, not just from the browser.
+
+### Fixed
+- **Webcam bandwidth no longer climbs over time** (observed 2 MB/s → 20+ MB/s
+  in ~10 minutes of one open tab). Two compounding bugs:
+  - The dashboard's webcam "keepalive" reloaded `<img src=/stream>` roughly
+    once a minute *on healthy streams* — Chrome fires `load` at most once per
+    `x-mixed-replace` stream, so the staleness timer could never tell healthy
+    from stalled — and each reload abandoned the previous multipart load,
+    which browsers tear down late or never. Every abandoned-but-alive stream
+    kept pulling the full stream rate, so bandwidth grew by ~2 MB/s per
+    reload. The webcam now fetches `/stream` directly, parses the multipart
+    frames in JS, and paints each JPEG into the `<img>` — exactly one
+    connection per tab, deterministic staleness detection, real teardown via
+    `AbortController`.
+  - The server's camera broadcaster fanned out raw network chunks and, for a
+    slow subscriber, dropped the oldest *chunk* — punching a hole in the
+    multipart byte stream, desyncing the browser's parser (boundaries no
+    longer matched `Content-Length`) and corrupting every later frame, which
+    triggered even more error-driven reloads. The broadcaster now reassembles
+    the upstream into whole multipart frames (`FrameAssembler`) and drops
+    whole frames only; a slow consumer can no longer corrupt the stream for
+    anyone.
+- **CC1 camera boundary quirk** (found live against a real printer): the
+  firmware declares `Content-Type: ...; boundary=--foo` — dashes already
+  included — but then emits plain `--foo` delimiter lines in the body. The
+  new frame reassembly and the dashboard's own parser both searched for
+  `--` + declared value (`----foo`) and would never have matched: the
+  server degraded to 2 MB blob pass-through (losing per-frame drop
+  safety) and the browser showed no webcam at all. Both parsers now strip
+  leading dashes from the declared boundary before matching, so a
+  `boundary=--foo` declaration matches `--foo` lines (and a compliant
+  `boundary=foo` behaves identically).
+- **Safari/WebKit could not use the webcam at all**: WebKit cannot
+  `fetch()` a `multipart/x-mixed-replace` response — the body errors
+  almost immediately (`TypeError: Load failed`), so the new fetch-based
+  webcam connected and died once per second (observed live on Safari 27 /
+  macOS; Chrome/Firefox unaffected). New endpoint `GET /stream/raw`
+  serves the same MJPEG bytes as `application/octet-stream` with the
+  multipart boundary in an `X-Stream-Boundary` response header; the
+  dashboard fetches that instead of `/stream` (it parses the multipart
+  framing itself anyway). `/stream` is unchanged for `<img>` embeds and
+  external consumers.
+- `GET /stream` now sends `Cache-Control: no-store` (matching `/snapshot`).
+
 ## [0.9.0] - 2026-07-15
 
 ### Added

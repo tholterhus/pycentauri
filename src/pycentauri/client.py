@@ -563,6 +563,21 @@ class Printer:
 
     # --- lifecycle -------------------------------------------------------------
 
+    async def set_video_stream(self, enable: bool) -> sdcp.ParsedMessage:
+        """Enable or disable the CC1 camera stream (SDCP Cmd 386)."""
+        self._require_control("set_video_stream")
+        # Some CC1 firmware states do not emit the initial Attributes push.
+        # The legacy client and HA integration still send Cmd 386 with an
+        # empty MainboardID; the printer replies and includes its real ID.
+        mid = self._mainboard_id or ""
+        return await self._request(
+            sdcp.Cmd.SET_VIDEO_STREAM,
+            {"Enable": 1 if enable else 0},
+            mid,
+            timeout=10.0,
+            allow_empty_mainboard=True,
+        )
+
     async def close(self) -> None:
         """Close the WebSocket and stop the reader."""
         if self._closed:
@@ -605,8 +620,11 @@ class Printer:
         mainboard_id: str,
         *,
         timeout: float = DEFAULT_REQUEST_TIMEOUT,
+        allow_empty_mainboard: bool = False,
     ) -> sdcp.ParsedMessage:
-        pkt = sdcp.build_request(cmd, data, mainboard_id)
+        pkt = sdcp.build_request(
+            cmd, data, mainboard_id, allow_empty_mainboard=allow_empty_mainboard
+        )
         request_id = pkt["Data"]["RequestID"]
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[sdcp.ParsedMessage] = loop.create_future()
