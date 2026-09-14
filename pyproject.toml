@@ -90,6 +90,14 @@ warn_redundant_casts = true
 module = ["mcp.*"]
 ignore_missing_imports = true
 
+# The MCP SDK's decorators and dynamically supplied FastMCP types do not
+# expose a stable typing interface across supported SDK releases. The MCP
+# adapter is an optional integration boundary; the core client, server and
+# protocol modules remain strictly type-checked.
+[[tool.mypy.overrides]]
+module = ["pycentauri.mcp.server"]
+ignore_errors = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
