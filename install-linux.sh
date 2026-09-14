@@ -6,7 +6,8 @@ umask 022
 
 APP_USER=${APP_USER:-pycentauri}
 APP_DIR=${APP_DIR:-/opt/pycentauri}
-DATA_DIR=${DATA_DIR:-/var/lib/pycentauri}
+DATA_DIR=${DATA_DIR:-$APP_DIR/data}
+CONFIG_FILE=${CONFIG_FILE:-/etc/pycentauri.conf}
 SERVICE=${SERVICE:-pycentauri.service}
 SOURCE_DIR=${SOURCE_DIR:-}
 SOURCE_ARCHIVE=${SOURCE_ARCHIVE:-}
@@ -76,9 +77,9 @@ python3 -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/pip" install --no-cache-dir "$APP_DIR[mcp,server]"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR" "$DATA_DIR"
 
-install -d -m 0750 /etc/default
-if [[ ! -e /etc/default/pycentauri ]]; then
-  cat > /etc/default/pycentauri <<EOF
+if [[ ! -e "$CONFIG_FILE" ]]; then
+  install -d -m 0750 "$(dirname "$CONFIG_FILE")"
+  cat > "$CONFIG_FILE" <<EOF
 # pycentauri service settings; keep this file readable only by root and the service account.
 PYCENTAURI_HOST=$PYCENTAURI_HOST
 PYCENTAURI_ACCESS_CODE=$PYCENTAURI_ACCESS_CODE
@@ -89,10 +90,25 @@ PYCENTAURI_ENABLE_CONTROL=$PYCENTAURI_ENABLE_CONTROL
 PYCENTAURI_MEDIAMTX_PATH=$MEDIAMTX_PATH
 EOF
 else
-  echo 'Keeping existing /etc/default/pycentauri; edit it explicitly to change service settings.'
+  echo "Keeping existing $CONFIG_FILE; edit it explicitly to change service settings."
 fi
-chown root:"$APP_USER" /etc/default/pycentauri
-chmod 0640 /etc/default/pycentauri
+chown root:"$APP_USER" "$CONFIG_FILE"
+chmod 0640 "$CONFIG_FILE"
+
+if [[ ! -e "$APP_DIR/pycentauri.conf-example" ]]; then
+  cat > "$APP_DIR/pycentauri.conf-example" <<'EOF'
+# Copy to /etc/pycentauri.conf and adapt for the local printer.
+PYCENTAURI_HOST=printer.example
+PYCENTAURI_ACCESS_CODE=
+PYCENTAURI_PORT=8787
+PYCENTAURI_BIND=127.0.0.1
+PYCENTAURI_RTSP=0
+PYCENTAURI_ENABLE_CONTROL=0
+PYCENTAURI_MEDIAMTX_PATH=
+EOF
+  chown root:"$APP_USER" "$APP_DIR/pycentauri.conf-example"
+  chmod 0644 "$APP_DIR/pycentauri.conf-example"
+fi
 
 if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then
   command -v curl >/dev/null || { echo 'curl is required for the systemd health check.' >&2; exit 1; }
@@ -109,7 +125,7 @@ Type=simple
 User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR
-EnvironmentFile=-/etc/default/pycentauri
+EnvironmentFile=-$CONFIG_FILE
 ExecStart=$APP_DIR/venv/bin/centauri server --host \${PYCENTAURI_HOST} --bind \${PYCENTAURI_BIND} --port \${PYCENTAURI_PORT} ${control_args[*]} ${rtsp_args[*]}
 Restart=always
 RestartSec=5

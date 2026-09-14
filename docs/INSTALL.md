@@ -75,10 +75,11 @@ the printed `centauri server ...` command as the service account, or create an
 A default system installation uses:
 
 ```text
-/opt/pycentauri/                 application source and virtual environment
+/opt/pycentauri/                 application source, configuration example and runtime files
 /opt/pycentauri/venv/             Python runtime and console scripts
-/var/lib/pycentauri/              reserved service data directory
-/etc/default/pycentauri           non-secret service configuration
+/opt/pycentauri/data/             persistent application data
+/opt/pycentauri/pycentauri.conf-example  documented starter configuration
+/etc/pycentauri.conf              active service configuration
 /etc/systemd/system/pycentauri.service
 ```
 
@@ -88,7 +89,7 @@ shell history.
 
 ## Configuration
 
-The service reads `/etc/default/pycentauri`. A generic starting point is:
+The service reads `/etc/pycentauri.conf`. A generic starting point is:
 
 ```sh
 # Printer address or DNS name; replace the placeholder locally.
@@ -146,9 +147,9 @@ exposing it.
 
 ### Optional multiple devices
 
-Run one service instance per printer, each with its own environment file,
+Run one service instance per printer, each with its own configuration file,
 port, and service name. For example, use `pycentauri-a.service` with
-`/etc/default/pycentauri-a` on port `8787`, and `pycentauri-b.service` with a
+`/etc/pycentauri-a.conf` on port `8787`, and `pycentauri-b.service` with a
 different printer and port such as `8788`. Do not reuse an access code or put
 multiple credentials in a shared public configuration file. A reverse proxy
 can route separate authenticated paths or hostnames to those loopback ports.
@@ -183,7 +184,7 @@ running.
 
 ## Updates
 
-1. Review the release notes and back up `/etc/default/pycentauri`.
+1. Review the release notes and back up `/etc/pycentauri.conf`.
 2. Obtain and verify the new source (prefer a reviewed tag or commit).
 3. Stop the service before replacing files if your deployment process requires
    a maintenance window.
@@ -193,7 +194,7 @@ running.
 Example for a local checkout:
 
 ```sh
-sudo cp -p /etc/default/pycentauri /etc/default/pycentauri.backup
+sudo cp -p /etc/pycentauri.conf /etc/pycentauri.conf.backup
 sudo env PYCENTAURI_HOST=printer.example SOURCE_DIR="$PWD" ./install-linux.sh
 curl --fail http://127.0.0.1:8787/api/info
 ```
@@ -212,7 +213,7 @@ file if needed, then start the service and repeat the checks:
 sudo systemctl stop pycentauri.service
 sudo env PYCENTAURI_HOST=printer.example SOURCE_DIR=/srv/pycentauri-known-good \
   ./install-linux.sh
-sudo cp -p /etc/default/pycentauri.backup /etc/default/pycentauri
+sudo cp -p /etc/pycentauri.conf.backup /etc/pycentauri.conf
 sudo systemctl daemon-reload
 sudo systemctl start pycentauri.service
 curl --fail http://127.0.0.1:8787/api/info
@@ -224,7 +225,7 @@ checking the printer and deciding whether pausing it is appropriate.
 ## Troubleshooting
 
 - **Service exits immediately:** inspect `systemctl status` and the journal;
-  validate the venv and the values in `/etc/default/pycentauri`.
+  validate the venv and the values in `/etc/pycentauri.conf`.
 - **Cannot connect to a printer:** verify its address, model-specific ports,
   firewall rules, and (for CC2) LAN-only mode and access code handling.
 - **UI works but controls are absent:** the service is likely read-only;
