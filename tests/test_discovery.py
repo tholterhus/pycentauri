@@ -27,9 +27,9 @@ def test_parse_response_populates_fields() -> None:
         }
     ).encode("utf-8")
 
-    p = _parse_response(raw, "192.168.1.209")
+    p = _parse_response(raw, "192.0.2.10")
     assert p is not None
-    assert p.host == "192.168.1.209"
+    assert p.host == "192.0.2.10"
     assert p.mainboard_id == "ffffffff"
     assert p.name == "fake-carbon"
     assert p.machine_name == "Centauri Carbon"

@@ -567,7 +567,7 @@ MQTT broker on the printer requires username + password:
 | Field | Value |
 |---|---|
 | Username | `elegoo` (literal, hardcoded in SDK) |
-| Password | The printer's access code / API key (shown on printer screen, e.g. `Ab3dEf`) |
+| Password | The printer's access code / API key (shown on printer screen, e.g. `ACCESS_CODE`) |
 
 The HTTP surface uses the same access code as an `X-Token` **query
 parameter**: `GET /system/info?X-Token=<code>`. The header form

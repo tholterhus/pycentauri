@@ -28,7 +28,7 @@ Unit tests are fully offline. To exercise the client against a real Centauri
 Carbon on your LAN:
 
 ```sh
-PYCENTAURI_TEST_HOST=192.168.1.x pytest tests/integration
+PYCENTAURI_TEST_HOST=printer.example pytest tests/integration
 ```
 
 These are skipped by default in CI.

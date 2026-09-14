@@ -56,12 +56,12 @@ class Printer:
 
     Usage::
 
-        async with await Printer.connect("192.168.1.209") as printer:
+        async with await Printer.connect("printer.example") as printer:
             status = await printer.status()
 
     Or without the context manager::
 
-        printer = await Printer.connect("192.168.1.209")
+        printer = await Printer.connect("printer.example")
         try:
             ...
         finally:

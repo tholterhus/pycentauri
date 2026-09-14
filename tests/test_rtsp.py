@@ -31,7 +31,7 @@ def test_find_binary_accepts_executable_override(tmp_path: Path) -> None:
 
 def test_ensure_binaries_raises_when_mediamtx_missing(tmp_path: Path) -> None:
     cfg = RtspConfig(
-        printer_host="192.168.1.209",
+        printer_host="192.0.2.10",
         mediamtx_path=str(tmp_path / "nope"),
     )
     with pytest.raises(RtspError) as excinfo:
@@ -44,7 +44,7 @@ def test_ensure_binaries_raises_when_ffmpeg_missing(tmp_path: Path) -> None:
     mtx.write_text("#!/bin/sh\nexit 0\n")
     mtx.chmod(0o755)
     cfg = RtspConfig(
-        printer_host="192.168.1.209",
+        printer_host="192.0.2.10",
         mediamtx_path=str(mtx),
         ffmpeg_path=str(tmp_path / "no-ffmpeg"),
     )
@@ -55,7 +55,7 @@ def test_ensure_binaries_raises_when_ffmpeg_missing(tmp_path: Path) -> None:
 
 def test_render_config_contains_expected_fields() -> None:
     cfg = RtspConfig(
-        printer_host="192.168.1.209",
+        printer_host="192.0.2.10",
         rtsp_port=8554,
         bind="0.0.0.0",
         path="printer",
@@ -64,7 +64,7 @@ def test_render_config_contains_expected_fields() -> None:
     )
     yaml = render_config(cfg, ffmpeg_bin="/usr/bin/ffmpeg")
     assert "rtspAddress: :8554" in yaml
-    assert "http://192.168.1.209:3031/video" in yaml
+    assert "http://192.0.2.10:3031/video" in yaml
     assert "paths:" in yaml
     assert "  printer:" in yaml
     assert "runOnDemand:" in yaml
@@ -103,11 +103,9 @@ def test_build_urls_masks_wildcard_bind() -> None:
 
 def test_build_urls_uses_advertised_host() -> None:
     cfg = RtspConfig(printer_host="h", bind="0.0.0.0", rtsp_port=8554, path="printer")
-    assert build_urls(cfg, advertised_host="nix.brancloud.online") == [
-        "rtsp://nix.brancloud.online:8554/printer"
-    ]
+    assert build_urls(cfg, advertised_host="proxy.example") == ["rtsp://proxy.example:8554/printer"]
 
 
 def test_build_urls_with_explicit_bind() -> None:
-    cfg = RtspConfig(printer_host="h", bind="192.168.1.101", rtsp_port=8554, path="cam")
-    assert build_urls(cfg) == ["rtsp://192.168.1.101:8554/cam"]
+    cfg = RtspConfig(printer_host="h", bind="192.0.2.11", rtsp_port=8554, path="cam")
+    assert build_urls(cfg) == ["rtsp://192.0.2.11:8554/cam"]

@@ -32,12 +32,20 @@ to and speaks the right protocol:
 
 ## Install
 
+For a Python/library installation:
+
 ```sh
 pip install pycentauri                    # library + CLI
 pip install "pycentauri[mcp]"             # + MCP server
 pip install "pycentauri[server]"          # + HTTP REST/SSE server + web UI
 pip install "pycentauri[mcp,server]"      # all Python surfaces
 ```
+
+For a Linux service installation with an optional systemd unit, see the
+complete [Linux installation guide](docs/INSTALL.md). It covers prerequisites,
+configuration, firewalling, reverse proxies, multiple devices, health checks,
+updates, and rollback. The installer defaults to loopback binding and
+read-only operation; no credentials belong in source control or shell history.
 
 The RTSP bridge additionally requires
 [MediaMTX](https://github.com/bluenviron/mediamtx/releases) and `ffmpeg`
@@ -53,7 +61,7 @@ Python 3.10+. Core dependencies: `websockets`, `paho-mqtt`, `httpx`,
 **CC2** needs its IP *and* its access code, found on the printer's
 touchscreen under network/connectivity settings. Pass it as
 `--access-code` / `access_code=` / `PYCENTAURI_ACCESS_CODE`. The examples
-below use `Ab3dEf` as a stand-in — substitute your own.
+below use `ACCESS_CODE` as a stand-in — substitute your own.
 
 > **Enable "LAN Only" mode on the CC2** (network settings on the
 > touchscreen). The CC2 gates its local API behind it — with LAN Only
@@ -72,42 +80,42 @@ given, commands try UDP discovery, which only finds CC1s.
 centauri discover
 
 # Status, attributes, live watch, snapshot
-centauri status     --host 192.168.1.209                        # CC1
-centauri status     --host 192.168.1.189 --access-code Ab3dEf   # CC2
-centauri status     --host 192.168.1.209 --json
-centauri attributes --host 192.168.1.209
-centauri watch      --host 192.168.1.209
-centauri snapshot   --host 192.168.1.209 shot.jpg
+centauri status     --host printer.example                        # CC1
+centauri status     --host printer-cc2.example --access-code ACCESS_CODE   # CC2
+centauri status     --host printer.example --json
+centauri attributes --host printer.example
+centauri watch      --host printer.example
+centauri snapshot   --host printer.example shot.jpg
 
 # Upload a file, then print it — all writes require --enable-control
-centauri upload model.gcode         --host 192.168.1.209 --enable-control
-centauri upload model.gcode --start --host 192.168.1.209 --enable-control
+centauri upload model.gcode         --host printer.example --enable-control
+centauri upload model.gcode --start --host printer.example --enable-control
 
 # Print control
-centauri print start model.gcode --host 192.168.1.209 --enable-control
-centauri print pause             --host 192.168.1.209 --enable-control
-centauri print resume            --host 192.168.1.209 --enable-control
-centauri print stop              --host 192.168.1.209 --enable-control
+centauri print start model.gcode --host printer.example --enable-control
+centauri print pause             --host printer.example --enable-control
+centauri print resume            --host printer.example --enable-control
+centauri print stop              --host printer.example --enable-control
 
 # Live adjust while printing
-centauri speed sport                            --host 192.168.1.209 --enable-control
-centauri fan  --model 100 --aux 60 --chamber 30 --host 192.168.1.209 --enable-control
-centauri temp --nozzle 215 --bed 60             --host 192.168.1.209 --enable-control
+centauri speed sport                            --host printer.example --enable-control
+centauri fan  --model 100 --aux 60 --chamber 30 --host printer.example --enable-control
+centauri temp --nozzle 215 --bed 60             --host printer.example --enable-control
 
 # File management (both models; `disk` is CC2-only)
-centauri files        --host 192.168.1.209                             # CC1
-centauri files --storage u-disk --host 192.168.1.189 --access-code Ab3dEf
-centauri disk         --host 192.168.1.189 --access-code Ab3dEf        # CC2 only
-centauri history      --host 192.168.1.209                             # CC1 or CC2
-centauri delete old.gcode --host 192.168.1.209 --enable-control
+centauri files        --host printer.example                             # CC1
+centauri files --storage u-disk --host printer-cc2.example --access-code ACCESS_CODE
+centauri disk         --host printer-cc2.example --access-code ACCESS_CODE        # CC2 only
+centauri history      --host printer.example                             # CC1 or CC2
+centauri delete old.gcode --host printer.example --enable-control
 
 # Chamber light (both models)
-centauri light on   --host 192.168.1.189 --access-code Ab3dEf --enable-control
-centauri light off  --host 192.168.1.189 --access-code Ab3dEf --enable-control
+centauri light on   --host printer-cc2.example --access-code ACCESS_CODE --enable-control
+centauri light off  --host printer-cc2.example --access-code ACCESS_CODE --enable-control
 
 # Canvas multi-filament (CC2 only)
-centauri canvas       --host 192.168.1.189 --access-code Ab3dEf
-centauri refill --on  --host 192.168.1.189 --access-code Ab3dEf --enable-control
+centauri canvas       --host printer-cc2.example --access-code ACCESS_CODE
+centauri refill --on  --host printer-cc2.example --access-code ACCESS_CODE --enable-control
 ```
 
 `centauri canvas` prints each tray's filament, color, temperature range,
@@ -168,14 +176,17 @@ The CC1 has none of this — its speed mode stays where you put it, so
 import asyncio
 from pycentauri import Printer, CC2Printer, connect_auto
 
+
 async def main():
     # Explicit CC1
-    async with await Printer.connect("192.168.1.209") as printer:
+    async with await Printer.connect("printer.example") as printer:
         st = await printer.status()
         print(st.print_status, st.progress, st.temp_nozzle)
 
     # Explicit CC2
-    async with await CC2Printer.connect("192.168.1.189", access_code="Ab3dEf") as printer:
+    async with await CC2Printer.connect(
+        "printer-cc2.example", access_code="ACCESS_CODE"
+    ) as printer:
         st = await printer.status()
         print(st.temp_nozzle, st.raw["_cc2"]["gcode_move_speed"])  # mm/min; ÷60 = screen's mm/s
 
@@ -185,9 +196,10 @@ async def main():
                 print(tray.tray_id, tray.filament_name, tray.filament_color)
 
     # Auto-detect — port-probes :3030 vs :1883 and returns the right class
-    async with await connect_auto("192.168.1.189", access_code="Ab3dEf") as printer:
+    async with await connect_auto("printer-cc2.example", access_code="ACCESS_CODE") as printer:
         attrs = await printer.attributes()
         print(attrs.machine_name, attrs.firmware_version)
+
 
 asyncio.run(main())
 ```
@@ -220,19 +232,19 @@ raw codes, and `external_device` (camera / U-disk presence).
 
 ```sh
 # Read-only, loopback only
-centauri server --host 192.168.1.209
+centauri server --host printer.example
 
 # Read + write + RTSP, on the LAN (put an authenticating proxy in front)
-centauri server --host 192.168.1.209 --bind 0.0.0.0 --port 8787 \
+centauri server --host printer.example --bind 0.0.0.0 --port 8787 \
                 --enable-control --rtsp
 
 # CC2
-centauri server --host 192.168.1.189 --access-code Ab3dEf \
+centauri server --host printer-cc2.example --access-code ACCESS_CODE \
                 --bind 0.0.0.0 --port 8787 --enable-control
 
 # Opt in to a dashboard "update available" badge (the only outbound call;
 # off by default — a cached PyPI check every 12 h, fail-silent)
-centauri server --host 192.168.1.209 --check-updates
+centauri server --host printer.example --check-updates
 ```
 
 The server holds a single long-lived connection to the printer
@@ -291,13 +303,13 @@ hands on your printer:
 
 ```sh
 # Read-only (status, snapshot, attributes, discovery, canvas)
-claude mcp add pycentauri --env PYCENTAURI_HOST=192.168.1.209 \
+claude mcp add pycentauri --env PYCENTAURI_HOST=printer.example \
     -- python -m pycentauri.mcp
 
 # With control tools
 claude mcp add pycentauri-cc2 \
-    --env PYCENTAURI_HOST=192.168.1.189 \
-    --env PYCENTAURI_ACCESS_CODE=Ab3dEf \
+    --env PYCENTAURI_HOST=printer-cc2.example \
+    --env PYCENTAURI_ACCESS_CODE=ACCESS_CODE \
     -- python -m pycentauri.mcp --enable-control
 ```
 
@@ -330,11 +342,11 @@ Surveillance, VLC:
 
 ```sh
 # Standalone (foreground, Ctrl-C to stop)
-centauri rtsp --host 192.168.1.209
+centauri rtsp --host printer.example
 # → rtsp://<this-host>:8554/printer
 
 # Integrated with the HTTP server — adds a STREAM panel to the web UI
-centauri server --host 192.168.1.209 --rtsp --bind 0.0.0.0
+centauri server --host printer.example --rtsp --bind 0.0.0.0
 ```
 
 MediaMTX only runs the ffmpeg transcode while a client is connected, so

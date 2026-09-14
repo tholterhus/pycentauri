@@ -257,7 +257,7 @@ async def test_rtsp_enabled_reports_state(monkeypatch: pytest.MonkeyPatch, tmp_p
     from pycentauri.rtsp import RtspConfig
 
     cfg = RtspConfig(
-        printer_host="192.168.1.209",
+        printer_host="192.0.2.10",
         rtsp_port=18554,
         bind="127.0.0.1",
         path="printer",
@@ -299,7 +299,7 @@ async def test_rtsp_unavailable_when_binaries_missing(
     from pycentauri.rtsp import RtspConfig
 
     cfg = RtspConfig(
-        printer_host="192.168.1.209",
+        printer_host="192.0.2.10",
         mediamtx_path=str(tmp_path / "does-not-exist"),
     )
 
@@ -434,14 +434,14 @@ async def test_stream_raw_serves_octet_stream_with_boundary_header(
 
     app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
 
-    frame = (b"--foo\r\nContent-Type: image/jpeg\r\nContent-Length: 2\r\n\r\n"
-             b"\xff\xd8\r\n")
+    frame = b"--foo\r\nContent-Type: image/jpeg\r\nContent-Length: 2\r\n\r\n\xff\xd8\r\n"
 
     class _Cam:
         async def subscribe(self):  # type: ignore[no-untyped-def]
             async def gen():
                 yield frame
                 yield frame
+
             return "multipart/x-mixed-replace; boundary=--foo", gen()
 
     async with app.router.lifespan_context(app), await _asgi_client(app) as client:

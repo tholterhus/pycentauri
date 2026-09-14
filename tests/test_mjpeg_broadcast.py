@@ -345,13 +345,10 @@ class TestFrameAssembler:
 
         def cc1_part(body: bytes) -> bytes:
             head = (
-                f"--foo\r\nContent-Type: image/jpeg\r\n"
-                f"Content-Length: {len(body)}\r\n\r\n"
+                f"--foo\r\nContent-Type: image/jpeg\r\nContent-Length: {len(body)}\r\n\r\n"
             ).encode()
             return head + body + b"\r\n"
 
         a = FrameAssembler(_boundary_of("multipart/x-mixed-replace; boundary=--foo"))
         assert a.feed(cc1_part(b"\xff\xd8frame1\xff\xd9")) == []
-        assert a.feed(cc1_part(b"\xff\xd8frame2\xff\xd9")) == [
-            cc1_part(b"\xff\xd8frame1\xff\xd9")
-        ]
+        assert a.feed(cc1_part(b"\xff\xd8frame2\xff\xd9")) == [cc1_part(b"\xff\xd8frame1\xff\xd9")]

@@ -322,7 +322,7 @@ class CC2Printer(Printer):
         """Connect to a CC2 printer via MQTT.
 
         ``access_code`` is the printer's API key / password (shown on
-        the printer screen, e.g. ``"Ab3dEf"``). ``serial_number`` is
+        the printer screen, e.g. ``"ACCESS_CODE"``). ``serial_number`` is
         obtained from HTTP ``/system/info`` or method 1001; if omitted
         we fetch it automatically.
         """

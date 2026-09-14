@@ -546,9 +546,7 @@ def create_app(
         boundary = mjpeg_broadcast._boundary_of(media_type)
         if boundary is not None:
             headers["X-Stream-Boundary"] = boundary.decode("ascii", "ignore")
-        return StreamingResponse(
-            chunks, media_type="application/octet-stream", headers=headers
-        )
+        return StreamingResponse(chunks, media_type="application/octet-stream", headers=headers)
 
     @app.get("/discover", tags=["read"])
     async def discover_endpoint() -> list[dict[str, Any]]:

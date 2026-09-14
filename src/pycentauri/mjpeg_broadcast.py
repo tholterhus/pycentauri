@@ -172,6 +172,7 @@ class CameraBroadcaster:
         self._connected = asyncio.Event()
         self._idle = asyncio.Event()  # set → reader parks: nobody is watching
         self._idle_timer: asyncio.TimerHandle | None = None
+        self._idle_task: asyncio.Task[None] | None = None
         self._closing = False
 
     async def subscribe(self) -> tuple[str, AsyncIterator[bytes]]:
@@ -217,17 +218,22 @@ class CameraBroadcaster:
         if self._idle_timer is not None:
             self._idle_timer.cancel()
         self._idle_timer = asyncio.get_running_loop().call_later(IDLE_CLOSE_S, self._idle.set)
-        if self._on_stop is not None and self._camera_started:
+        on_stop = self._on_stop
+        if on_stop is not None and self._camera_started:
+
             async def stop_when_idle() -> None:
                 await self._idle.wait()
                 if not self._subscribers and self._camera_started:
                     try:
-                        await self._on_stop()
+                        await on_stop()
                     except Exception as err:
                         log.warning("camera stream disable failed: %r", err)
                     finally:
                         self._camera_started = False
-            asyncio.create_task(stop_when_idle(), name="pycentauri-camera-disable")
+
+            self._idle_task = asyncio.create_task(
+                stop_when_idle(), name="pycentauri-camera-disable"
+            )
 
     async def _drain(self, queue: asyncio.Queue[bytes | None]) -> AsyncIterator[bytes]:
         try:
@@ -321,6 +327,11 @@ class CameraBroadcaster:
         if self._idle_timer is not None:
             self._idle_timer.cancel()
             self._idle_timer = None
+        if self._idle_task is not None and not self._idle_task.done():
+            self._idle_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._idle_task
+        self._idle_task = None
         if self._reader is not None and not self._reader.done():
             self._reader.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
