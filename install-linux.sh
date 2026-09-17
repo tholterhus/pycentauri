@@ -76,6 +76,10 @@ python3 -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/python" -m pip install --upgrade pip
 "$APP_DIR/venv/bin/pip" install --no-cache-dir "$APP_DIR[mcp,server]"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR" "$DATA_DIR"
+# Uniform permissions: app files readable (0644/0755); venv/ and data/ keep their own modes.
+find "$APP_DIR" \( -path "$APP_DIR/venv" -o -path "$APP_DIR/data" -o -path "$DATA_DIR" \) -prune -o -type d -exec chmod 0755 {} +
+find "$APP_DIR" \( -path "$APP_DIR/venv" -o -path "$APP_DIR/data" -o -path "$DATA_DIR" \) -prune -o -type f -exec chmod 0644 {} +
+chmod 0755 "$APP_DIR/install-linux.sh"
 
 if [[ ! -e "$CONFIG_FILE" ]]; then
   install -d -m 0750 "$(dirname "$CONFIG_FILE")"
