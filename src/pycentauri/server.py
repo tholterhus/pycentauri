@@ -949,9 +949,9 @@ def run(
     import uvicorn
 
     # Default WARN, damit periodische Reconnect-INFOs das Journal nicht
-    # zumuellen; konfigurierbar ueber PycENTAURI_LOG_LEVEL (info|warn|critical)
+    # zumuellen; konfigurierbar ueber PYCENTAURI_LOG_LEVEL (info|warn|critical)
     # oder --log-level.
-    choice = (log_level or os.environ.get("PycENTAURI_LOG_LEVEL") or "warn").strip().lower()
+    choice = (log_level or os.environ.get("PYCENTAURI_LOG_LEVEL") or "warn").strip().lower()
     numeric = {"info": logging.INFO, "warn": logging.WARNING, "warning": logging.WARNING, "critical": logging.CRITICAL}.get(choice, logging.WARNING)
     logging.basicConfig(level=numeric, format="%(levelname)s:%(name)s: %(message)s")
 
