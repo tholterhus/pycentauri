@@ -21,6 +21,7 @@ PYCENTAURI_RTSP=${PYCENTAURI_RTSP:-0}
 PYCENTAURI_ENABLE_CONTROL=${PYCENTAURI_ENABLE_CONTROL:-0}
 PYCENTAURI_ACCESS_CODE=${PYCENTAURI_ACCESS_CODE:-}
 MEDIAMTX_PATH=${MEDIAMTX_PATH:-}
+PycENTAURI_LOG_LEVEL=${PycENTAURI_LOG_LEVEL:-warn}
 
 [[ $EUID -eq 0 ]] || { echo 'Run this installer as root.' >&2; exit 1; }
 [[ -n "$PYCENTAURI_HOST" ]] || { echo 'Set PYCENTAURI_HOST to the printer IP or DNS name.' >&2; exit 1; }
@@ -76,6 +77,7 @@ python3 -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/python" -m pip install --upgrade pip
 "$APP_DIR/venv/bin/pip" install --no-cache-dir "$APP_DIR[mcp,server]"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR" "$DATA_DIR"
+chmod -R a+rX "$APP_DIR" "$DATA_DIR"
 # Uniform permissions: app files readable (0644/0755); venv/ and data/ keep their own modes.
 find "$APP_DIR" \( -path "$APP_DIR/venv" -o -path "$APP_DIR/data" -o -path "$DATA_DIR" \) -prune -o -type d -exec chmod 0755 {} +
 find "$APP_DIR" \( -path "$APP_DIR/venv" -o -path "$APP_DIR/data" -o -path "$DATA_DIR" \) -prune -o -type f -exec chmod 0644 {} +
@@ -92,6 +94,7 @@ PYCENTAURI_BIND=$PYCENTAURI_BIND
 PYCENTAURI_RTSP=$PYCENTAURI_RTSP
 PYCENTAURI_ENABLE_CONTROL=$PYCENTAURI_ENABLE_CONTROL
 PYCENTAURI_MEDIAMTX_PATH=$MEDIAMTX_PATH
+PycENTAURI_LOG_LEVEL=${PycENTAURI_LOG_LEVEL:-warn}
 EOF
 else
   echo "Keeping existing $CONFIG_FILE; edit it explicitly to change service settings."

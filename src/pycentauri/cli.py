@@ -730,7 +730,7 @@ def cmd_server(
     ),
     port: int = typer.Option(8787, "--port", "-p"),
     enable_control: ControlOpt = False,
-    log_level: str = typer.Option("info", "--log-level"),
+    log_level: str = typer.Option("", "--log-level", help="info | warn | critical (default: PycENTAURI_LOG_LEVEL or warn)"),
     rtsp: bool = typer.Option(
         False,
         "--rtsp/--no-rtsp",

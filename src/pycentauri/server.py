@@ -936,7 +936,7 @@ def run(
     enable_control: bool = False,
     mainboard_id: str | None = None,
     access_code: str | None = None,
-    log_level: str = "info",
+    log_level: str = "",
     rtsp_config: rtsp_module.RtspConfig | None = None,
     check_updates: bool = False,
 ) -> None:
@@ -948,10 +948,12 @@ def run(
     """
     import uvicorn
 
-    # Surface pycentauri's own log lines (reconnects, speed-mode restores)
-    # in the journal — uvicorn only configures its own loggers, and the
-    # root logger's lastResort handler hides INFO.
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
+    # Default WARN, damit periodische Reconnect-INFOs das Journal nicht
+    # zumuellen; konfigurierbar ueber PycENTAURI_LOG_LEVEL (info|warn|critical)
+    # oder --log-level.
+    choice = (log_level or os.environ.get("PycENTAURI_LOG_LEVEL") or "warn").strip().lower()
+    numeric = {"info": logging.INFO, "warn": logging.WARNING, "warning": logging.WARNING, "critical": logging.CRITICAL}.get(choice, logging.WARNING)
+    logging.basicConfig(level=numeric, format="%(levelname)s:%(name)s: %(message)s")
 
     app = create_app(
         host,
@@ -969,7 +971,7 @@ def run(
         app,
         host=bind,
         port=port,
-        log_level=log_level,
+        log_level={"info": "info", "critical": "critical"}.get(choice, "warning"),
         timeout_graceful_shutdown=5,
     )
 
