@@ -42,7 +42,7 @@ pip install "pycentauri[mcp,server]"      # all Python surfaces
 ```
 
 For a Linux service installation with an optional systemd unit, see the
-complete [Linux installation guide](docs/INSTALL.md). It covers prerequisites,
+complete [Linux installation guide](INSTALL.md). It covers prerequisites,
 configuration, firewalling, reverse proxies, multiple devices, health checks,
 updates, and rollback. The installer defaults to loopback binding and
 read-only operation; no credentials belong in source control or shell history.

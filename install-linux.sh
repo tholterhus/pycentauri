@@ -138,7 +138,8 @@ ReadWritePaths=$APP_DIR $DATA_DIR
 WantedBy=multi-user.target
 EOF
   systemctl daemon-reload
-  systemctl enable --now "$SERVICE"
+  systemctl enable "$SERVICE"
+systemctl restart "$SERVICE"
   health_ok=0
   for _ in $(seq 1 30); do
     if systemctl is-active --quiet "$SERVICE" && curl --fail --silent --show-error --max-time 2 "http://127.0.0.1:$PYCENTAURI_PORT/api/info" >/dev/null; then health_ok=1; break; fi
