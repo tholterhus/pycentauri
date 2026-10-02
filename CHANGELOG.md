@@ -6,6 +6,10 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `docs/FORK.md`: divergence map against upstream (features, deliberate
+  behavior changes, upstream sync routine, contribution path).
+
 ## [0.12.0] - 2026-10-02
 
 ### Added

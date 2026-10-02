@@ -526,6 +526,8 @@ src/pycentauri/
   payloads, error codes, failure modes, and a CC1-vs-CC2 comparison.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module map and
   request flow.
+- [`docs/FORK.md`](docs/FORK.md) — how this fork diverges from upstream
+  and how upstream updates are absorbed.
 
 ## Development
 
