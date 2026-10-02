@@ -306,6 +306,16 @@ class LightBody(BaseModel):
     on: bool = Field(..., description="true to turn the chamber light on, false for off.")
 
 
+class DetectCollectBody(BaseModel):
+    enabled: bool = Field(
+        ..., description="true to start collecting training frames, false to stop."
+    )
+
+
+class DetectActionBody(BaseModel):
+    action: str = Field(..., description="notify | pause | stop")
+
+
 # --- Dependency helpers -----------------------------------------------------
 
 
@@ -787,6 +797,30 @@ def create_app(
             media_type="image/jpeg",
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post("/api/detect/collect", tags=["detect"])
+    async def detect_collect(body: DetectCollectBody, request: Request) -> dict[str, Any]:
+        """Toggle training-frame collection while a print runs (with ``--detect``)."""
+        controller = _detect_controller(request)
+        try:
+            controller.set_collecting(body.enabled)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        state: dict[str, Any] = controller.state()
+        return state
+
+    @app.post("/api/detect/action", tags=["detect"])
+    async def detect_action(body: DetectActionBody, request: Request) -> dict[str, Any]:
+        """Arm the response at runtime: notify | pause | stop (with ``--detect``)."""
+        controller = _detect_controller(request)
+        try:
+            controller.set_action(body.action)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        except PermissionError as err:
+            raise HTTPException(status_code=403, detail=str(err)) from err
+        state: dict[str, Any] = controller.state()
+        return state
 
     # --- Meta / health ------------------------------------------------------
 

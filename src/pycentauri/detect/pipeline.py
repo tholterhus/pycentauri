@@ -86,6 +86,13 @@ class DetectConfig:
     webhook_url: str | None = None
     evidence_dir: Path = Path("data/evidence")
     force_cpu: bool = False
+    # Training-data collection: while a print runs, frames are written to
+    # collect_dir (frame one every collect_interval_s). Collection needs no
+    # model — it exists so users can gather a dataset before any model
+    # exists. collect_target is the "enough data" hint shown in the UI.
+    collect_dir: Path = Path("data/collect")
+    collect_target: int = 1000
+    collect_interval_s: float = 5.0
 
     def __post_init__(self) -> None:
         if self.action not in ACTIONS:
@@ -198,6 +205,7 @@ class DetectionController:
         self._fired = False  # one alert per print
         self._window: deque[bool] = deque(maxlen=cfg.window_size)
         self._backend: Any = None  # detect.backend.Detector, loaded lazily
+        self._collecting = False  # training-frame collection toggle
         self._last_event: DetectionEvent | None = None
         self._error: str | None = None
 
@@ -234,6 +242,13 @@ class DetectionController:
             },
             "processing": self._session_task is not None and not self._session_task.done(),
             "printing": self._printing,
+            "collect": {
+                "enabled": self._collecting,
+                "count": self._collect_count(),
+                "target": self.cfg.collect_target,
+                "interval_s": self.cfg.collect_interval_s,
+            },
+            "control_allowed": self._control_allowed,
             "last_event": self._last_event.as_dict() if self._last_event else None,
             "recent_evidence": self._recent_evidence(),
             "error": self._error,
@@ -247,6 +262,36 @@ class DetectionController:
             return [p.name for p in frames[:limit]]
         except OSError:
             return []
+
+    def _collect_count(self) -> int:
+        try:
+            return len(list(self.cfg.collect_dir.glob("*.jpg")))
+        except OSError:
+            return 0
+
+    # --- runtime switching (dashboard) --------------------------------------
+
+    def set_collecting(self, enabled: bool) -> None:
+        """Toggle training-frame collection. Needs no model, only a camera.
+
+        Enabling mid-print starts a session immediately (the status watcher
+        would otherwise only start one on the next printing transition).
+        """
+        self._collecting = bool(enabled)
+        if (
+            self._collecting
+            and self._active
+            and (self._session_task is None or self._session_task.done())
+        ):
+            self._begin_session()
+
+    def set_action(self, action: str) -> None:
+        """Arm the response at runtime (the dashboard's notify/pause/stop)."""
+        if action not in ACTIONS:
+            raise ValueError(f"action must be one of {ACTIONS}, got {action!r}")
+        if action in ("pause", "stop") and not self._control_allowed:
+            raise PermissionError("arming pause/stop requires --enable-control")
+        self.cfg.action = action
 
     # --- model --------------------------------------------------------------
 
@@ -314,13 +359,15 @@ class DetectionController:
         # Self-healing: retry the model load once per print — if the user
         # adds the model (or the Coral) later, the next print picks it up.
         await self._ensure_backend()
-        if self._backend is None:
-            # No usable model: do NOT hold the camera subscription open for
-            # nothing — the printer's camera slots are scarce.
-            log.debug("detection: no backend loaded — session skipped")
+        if self._backend is None and not self._collecting:
+            # No usable model and nothing to collect: do NOT hold the camera
+            # subscription open for nothing — the printer's camera slots are
+            # scarce.
+            log.debug("detection: no backend and no collection — session skipped")
             return
         started = time.monotonic()
         last_infer = 0.0
+        last_collect = 0.0
         try:
             _media_type, chunks = await self._camera.subscribe()
         except Exception as err:
@@ -331,17 +378,38 @@ class DetectionController:
                 if self._closing or not self._active:
                     break
                 now = time.monotonic()
-                if now - started < self.cfg.grace_s:
-                    continue
-                if not self._printing:  # filament switch: hold, don't infer
-                    continue
-                if now - last_infer < self.cfg.min_frame_interval_s:
+                if not self._printing:  # filament switch: hold, don't work
                     continue
                 jpeg = jpeg_from_part(part)
                 if jpeg is None:
                     continue
+                # Collection has no grace period — priming and first layers
+                # are valuable training material too.
+                if self._collecting and now - last_collect >= self.cfg.collect_interval_s:
+                    last_collect = now
+                    await self._save_collect_frame(jpeg)
+                if self._backend is None or now - started < self.cfg.grace_s:
+                    continue
+                if now - last_infer < self.cfg.min_frame_interval_s:
+                    continue
                 last_infer = now
                 await self._evaluate(jpeg)
+
+    async def _save_collect_frame(self, jpeg: bytes) -> None:
+        """Write one training frame (off the event loop), timestamped."""
+        collect_dir = self.cfg.collect_dir
+
+        def _write() -> None:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            path = (collect_dir / stamp).with_suffix(".jpg")
+            for i in range(1, 100):
+                if not path.exists():
+                    break
+                path = (collect_dir / f"{stamp}-{i}").with_suffix(".jpg")
+            collect_dir.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(jpeg)
+
+        await asyncio.get_running_loop().run_in_executor(None, _write)
 
     async def _evaluate(self, jpeg: bytes) -> None:
         if self._backend is None:

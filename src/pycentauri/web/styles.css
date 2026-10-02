@@ -879,3 +879,47 @@ body {
 }
 
 .detect-strip a:hover img { border-color: var(--amber); }
+
+.detect-collect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.detect-collect-toggle.on {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.detect-collect-count {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--cyan);
+  margin-left: auto;
+}
+
+.bar.detect-collect-bar {
+  height: 6px;
+  margin-top: 6px;
+}
+
+.detect-arm-hint {
+  margin-top: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--warn);
+  border-left: 2px solid var(--warn);
+  background: var(--bg-inset);
+}
+
+.detect-arm { margin-top: 10px; }
+
+.detect-action-modes { display: flex; gap: 6px; }
+
+.detect-action-btn.on { border-color: var(--danger); color: var(--danger); }
+
+.detect-action-btn[data-action="notify"].on {
+  border-color: var(--ok);
+  color: var(--ok);
+}

@@ -517,6 +517,73 @@ async def test_controller_surfaces_model_load_error(tmp_path: Path) -> None:
     assert camera.subscribe_count == 0
 
 
+async def test_collect_writes_frames_while_printing_without_model(tmp_path: Path) -> None:
+    """Collect mode saves frames while printing — no model needed at all."""
+    cfg = DetectConfig(
+        model_path=tmp_path / "missing_edgetpu.tflite",
+        collect_dir=tmp_path / "collect",
+        collect_interval_s=0.0,
+    )
+    camera = FakeCamera([_jpeg()] * 6)
+    controller = DetectionController(
+        cfg, camera=camera, get_printer=lambda: FakePrinter([PRINTING] * 20 + [9])
+    )
+    controller.set_collecting(True)
+    await controller.start()
+    await _wait_for(lambda: controller._collect_count() >= 6, timeout_s=5.0)
+    await _wait_for(lambda: controller.state()["processing"] is False, timeout_s=5.0)
+    await controller.stop()
+    assert controller._collect_count() == 6
+    assert camera.subscribe_count == 1  # collection holds the camera without a model
+    assert controller.state()["collect"]["enabled"] is True
+    assert controller.state()["collect"]["target"] == cfg.collect_target
+
+
+async def test_collect_disabled_by_default(tmp_path: Path) -> None:
+    cfg = DetectConfig(model_path=tmp_path / "m_edgetpu.tflite", collect_dir=tmp_path / "c")
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(
+            detect_backend.Detector,
+            "from_model",
+            staticmethod(lambda path, force_cpu=False: FakeDetector()),
+        )
+        camera = FakeCamera([_jpeg()] * 4)
+        controller = DetectionController(
+            cfg, camera=camera, get_printer=lambda: FakePrinter([PRINTING] * 10 + [9])
+        )
+        await controller.start()
+        await _wait_for(lambda: controller.state()["processing"] is False, timeout_s=5.0)
+        await controller.stop()
+    finally:
+        monkeypatch.undo()
+    assert controller._collect_count() == 0
+    assert controller.state()["collect"]["enabled"] is False
+
+
+def test_set_action_runtime_gating(tmp_path: Path) -> None:
+    cfg = DetectConfig(model_path=tmp_path / "m.tflite")
+    controller = DetectionController(
+        cfg, camera=FakeCamera([]), get_printer=lambda: FakePrinter([0]), control_allowed=False
+    )
+    controller.set_action("notify")
+    assert controller.cfg.action == "notify"
+    with pytest.raises(PermissionError):
+        controller.set_action("pause")
+    with pytest.raises(PermissionError):
+        controller.set_action("stop")
+    with pytest.raises(ValueError):
+        controller.set_action("destroy")
+    controller2 = DetectionController(
+        DetectConfig(model_path=tmp_path / "m.tflite"),
+        camera=FakeCamera([]),
+        get_printer=lambda: FakePrinter([0]),
+        control_allowed=True,
+    )
+    controller2.set_action("stop")
+    assert controller2.cfg.action == "stop"
+
+
 # --- server endpoints ----------------------------------------------------------
 
 
@@ -582,4 +649,56 @@ async def test_detect_endpoints_disabled(monkeypatch: pytest.MonkeyPatch) -> Non
     ):
         r = await client.get("/api/detect")
         assert r.status_code == 404
+    await server.stop()
+
+
+async def test_detect_post_endpoints(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """POST /api/detect/collect toggles; /api/detect/action is control-gated."""
+    pytest.importorskip("fastapi")
+    import httpx
+
+    from pycentauri import server as server_module
+    from tests.test_client import MAINBOARD, _FakePrinter
+
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app(
+        "127.0.0.1",
+        mainboard_id=MAINBOARD,
+        detect_config=DetectConfig(
+            model_path=tmp_path / "m.tflite", collect_dir=tmp_path / "collect"
+        ),
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+    ):
+        r = await client.post("/api/detect/collect", json={"enabled": True})
+        assert r.status_code == 200
+        assert r.json()["collect"]["enabled"] is True
+        r = await client.post("/api/detect/action", json={"action": "pause"})
+        assert r.status_code == 403  # server without --enable-control
+    await server.stop()
+
+    app2 = server_module.create_app(
+        "127.0.0.1",
+        mainboard_id=MAINBOARD,
+        enable_control=True,
+        detect_config=DetectConfig(
+            model_path=tmp_path / "m.tflite", collect_dir=tmp_path / "collect"
+        ),
+    )
+    transport2 = httpx.ASGITransport(app=app2)
+    async with (
+        app2.router.lifespan_context(app2),
+        httpx.AsyncClient(transport=transport2, base_url="http://test") as client2,
+    ):
+        r = await client2.post("/api/detect/action", json={"action": "stop"})
+        assert r.status_code == 200
+        assert r.json()["action"] == "stop"
+        r = await client2.post("/api/detect/action", json={"action": "destroy"})
+        assert r.status_code == 400
     await server.stop()

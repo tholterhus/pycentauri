@@ -682,8 +682,26 @@ function renderDetect(state) {
 
   $("detect-model").textContent = (state.model || "—").split("/").pop();
   $("detect-model").title = state.model || "";
-  $("detect-action").textContent = `${state.action || "—"} @ ≥${state.threshold ?? "—"}`;
   $("detect-threshold").textContent = state.threshold ?? "—";
+
+  // Training-frame collection + dataset progress ("Schwungmasse").
+  const col = state.collect || {};
+  const toggleBtn = $("detect-collect-toggle");
+  toggleBtn.classList.toggle("on", !!col.enabled);
+  $("detect-collect-label").textContent = col.enabled ? "COLLECTING" : "Collect frames";
+  const count = col.count || 0;
+  const target = col.target || 0;
+  $("detect-collect-count").textContent = target ? `${count} / ${target} frames` : `${count} frames`;
+  $("detect-collect-bar").style.width = target
+    ? Math.min(100, (count * 100) / target) + "%"
+    : "0%";
+
+  // Readiness hint + arming buttons (arm requires server-side control).
+  $("detect-arm-hint").hidden = !(target && count >= target && state.action === "notify");
+  $("detect-arm").hidden = !state.control_allowed;
+  for (const b of document.querySelectorAll(".detect-action-btn")) {
+    b.classList.toggle("on", b.dataset.action === state.action);
+  }
 
   const ev = state.last_event;
   const card = $("detect-event");
@@ -745,6 +763,40 @@ function setDetectMsg(text, kind) {
   el.textContent = text;
   el.classList.remove("ok", "warn", "err");
   if (kind) el.classList.add(kind);
+}
+
+async function postDetect(path, body) {
+  try {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const detail = (await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`;
+      setDetectMsg(detail, "err");
+      return;
+    }
+    renderDetect(await r.json());
+    setDetectMsg("");
+  } catch (e) {
+    setDetectMsg(String(e), "err");
+  }
+}
+
+function wireDetect() {
+  $("detect-collect-toggle")?.addEventListener("click", () => {
+    const on = $("detect-collect-toggle").classList.contains("on");
+    postDetect("/api/detect/collect", { enabled: !on });
+  });
+  for (const b of document.querySelectorAll(".detect-action-btn")) {
+    b.addEventListener("click", () => {
+      const action = b.dataset.action;
+      if (action === "pause" && !confirm("Arm PAUSE? A confirmed detection will pause the print.")) return;
+      if (action === "stop" && !confirm("Arm STOP? A confirmed detection will stop the print.")) return;
+      postDetect("/api/detect/action", { action });
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1296,6 +1348,7 @@ function noteStatusForPoll(pstatus) {
   wireFiles();
   wireHistory();
   wireRtsp();
+  wireDetect();
   wireWebcam();
   await loadInfo();
   await loadCanvas();

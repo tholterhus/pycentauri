@@ -206,11 +206,28 @@
           <span class="detect-state" id="detect-state">-</span>
           <span class="detect-window" id="detect-window" title="Positive frames in the current K-of-M decision window">-</span>
         </div>
+        <div class="detect-collect">
+          <button class="btn detect-collect-toggle" id="detect-collect-toggle" type="button">
+            <span id="detect-collect-label">Collect frames</span>
+          </button>
+          <span class="detect-collect-count" id="detect-collect-count" title="Training frames saved while printing (data/collect)">-</span>
+        </div>
+        <div class="bar detect-collect-bar"><div class="bar-fill" id="detect-collect-bar"></div></div>
+        <div class="detect-arm-hint" id="detect-arm-hint" hidden>
+          Dataset target reached — label the frames, train a model, then arm the response below.
+        </div>
         <dl class="tele-dl detect-cfg">
           <div><dt>Model</dt><dd class="mono-xs" id="detect-model">-</dd></div>
-          <div><dt>Action</dt><dd id="detect-action">-</dd></div>
           <div><dt>Threshold</dt><dd id="detect-threshold">-</dd></div>
         </dl>
+        <div class="detect-arm" id="detect-arm" hidden>
+          <div class="adj-sub">Response on detection</div>
+          <div class="adj-modes detect-action-modes" id="detect-actions">
+            <button class="btn detect-action-btn" data-action="notify" type="button">Notify</button>
+            <button class="btn detect-action-btn" data-action="pause" type="button">Pause</button>
+            <button class="btn detect-action-btn" data-action="stop" type="button">Stop</button>
+          </div>
+        </div>
         <div class="detect-event" id="detect-event" hidden>
           <div class="detect-event-head">
             <span class="detect-event-score" id="detect-event-score">-</span>
