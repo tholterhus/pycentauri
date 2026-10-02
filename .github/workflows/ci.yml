@@ -13,8 +13,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        # Private repository: Actions minutes are billed and macOS counts
+        # at a 10x multiplier, so the matrix is deliberately small.
+        # - 3.13 = the production environment (Debian 13, this project's own host)
+        # - 3.11 = Raspberry Pi OS Bookworm / older distribution Pythons
+        # The Coral detection itself is Python-version-agnostic (the Edge TPU
+        # runtime is a C library; LiteRT ships wheels for 3.10-3.13).
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
