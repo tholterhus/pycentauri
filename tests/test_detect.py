@@ -215,6 +215,7 @@ def test_from_model_falls_back_when_device_absent(
     model = tmp_path / "m_edgetpu.tflite"
     model.write_bytes(b"fake")
     monkeypatch.setattr(detect_backend, "EDGE_TPU_DEVICE", tmp_path / "missing")
+    monkeypatch.setattr(detect_backend, "edge_tpu_available", lambda: False)
     monkeypatch.setattr(detect_backend, "_build_interpreter", lambda p, d: FakeInterpreter())
     detector = Detector.from_model(model)
     assert detector.backend_name == "cpu"
@@ -260,6 +261,7 @@ def test_from_model_swaps_to_uncompiled_sibling_on_cpu(
     sibling.write_bytes(b"fake")
     loaded: list[Path] = []
     monkeypatch.setattr(detect_backend, "EDGE_TPU_DEVICE", tmp_path / "missing")
+    monkeypatch.setattr(detect_backend, "edge_tpu_available", lambda: False)
     monkeypatch.setattr(
         detect_backend,
         "_build_interpreter",

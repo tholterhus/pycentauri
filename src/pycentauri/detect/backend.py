@@ -35,11 +35,15 @@ from PIL import Image
 
 log = logging.getLogger(__name__)
 
-#: udev (from ``libedgetpu1-std``) creates one node per Edge TPU; the USB
-#: Accelerator shows up as ``/dev/apex/0``.
+#: udev (from ``libedgetpu1-std``) creates one node per Edge TPU; PCIe
+#: devices show up as ``/dev/apex/0``. The USB Accelerator never gets an
+#: apex node — libedgetpu talks to it directly through libusb.
 EDGE_TPU_DEVICE = Path("/dev/apex/0")
 #: Delegate shared library shipped by the ``libedgetpu1-std`` package.
 EDGE_TPU_LIB = "libedgetpu.so.1"
+#: USB IDs the Coral USB Accelerator presents (Global Unichip 1a6e:089a,
+#: Google 18d1:9302 on some firmware).
+USB_CORAL_IDS = {("1a6e", "089a"), ("18d1", "9302")}
 
 __all__ = [
     "EDGE_TPU_DEVICE",
@@ -72,8 +76,24 @@ class Detection:
 
 
 def edge_tpu_available() -> bool:
-    """True when at least one Edge TPU device node is present."""
-    return EDGE_TPU_DEVICE.exists()
+    """True when an Edge TPU is present.
+
+    PCIe devices expose ``/dev/apex/0``; the USB Accelerator is detected
+    by its USB IDs on the bus (there is no apex node for USB — libedgetpu
+    enumerates it via libusb).
+    """
+    if EDGE_TPU_DEVICE.exists():
+        return True
+    try:
+        for vendor_path in Path("/sys/bus/usb/devices").glob("*/idVendor"):
+            vendor = vendor_path.read_text().strip()
+            product_path = vendor_path.with_name("idProduct")
+            product = product_path.read_text().strip()
+            if (vendor, product) in USB_CORAL_IDS:
+                return True
+    except OSError:
+        pass
+    return False
 
 
 def _is_edgetpu_compiled(model_path: Path) -> bool:
