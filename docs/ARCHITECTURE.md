@@ -40,6 +40,8 @@ modules, the request flows, and the lifetime of every connection.
 | `cli` | Typer subcommands; auto-discovery + mainboard pre-seed; `--access-code` plumbing | Indirect |
 | `server` | FastAPI app, `PrinterManager` (long-lived connection), `RtspController`, `/stream` proxy, web UI mount | Yes (one connection) |
 | `rtsp` | MediaMTX config render + subprocess management | No (manages subprocess that does) |
+| `detect.backend` | LiteRT interpreter factory (Edge TPU delegate when `/dev/apex/0` + `_edgetpu` model, CPU fallback with uncompiled sibling), SSD output postprocessing | No (model file + JPEG only) |
+| `detect.pipeline` | `DetectionController` — status watcher (print_status 13; CC2 27/28/29 held but not inferred), K-of-M debounce, evidence/webhook/opt-in pause-stop | Through injected printer `watch()` + the shared broadcaster |
 | `mcp.server` | FastMCP tools | Indirect (one connection per call) |
 | `web/` | Static HTML/CSS/JS dashboard | Through the server's REST/SSE |
 
@@ -171,6 +173,7 @@ manually with the CLI against real hardware (`centauri status`,
 | MCP server | `pycentauri[mcp]` | — |
 | HTTP server + UI | `pycentauri[server]` | — |
 | RTSP bridge | (no Python extra) | `mediamtx`, `ffmpeg` |
+| Spaghetti detection | `pycentauri[detect]` | Coral USB + `libedgetpu1-std` (optional — CPU fallback without) |
 
 The RTSP bridge intentionally has no Python extra — the only deps are
 the system binaries. The CLI subcommand is therefore always present;

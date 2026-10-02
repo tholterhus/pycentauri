@@ -18,6 +18,8 @@ Routes (start with ``centauri server``):
 * ``GET /files`` / ``GET /disk`` / ``GET /history`` — file list, disk usage
   (CC2), and print history (both models)
 * ``GET|POST /api/rtsp*`` — RTSP bridge state/control (with ``--rtsp``)
+* ``GET /api/detect`` + ``GET /api/detect/evidence/{name}`` — failed-print
+  ("spaghetti") detection state and evidence frames (with ``--detect``)
 * ``POST /print/{start,pause,resume,stop,speed,fan,temperature}``,
   ``POST /canvas/refill``, ``POST /light``, ``POST /files/upload``, and
   ``POST /files/delete`` — registered only with ``--enable-control``.
@@ -36,7 +38,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.resources import files as resource_files
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
@@ -56,6 +58,9 @@ from pycentauri.client import (
 from pycentauri.connect import connect_auto
 from pycentauri.discovery import DiscoveredPrinter
 from pycentauri.discovery import discover as lan_discover
+
+if TYPE_CHECKING:
+    from pycentauri.detect.pipeline import DetectConfig, DetectionController
 
 log = logging.getLogger(__name__)
 
@@ -388,6 +393,7 @@ def create_app(
     access_code: str | None = None,
     rtsp_config: rtsp_module.RtspConfig | None = None,
     check_updates: bool = False,
+    detect_config: DetectConfig | None = None,
 ) -> FastAPI:
     """Build the FastAPI app. ``host`` is the printer's IP/hostname.
 
@@ -395,7 +401,8 @@ def create_app(
     connection lifecycle (WebSocket for CC1, MQTT for CC2 — auto-detected).
     Control endpoints are registered only when ``enable_control`` is ``True``.
     ``rtsp_config`` enables the ``/api/rtsp/*`` endpoints and the "STREAM"
-    panel in the web UI.
+    panel in the web UI. ``detect_config`` enables the ``/api/detect``
+    endpoints and the failed-print detection pipeline.
     """
 
     @asynccontextmanager
@@ -410,12 +417,36 @@ def create_app(
         app.state.manager = manager
         app.state.rtsp = RtspController(rtsp_config) if rtsp_config is not None else None
         app.state.update = _UpdateState()
+        # Detection watches the shared camera broadcaster and the manager's
+        # printer; started only once the printer connection exists.
+        controller: DetectionController | None = None
+        if detect_config is not None:
+            from pycentauri.detect.pipeline import DetectionController, webhook_poster_for
+
+            async def _run_action(verb: str) -> None:
+                await getattr(manager.printer, verb)()
+
+            controller = DetectionController(
+                detect_config,
+                camera=manager.camera,
+                get_printer=lambda: manager.printer,
+                control_allowed=enable_control,
+                action_runner=_run_action,
+                webhook_poster=(
+                    webhook_poster_for(detect_config.webhook_url)
+                    if detect_config.webhook_url
+                    else None
+                ),
+            )
+        app.state.detect = controller
         update_task: asyncio.Task[None] | None = None
         if check_updates:
             update_task = asyncio.create_task(
                 _update_check_loop(app.state.update), name="pycentauri-update-check"
             )
         await manager.start()
+        if controller is not None:
+            await controller.start()
         try:
             yield
         finally:
@@ -423,6 +454,9 @@ def create_app(
                 update_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await update_task
+            if app.state.detect is not None:
+                with contextlib.suppress(Exception):
+                    await app.state.detect.stop()
             if app.state.rtsp is not None:
                 with contextlib.suppress(Exception):
                     await app.state.rtsp.stop()
@@ -717,6 +751,43 @@ def create_app(
         await controller.stop()
         return _rtsp_state(request)
 
+    # --- Spaghetti detection ------------------------------------------------
+
+    def _detect_controller(request: Request) -> Any:
+        controller = getattr(request.app.state, "detect", None)
+        if controller is None:
+            raise HTTPException(
+                status_code=404,
+                detail="detection not enabled. Launch server with --detect.",
+            )
+        return controller
+
+    @app.get("/api/detect", tags=["detect"])
+    async def detect_state(request: Request) -> dict[str, Any]:
+        """Failed-print detection state (with ``--detect``)."""
+        controller = _detect_controller(request)
+        state: dict[str, Any] = controller.state()
+        return state
+
+    @app.get("/api/detect/evidence/{name}", tags=["detect"])
+    async def detect_evidence(request: Request, name: str) -> Response:
+        """A saved evidence frame, ``<timestamp>.jpg`` (with ``--detect``)."""
+        controller = _detect_controller(request)
+        safe = Path(name).name  # strip any directory components (no traversal)
+        if not safe.endswith(".jpg"):
+            raise HTTPException(status_code=400, detail="evidence files are .jpg")
+        root = Path(controller.cfg.evidence_dir).resolve()
+        path = (root / safe).resolve()
+        if root not in path.parents:
+            raise HTTPException(status_code=404, detail="no such evidence file")
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="no such evidence file")
+        return Response(
+            content=path.read_bytes(),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-store"},
+        )
+
     # --- Meta / health ------------------------------------------------------
 
     @app.get("/api/info", tags=["meta"])
@@ -734,6 +805,7 @@ def create_app(
             "mainboard_id": manager._mainboard_id,
             "connected": manager._printer is not None and not manager._printer._closed,
             "enable_control": manager.enable_control,
+            "detect_enabled": app.state.detect is not None,
         }
 
     # --- Static web UI ------------------------------------------------------
@@ -939,6 +1011,7 @@ def run(
     log_level: str = "",
     rtsp_config: rtsp_module.RtspConfig | None = None,
     check_updates: bool = False,
+    detect_config: DetectConfig | None = None,
 ) -> None:
     """Launch the server with uvicorn (blocks).
 
@@ -952,7 +1025,12 @@ def run(
     # zumuellen; konfigurierbar ueber PYCENTAURI_LOG_LEVEL (info|warn|critical)
     # oder --log-level.
     choice = (log_level or os.environ.get("PYCENTAURI_LOG_LEVEL") or "warn").strip().lower()
-    numeric = {"info": logging.INFO, "warn": logging.WARNING, "warning": logging.WARNING, "critical": logging.CRITICAL}.get(choice, logging.WARNING)
+    numeric = {
+        "info": logging.INFO,
+        "warn": logging.WARNING,
+        "warning": logging.WARNING,
+        "critical": logging.CRITICAL,
+    }.get(choice, logging.WARNING)
     logging.basicConfig(level=numeric, format="%(levelname)s:%(name)s: %(message)s")
 
     app = create_app(
@@ -962,6 +1040,7 @@ def run(
         access_code=access_code,
         rtsp_config=rtsp_config,
         check_updates=check_updates,
+        detect_config=detect_config,
     )
     # Bound graceful shutdown: open SSE/MJPEG streams never close on
     # their own, and without a timeout uvicorn waits for them forever —

@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import json
 import os
 import sys
+from collections import deque
 from collections.abc import Coroutine
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
@@ -22,6 +25,9 @@ from pycentauri import __version__
 from pycentauri.client import Printer
 from pycentauri.connect import connect_auto
 from pycentauri.discovery import discover as discover_printers
+
+if TYPE_CHECKING:
+    from pycentauri.detect.backend import DetectBackendError, Detector
 
 app = typer.Typer(
     name="centauri",
@@ -31,6 +37,11 @@ app = typer.Typer(
 )
 print_cmd = typer.Typer(name="print", help="Start, pause, resume, or stop a print.")
 app.add_typer(print_cmd, name="print")
+detect_cmd = typer.Typer(
+    name="detect",
+    help="Failed-print (spaghetti) detection on a Coral USB Edge TPU (CPU fallback).",
+)
+app.add_typer(detect_cmd, name="detect")
 
 
 HostOpt = Annotated[
@@ -59,6 +70,11 @@ AccessCodeOpt = Annotated[
     ),
 ]
 JsonOpt = Annotated[bool, typer.Option("--json", help="Emit machine-readable JSON.")]
+
+#: Detection defaults, module-level so the typer defaults below don't need
+#: to call Path() inside the argument declaration.
+DEFAULT_DETECT_MODEL = Path("data/models/spaghetti_edgetpu.tflite")
+DEFAULT_EVIDENCE_DIR = Path("data/evidence")
 
 
 def _echo_err(msg: str) -> None:
@@ -730,7 +746,9 @@ def cmd_server(
     ),
     port: int = typer.Option(8787, "--port", "-p"),
     enable_control: ControlOpt = False,
-    log_level: str = typer.Option("", "--log-level", help="info | warn | critical (default: PYCENTAURI_LOG_LEVEL or warn)"),
+    log_level: str = typer.Option(
+        "", "--log-level", help="info | warn | critical (default: PYCENTAURI_LOG_LEVEL or warn)"
+    ),
     rtsp: bool = typer.Option(
         False,
         "--rtsp/--no-rtsp",
@@ -751,6 +769,39 @@ def cmd_server(
             "dashboard. Off by default — this is the only outbound (non-printer) call."
         ),
     ),
+    detect: bool = typer.Option(
+        False,
+        "--detect/--no-detect",
+        help="Enable failed-print (spaghetti) detection while a print is running.",
+    ),
+    detect_model: Annotated[
+        Path,
+        typer.Option(
+            "--detect-model",
+            help="TFLite model path (Edge TPU-compiled or plain; CPU fallback is automatic).",
+        ),
+    ] = DEFAULT_DETECT_MODEL,
+    detect_action: str = typer.Option(
+        "notify",
+        "--detect-action",
+        help="notify | pause | stop — pause/stop additionally require --enable-control.",
+    ),
+    detect_webhook: str | None = typer.Option(
+        None, "--detect-webhook", help="POST a JSON alert to this URL on detection."
+    ),
+    detect_threshold: float = typer.Option(
+        0.5, "--detect-threshold", help="Minimum detection score, 0..1."
+    ),
+    detect_grace: float = typer.Option(
+        90.0, "--detect-grace", help="Seconds after print start to skip (priming noise)."
+    ),
+    detect_evidence_dir: Annotated[
+        Path,
+        typer.Option("--detect-evidence-dir", help="Where to save triggering frames."),
+    ] = DEFAULT_EVIDENCE_DIR,
+    detect_cpu: bool = typer.Option(
+        False, "--detect-cpu", help="Force CPU inference even when a Coral is present."
+    ),
 ) -> None:
     """Run the HTTP + SSE server (requires `pip install 'pycentauri[server]'`)."""
     try:
@@ -759,6 +810,28 @@ def cmd_server(
         _echo_err("Server support not installed. Install with: pip install 'pycentauri[server]'")
         _echo_err(f"(missing dependency: {err})")
         raise typer.Exit(code=1) from err
+
+    detect_cfg = None
+    if detect:
+        from pycentauri.detect.pipeline import ACTIONS, DetectConfig
+
+        if detect_action not in ACTIONS:
+            _echo_err(f"--detect-action must be one of {ACTIONS}.")
+            raise typer.Exit(code=2)
+        if detect_action in ("pause", "stop") and not enable_control:
+            _echo_err(f"--detect-action {detect_action} requires --enable-control.")
+            raise typer.Exit(code=2)
+        if not detect_model.is_file():
+            _echo_err(f"warning: model not found yet: {detect_model} (will report in /api/detect)")
+        detect_cfg = DetectConfig(
+            model_path=detect_model,
+            threshold=detect_threshold,
+            grace_s=detect_grace,
+            action=detect_action,
+            webhook_url=detect_webhook,
+            evidence_dir=detect_evidence_dir,
+            force_cpu=detect_cpu,
+        )
 
     async def resolve() -> tuple[str, str | None]:
         return await _resolve_target(host)
@@ -788,6 +861,7 @@ def cmd_server(
         log_level=log_level,
         rtsp_config=rtsp_cfg,
         check_updates=check_updates,
+        detect_config=detect_cfg,
     )
 
 
@@ -869,3 +943,201 @@ def cmd_mcp(
     if host:
         os.environ["PYCENTAURI_HOST"] = host
     run_stdio(enable_control=enable_control)
+
+
+def _pick_model(model: Path | None) -> Path:
+    """Resolve the detection model: explicit path, or newest in data/models."""
+    if model is not None:
+        if not model.is_file():
+            _echo_err(f"model not found: {model}")
+            raise typer.Exit(code=2)
+        return model
+    from pycentauri.detect.backend import discover_model
+
+    found = discover_model(Path("data/models"))
+    if found is None:
+        _echo_err("no model under data/models/ — pass --model")
+        _echo_err("(see docs/CORAL_SPAGHETTI_DETECTION.md for model sources)")
+        raise typer.Exit(code=2)
+    return found
+
+
+def _load_detect_runtime() -> tuple[type[Detector], type[DetectBackendError]]:
+    """Import the detection runtime with a clean error if the extra is absent."""
+    try:
+        from pycentauri.detect.backend import DetectBackendError, Detector
+    except ImportError as err:
+        _echo_err("Detection runtime not installed. Install with: pip install 'pycentauri[detect]'")
+        _echo_err(f"(missing dependency: {err})")
+        raise typer.Exit(code=1) from err
+    return Detector, DetectBackendError
+
+
+@detect_cmd.command("check")
+def cmd_detect_check(
+    model: Annotated[
+        Path | None,
+        typer.Option(
+            "--model", help="TFLite model path (default: newest *_edgetpu.tflite in data/models/)."
+        ),
+    ] = None,
+    force_cpu: Annotated[
+        bool, typer.Option("--cpu", help="Skip the Edge TPU even when one is present.")
+    ] = False,
+) -> None:
+    """Verify the detection stack: device, delegate, model, one inference."""
+    Detector, DetectBackendError = _load_detect_runtime()
+    from pycentauri.detect.backend import edge_tpu_available
+
+    if edge_tpu_available():
+        typer.echo("edge tpu     : present (/dev/apex/0)")
+    else:
+        typer.echo("edge tpu     : not found (/dev/apex/0 absent) — CPU fallback")
+    path = _pick_model(model)
+    typer.echo(f"model        : {path}")
+    try:
+        detector = Detector.from_model(path, force_cpu=force_cpu)
+    except DetectBackendError as err:
+        _echo_err(str(err))
+        raise typer.Exit(code=1) from err
+    typer.echo(f"backend      : {detector.backend_name}")
+    typer.echo(f"labels       : {len(detector.labels)}")
+    try:
+        latency = detector.warmup()
+    except Exception as err:
+        _echo_err(f"inference failed: {err}")
+        raise typer.Exit(code=1) from err
+    typer.echo(f"inference    : {latency * 1000:.1f} ms ({detector.backend_name})")
+
+
+@detect_cmd.command("watch")
+def cmd_detect_watch(
+    host: HostOpt = None,
+    access_code: AccessCodeOpt = None,
+    model: Annotated[
+        Path | None,
+        typer.Option("--model", help="TFLite model path (default: newest in data/models/)."),
+    ] = None,
+    threshold: Annotated[
+        float, typer.Option("--threshold", help="Minimum detection score, 0..1.")
+    ] = 0.5,
+    interval: Annotated[float, typer.Option("--interval", help="Seconds between frames.")] = 2.0,
+    grace: Annotated[
+        float,
+        typer.Option(
+            "--grace", help="Seconds after print start to skip (priming looks like spaghetti)."
+        ),
+    ] = 90.0,
+    action: Annotated[
+        str,
+        typer.Option("--action", help="notify | pause | stop (pause/stop need --enable-control)."),
+    ] = "notify",
+    webhook: Annotated[
+        str | None, typer.Option("--webhook", help="POST a JSON alert to this URL.")
+    ] = None,
+    evidence_dir: Annotated[
+        Path, typer.Option("--evidence-dir", help="Where to save triggering frames.")
+    ] = Path("data/evidence"),
+    enable_control: ControlOpt = False,
+) -> None:
+    """Watch a print and alert on spaghetti (standalone; polls snapshots).
+
+    Holds one printer connection and polls single JPEG snapshots — one
+    short HTTP GET per frame, no persistent MJPEG connection — so it never
+    touches the printer's scarce camera slots. The server integration
+    (`centauri server --detect`) instead taps the shared camera stream.
+    """
+    action = action.strip().lower()
+    if action not in ("notify", "pause", "stop"):
+        _echo_err("--action must be notify, pause, or stop.")
+        raise typer.Exit(code=2)
+    if action in ("pause", "stop") and not enable_control:
+        _echo_err(f"--action {action} requires --enable-control.")
+        raise typer.Exit(code=2)
+    model_path = _pick_model(model)
+
+    from pycentauri.detect.pipeline import PRINTING, DetectionEvent, save_evidence
+
+    Detector, _ = _load_detect_runtime()
+
+    async def run() -> None:
+        loop = asyncio.get_running_loop()
+        async with await _open_printer(
+            host, enable_control=enable_control, access_code=access_code
+        ) as printer:
+            detector = await loop.run_in_executor(None, lambda: Detector.from_model(model_path))
+            with contextlib.suppress(Exception):
+                # CC1 gates its camera behind Cmd 386; harmless on CC2.
+                await printer.set_video_stream(True)
+            typer.echo(
+                f"detect watch: backend={detector.backend_name} model={model_path.name} "
+                f"action={action} threshold={threshold} interval={interval}s grace={grace}s"
+            )
+
+            printing = asyncio.Event()
+            fired = False
+            window: deque[bool] = deque(maxlen=6)
+
+            async def watch_status() -> None:
+                nonlocal fired
+                async for st in printer.watch():
+                    if st.print_status == PRINTING:
+                        if not printing.is_set():
+                            fired = False
+                            window.clear()
+                        printing.set()
+                    else:
+                        printing.clear()
+
+            status_task = asyncio.create_task(watch_status(), name="detect-watch-status")
+            try:
+                while True:
+                    await asyncio.sleep(interval)
+                    if not printing.is_set():
+                        continue
+                    try:
+                        jpeg = await printer.snapshot()
+                        detections = await loop.run_in_executor(
+                            None, functools.partial(detector.detect, jpeg, threshold=threshold)
+                        )
+                    except Exception as err:
+                        _echo_err(f"detect: {err!r}")
+                        continue
+                    window.append(bool(detections))
+                    if not detections or fired or sum(window) < 4:
+                        continue
+                    fired = True
+                    top = detections[0]
+                    event = DetectionEvent(
+                        when=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        score=round(float(top.score), 4),
+                        label=top.label,
+                        backend=detector.backend_name,
+                        model=model_path.name,
+                        evidence="",
+                        detections=[d.as_dict() for d in detections],
+                    )
+                    event.evidence = str(
+                        await loop.run_in_executor(None, save_evidence, evidence_dir, event, jpeg)
+                    )
+                    typer.echo(
+                        f"SPAGHETTI DETECTED: {event.label} score={event.score} "
+                        f"evidence={event.evidence}"
+                    )
+                    if webhook:
+                        from pycentauri.detect.pipeline import post_webhook
+
+                        with contextlib.suppress(Exception):
+                            await post_webhook(
+                                webhook, {"type": "spaghetti_detected", "event": event.as_dict()}
+                            )
+                    if action in ("pause", "stop"):
+                        result = await getattr(printer, action)()
+                        typer.echo(f"{action} sent; response: {result.inner}")
+            finally:
+                status_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await status_task
+
+    with contextlib.suppress(KeyboardInterrupt):
+        _run(run())

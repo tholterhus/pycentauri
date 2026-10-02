@@ -39,6 +39,7 @@ pip install pycentauri                    # library + CLI
 pip install "pycentauri[mcp]"             # + MCP server
 pip install "pycentauri[server]"          # + HTTP REST/SSE server + web UI
 pip install "pycentauri[mcp,server]"      # all Python surfaces
+pip install "pycentauri[detect]"          # + failed-print detection (Coral/CPU)
 ```
 
 For a Linux service installation with an optional systemd unit, see the
@@ -289,6 +290,8 @@ with `--enable-control`.
 | `POST` | `/canvas/refill` | `{"enabled": true}` (CC2) † |
 | `GET` | `/api/rtsp` | RTSP bridge state (when `--rtsp`) |
 | `POST` | `/api/rtsp/start` · `/api/rtsp/stop` | Toggle the bridge (when `--rtsp`) |
+| `GET` | `/api/detect` | Failed-print detection state (when `--detect`) |
+| `GET` | `/api/detect/evidence/{name}` | Evidence frame `<timestamp>.jpg` (when `--detect`) |
 
 † requires the server to be launched with `--enable-control`; otherwise
 the route isn't registered at all.
@@ -353,6 +356,40 @@ MediaMTX only runs the ffmpeg transcode while a client is connected, so
 idle cost is zero. Tunables: `--fps`, `--bitrate`, `--preset`, `--path`,
 `--port` (standalone) or the `--rtsp-*` variants on `centauri server`.
 The bridge picks the correct camera port for CC1 vs CC2 automatically.
+
+## Spaghetti detection (Coral USB / Edge TPU)
+
+Failed-print ("spaghetti") detection runs a quantized SSD detector on a
+Google Coral USB Accelerator — or the same model on the CPU when no
+Coral is present — against the printer's own webcam, and only while a
+print is actually running. It taps the same shared camera stream as the
+dashboard (the printer never sees a second camera connection), skips
+the first `--detect-grace` seconds of a print, and fires at most one
+alert per print when ≥ 4 of the last 6 frames show a detection:
+
+```sh
+centauri detect check        # verify device, delegate, model, latency
+
+centauri server --host printer.example --enable-control \
+    --detect --detect-model data/models/spaghetti_edgetpu.tflite \
+    --detect-action stop --detect-webhook https://ntfy.example/spaghetti
+```
+
+- **Default action is notify only**: log + evidence frames (triggering
+  JPEG + JSON sidecar) under `data/evidence/` + optional webhook.
+  `--detect-action pause|stop` additionally requires `--enable-control`.
+- Requires the `detect` extra and the Edge TPU runtime
+  (`libedgetpu1-std`) for Coral support. Without a Coral the CPU variant
+  of the model (`<name>.tflite`, the uncompiled sibling of
+  `<name>_edgetpu.tflite` — a TPU-compiled model can't execute on CPU)
+  runs automatically at ~70-300 ms/frame, still fine at 1 fps.
+- Standalone, without the HTTP server: `centauri detect watch --host …`
+  holds one printer connection and polls one-shot snapshots — never a
+  second persistent MJPEG connection.
+- Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs
+  and a `.txt` label sidecar works. Hardware setup (Proxmox USB
+  passthrough into LXC) and training notes:
+  [`docs/CORAL_SPAGHETTI_DETECTION.md`](docs/CORAL_SPAGHETTI_DETECTION.md).
 
 ## Print status codes
 
@@ -464,6 +501,7 @@ src/pycentauri/
 ├── cli.py         # Typer CLI
 ├── server.py      # FastAPI app + connection supervisor
 ├── rtsp.py        # MediaMTX/ffmpeg bridge
+├── detect/        # Failed-print detection: Edge TPU/CPU backend + pipeline
 ├── mcp/           # FastMCP stdio server
 └── web/           # Static dashboard (no build step, no CDN)
 ```

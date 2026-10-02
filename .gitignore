@@ -57,3 +57,13 @@ config.local.toml
 
 # Build artifacts
 *.log
+
+# Tool caches (the pycentauri user's $HOME is this directory, so pip and
+# friends drop their caches here)
+.cache/
+
+# Detection: models are large binaries, evidence is per-incident imagery,
+# collected training frames are a local dataset — none belong in git.
+data/models/
+data/evidence/
+data/collect/

@@ -1,8 +1,10 @@
 # Coral USB spaghetti-detection — integration plan
 
-Status: proposal, not yet implemented. This doc is the agreed plan for
-adding failed-print ("spaghetti") detection to pycentauri using a Google
-Coral USB Accelerator (Edge TPU).
+Status: **implemented** (Phases 1-2: backend, pipeline, server/CLI
+wiring, tests; smoke model shipped under `data/models/`). Remaining:
+live TPU verification once the Coral is attached (Phase 0 hardware) and
+the custom 2-class model (Phase 3). This doc is the design record for
+the failed-print ("spaghetti") detection feature.
 
 ## What we build on (current state)
 

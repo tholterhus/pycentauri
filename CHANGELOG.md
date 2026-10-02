@@ -6,6 +6,25 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Failed-print ("spaghetti") detection** with a Google Coral USB
+  Accelerator (Edge TPU), CPU fallback included. While a print is
+  running (`print_status == 13`, skipping CC2 Canvas filament switches
+  and a grace window after print start) the detector subscribes to the
+  shared camera broadcaster — the printer never sees a second camera
+  connection — and runs a quantized SSD TFLite model at ~1 fps.
+  ≥ 4 positives in the last 6 frames fire one alert per print: evidence
+  frame + JSON sidecar under `data/evidence/`, an optional webhook, and
+  opt-in `pause`/`stop` gated behind `--enable-control` (notify-only by
+  default). Ships as the new `detect` extra (`ai-edge-litert`, `numpy`,
+  `pillow`), with `--detect*` server flags, `GET /api/detect` +
+  `/api/detect/evidence/{name}` endpoints, and `centauri detect
+  check|watch` commands. An Edge TPU-compiled model can't execute on
+  CPU, so the CPU fallback automatically loads the uncompiled sibling —
+  ship both `<model>_edgetpu.tflite` and `<model>.tflite`. Hardware
+  setup (Proxmox LXC passthrough) and model training notes:
+  `docs/CORAL_SPAGHETTI_DETECTION.md`.
+
 ## [0.10.0] - 2026-08-30
 
 ### Added
