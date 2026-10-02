@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 
 log = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ def _locate_outputs(output_details: list[dict[str, Any]]) -> dict[str, int | Non
     return found
 
 
-def _quantize(arr: np.ndarray, dtype: Any, quantization: tuple[float, float]) -> np.ndarray:
+def _quantize(arr: NDArray[Any], dtype: Any, quantization: tuple[float, float]) -> NDArray[Any]:
     """Map a 0..255 uint8 image onto the input tensor's quantization."""
     scale, zero_point = quantization
     if dtype == np.int8:
