@@ -197,6 +197,34 @@
         <div class="rtsp-msg" id="rtsp-msg" aria-live="polite"></div>
       </div>
 
+      <div class="panel detect-panel" id="detect-panel" hidden>
+        <header class="panel-header">
+          <span class="panel-tag">Detect</span>
+          <span class="detect-badge" id="detect-badge">-</span>
+        </header>
+        <div class="detect-live">
+          <span class="detect-state" id="detect-state">-</span>
+          <span class="detect-window" id="detect-window" title="Positive frames in the current K-of-M decision window">-</span>
+        </div>
+        <dl class="tele-dl detect-cfg">
+          <div><dt>Model</dt><dd class="mono-xs" id="detect-model">-</dd></div>
+          <div><dt>Action</dt><dd id="detect-action">-</dd></div>
+          <div><dt>Threshold</dt><dd id="detect-threshold">-</dd></div>
+        </dl>
+        <div class="detect-event" id="detect-event" hidden>
+          <div class="detect-event-head">
+            <span class="detect-event-score" id="detect-event-score">-</span>
+            <span class="detect-event-label" id="detect-event-label">-</span>
+          </div>
+          <a class="detect-event-link" id="detect-event-link" href="#" target="_blank" rel="noopener">
+            <img class="detect-event-thumb" id="detect-event-thumb" alt="detection evidence" loading="lazy">
+          </a>
+          <span class="detect-event-when" id="detect-event-when">-</span>
+        </div>
+        <div class="detect-strip" id="detect-strip" hidden></div>
+        <div class="ctrl-msg" id="detect-msg" aria-live="polite"></div>
+      </div>
+
       <div class="panel tele-panel">
         <header class="panel-header"><span class="panel-tag">Kinematics</span></header>
         <div class="coords">

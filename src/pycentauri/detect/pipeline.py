@@ -235,9 +235,18 @@ class DetectionController:
             "processing": self._session_task is not None and not self._session_task.done(),
             "printing": self._printing,
             "last_event": self._last_event.as_dict() if self._last_event else None,
+            "recent_evidence": self._recent_evidence(),
             "error": self._error,
             "evidence_dir": str(self.cfg.evidence_dir),
         }
+
+    def _recent_evidence(self, limit: int = 8) -> list[str]:
+        """Filenames (no path) of the newest evidence frames, for the UI strip."""
+        try:
+            frames = sorted(self.cfg.evidence_dir.glob("*.jpg"), reverse=True)
+            return [p.name for p in frames[:limit]]
+        except OSError:
+            return []
 
     # --- model --------------------------------------------------------------
 

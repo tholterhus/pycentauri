@@ -654,6 +654,100 @@ function wireRtsp() {
 }
 
 // ---------------------------------------------------------------------------
+// Failed-print ("spaghetti") detection
+
+function evidenceUrl(name) {
+  return `/api/detect/evidence/${encodeURIComponent(name)}`;
+}
+
+function renderDetect(state) {
+  const badge = $("detect-badge");
+  const st = $("detect-state");
+  badge.classList.remove("on", "warn", "err");
+  if (state.error) {
+    badge.textContent = "ERROR";
+    badge.classList.add("err");
+    st.textContent = "OFFLINE";
+    setDetectMsg(state.error, "err");
+  } else {
+    badge.textContent = state.backend || "—";
+    badge.classList.add(state.backend === "edgetpu" ? "on" : "warn");
+    st.textContent = state.processing ? "WATCHING" : "IDLE · WAITS FOR A PRINT";
+    setDetectMsg("");
+  }
+
+  const w = state.window || {};
+  $("detect-window").textContent =
+    `${w.positives ?? 0} / ${w.needed ?? "—"} of ${w.size ?? "—"}`;
+
+  $("detect-model").textContent = (state.model || "—").split("/").pop();
+  $("detect-model").title = state.model || "";
+  $("detect-action").textContent = `${state.action || "—"} @ ≥${state.threshold ?? "—"}`;
+  $("detect-threshold").textContent = state.threshold ?? "—";
+
+  const ev = state.last_event;
+  const card = $("detect-event");
+  if (ev) {
+    card.hidden = false;
+    $("detect-event-score").textContent = `${Math.round(ev.score * 100)}%`;
+    $("detect-event-label").textContent = ev.label;
+    $("detect-event-when").textContent = ev.when;
+    const name = (ev.evidence || "").split("/").pop();
+    const link = $("detect-event-link");
+    link.hidden = !name;
+    if (name) {
+      link.href = evidenceUrl(name);
+      $("detect-event-thumb").src = evidenceUrl(name);
+    }
+  } else {
+    card.hidden = true;
+  }
+
+  const strip = $("detect-strip");
+  const recent = state.recent_evidence || [];
+  if (recent.length) {
+    strip.hidden = false;
+    strip.replaceChildren(
+      ...recent.map((name) => {
+        const a = document.createElement("a");
+        a.href = evidenceUrl(name);
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.title = name;
+        const img = document.createElement("img");
+        img.src = evidenceUrl(name);
+        img.alt = name;
+        img.loading = "lazy";
+        a.appendChild(img);
+        return a;
+      }),
+    );
+  } else {
+    strip.hidden = true;
+    strip.replaceChildren();
+  }
+}
+
+async function loadDetect() {
+  try {
+    const r = await fetch("/api/detect");
+    if (r.status === 404) { $("detect-panel").hidden = true; return; }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    renderDetect(await r.json());
+    $("detect-panel").hidden = false;
+  } catch (_) {
+    // transient server hiccup — keep whatever the panel last showed
+  }
+}
+
+function setDetectMsg(text, kind) {
+  const el = $("detect-msg");
+  el.textContent = text;
+  el.classList.remove("ok", "warn", "err");
+  if (kind) el.classList.add(kind);
+}
+
+// ---------------------------------------------------------------------------
 // Canvas multi-filament (CC2 only)
 
 let canvasControlEnabled = false;
@@ -1208,10 +1302,13 @@ function noteStatusForPoll(pstatus) {
   await loadFiles();
   await loadHistory();
   await loadRtsp();
+  await loadDetect();
   await pollOnce();
   connectSSE();
   setInterval(loadInfo, 60000);
   // RTSP state changes are external, poll occasionally.
   setInterval(loadRtsp, 8000);
+  // Detection state too (processing flag, window, new evidence).
+  setInterval(loadDetect, 5000);
   schedulePoll();
 })();
