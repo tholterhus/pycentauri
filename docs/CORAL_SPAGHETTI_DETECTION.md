@@ -55,6 +55,7 @@ delegate from the C library installed in Phase 0:
 ```python
 from ai_edge_litert.interpreter import Interpreter, load_delegate
 
+
 def make_interpreter(model_path: str, *, use_edgetpu: bool) -> Interpreter:
     delegates = [load_delegate("libedgetpu.so.1")] if use_edgetpu else []
     return Interpreter(model_path=model_path, experimental_delegates=delegates)
