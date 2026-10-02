@@ -22,6 +22,10 @@ PYCENTAURI_ENABLE_CONTROL=${PYCENTAURI_ENABLE_CONTROL:-0}
 PYCENTAURI_ACCESS_CODE=${PYCENTAURI_ACCESS_CODE:-}
 MEDIAMTX_PATH=${MEDIAMTX_PATH:-}
 PYCENTAURI_LOG_LEVEL=${PYCENTAURI_LOG_LEVEL:-warn}
+PYCENTAURI_DETECT=${PYCENTAURI_DETECT:-0}
+PYCENTAURI_DETECT_MODEL=${PYCENTAURI_DETECT_MODEL:-data/models/ssd_mobilenet_v2_coco_edgetpu.tflite}
+PYCENTAURI_DETECT_ACTION=${PYCENTAURI_DETECT_ACTION:-notify}
+PYCENTAURI_DETECT_THRESHOLD=${PYCENTAURI_DETECT_THRESHOLD:-0.65}
 
 [[ $EUID -eq 0 ]] || { echo 'Run this installer as root.' >&2; exit 1; }
 [[ -n "$PYCENTAURI_HOST" ]] || { echo 'Set PYCENTAURI_HOST to the printer IP or DNS name.' >&2; exit 1; }
@@ -95,6 +99,10 @@ PYCENTAURI_RTSP=$PYCENTAURI_RTSP
 PYCENTAURI_ENABLE_CONTROL=$PYCENTAURI_ENABLE_CONTROL
 PYCENTAURI_MEDIAMTX_PATH=$MEDIAMTX_PATH
 PYCENTAURI_LOG_LEVEL=${PYCENTAURI_LOG_LEVEL:-warn}
+PYCENTAURI_DETECT=$PYCENTAURI_DETECT
+PYCENTAURI_DETECT_MODEL=$PYCENTAURI_DETECT_MODEL
+PYCENTAURI_DETECT_ACTION=$PYCENTAURI_DETECT_ACTION
+PYCENTAURI_DETECT_THRESHOLD=$PYCENTAURI_DETECT_THRESHOLD
 EOF
 else
   echo "Keeping existing $CONFIG_FILE; edit it explicitly to change service settings."
@@ -112,6 +120,12 @@ PYCENTAURI_BIND=127.0.0.1
 PYCENTAURI_RTSP=0
 PYCENTAURI_ENABLE_CONTROL=0
 PYCENTAURI_MEDIAMTX_PATH=
+# Failed-print (spaghetti) detection; see docs/CORAL_SPAGHETTI_DETECTION.md.
+# notify-only by default — pause/stop additionally require ENABLE_CONTROL=1.
+PYCENTAURI_DETECT=0
+PYCENTAURI_DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
+PYCENTAURI_DETECT_ACTION=notify
+PYCENTAURI_DETECT_THRESHOLD=0.65
 EOF
   chown root:"$APP_USER" "$APP_DIR/pycentauri.conf-example"
   chmod 0644 "$APP_DIR/pycentauri.conf-example"
@@ -121,6 +135,51 @@ if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then
   command -v curl >/dev/null || { echo 'curl is required for the systemd health check.' >&2; exit 1; }
   rtsp_args=(); [[ "$PYCENTAURI_RTSP" == 1 ]] && rtsp_args+=(--rtsp)
   control_args=(); [[ "$PYCENTAURI_ENABLE_CONTROL" == 1 ]] && control_args+=(--enable-control)
+  detect_args=(); [[ "$PYCENTAURI_DETECT" == 1 ]] && detect_args+=(--detect --detect-model "$PYCENTAURI_DETECT_MODEL" --detect-action "$PYCENTAURI_DETECT_ACTION" --detect-threshold "$PYCENTAURI_DETECT_THRESHOLD")
+  # Inside an unprivileged LXC there is no udevd; libusb needs a hand-made
+  # device node plus a /run/udev database entry to see the Coral. No-op with
+  # a warning when the stick is absent or on a normal host.
+  install -d -m 0755 /usr/local/sbin
+  cat > /usr/local/sbin/pycentauri-usb-prepare <<'USBPREP'
+#!/bin/sh
+# pycentauri: make the Coral USB Accelerator visible to libusb inside the
+# unprivileged LXC. The container runs no udevd, so Debian's libusb (udev
+# backend) needs a device node plus a /run/udev database entry for the
+# CURRENT bus/dev numbers — the Coral re-enumerates itself whenever an
+# open attempt resets it, and Proxmox's dev0 bind holds the node it saw
+# at container start. Runs as root via ExecStartPre=+.
+set -u
+
+for d in /sys/bus/usb/devices/*; do
+    vendor=$(cat "$d/idVendor" 2>/dev/null) || continue
+    product=$(cat "$d/idProduct" 2>/dev/null) || continue
+    case "$vendor:$product" in
+        1a6e:089a|18d1:9302) ;;
+        *) continue ;;
+    esac
+    bus=$(cat "$d/busnum")
+    dev=$(cat "$d/devnum")
+    minor=$(( (bus - 1) * 128 + (dev - 1) ))
+    busdir=$(printf '/dev/bus/usb/%03d' "$bus")
+    node=$(printf '%s/%03d' "$busdir" "$dev")
+    mkdir -p "$busdir" /run/udev/data
+    [ -e "$node" ] || mknod "$node" c 189 "$minor"
+    chmod 0666 "$node"
+    {
+        printf 'I: 1\n'
+        printf 'E:DEVPATH=%s\n' "$d"
+        printf 'E:SUBSYSTEM=usb\nE:DEVTYPE=usb_device\n'
+        printf 'E:DEVNAME=%s\n' "$node"
+        printf 'E:ID_BUS=usb\nE:ID_VENDOR_ID=%s\nE:ID_MODEL_ID=%s\n' "$vendor" "$product"
+        printf 'E:MAJOR=189\nE:MINOR=%d\n' "$minor"
+    } > "/run/udev/data/c189:$minor"
+    echo "pycentauri-usb-prepare: coral ready at $node (c189:$minor)"
+    exit 0
+done
+echo "pycentauri-usb-prepare: coral not on the USB bus — continuing on CPU" >&2
+exit 0
+USBPREP
+  chmod 0755 /usr/local/sbin/pycentauri-usb-prepare
   cat > "/etc/systemd/system/$SERVICE" <<EOF
 [Unit]
 Description=pycentauri printer server
@@ -133,7 +192,8 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=-$CONFIG_FILE
-ExecStart=$APP_DIR/venv/bin/centauri server --host \${PYCENTAURI_HOST} --bind \${PYCENTAURI_BIND} --port \${PYCENTAURI_PORT} ${control_args[*]} ${rtsp_args[*]}
+ExecStartPre=+/usr/local/sbin/pycentauri-usb-prepare
+ExecStart=$APP_DIR/venv/bin/centauri server --host \${PYCENTAURI_HOST} --bind \${PYCENTAURI_BIND} --port \${PYCENTAURI_PORT} ${control_args[*]} ${rtsp_args[*]} ${detect_args[*]}
 Restart=always
 RestartSec=5
 NoNewPrivileges=true
