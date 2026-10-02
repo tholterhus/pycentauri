@@ -103,6 +103,11 @@ PYCENTAURI_ENABLE_CONTROL=0
 PYCENTAURI_RTSP=0
 # Set only when RTSP is enabled and MediaMTX is not on PATH.
 PYCENTAURI_MEDIAMTX_PATH=
+# Failed-print ("spaghetti") detection; see the step-by-step chapter below.
+PYCENTAURI_DETECT=0
+PYCENTAURI_DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
+PYCENTAURI_DETECT_ACTION=notify
+PYCENTAURI_DETECT_THRESHOLD=0.65
 ```
 
 Use restrictive permissions, for example `root:pycentauri` and mode `0640`.
@@ -117,6 +122,97 @@ sudo systemctl restart pycentauri.service
 only when the HTTP endpoint is protected and the operational risk is
 understood. CC2 access codes are credentials; never commit them or paste them
 into public issue reports.
+
+## Failed-print detection (Coral) — step by step
+
+This optional feature watches the printer's webcam while a print is running
+and raises an alert when the print has failed into a stringy mess
+("spaghetti"). The heavy lifting is done by a *model* — a small trained
+neural-network file — executed either on a Google Coral USB Accelerator
+(a stick that speeds up neural networks, ~5–15 ms per look) or, more
+slowly, on the plain CPU (~200 ms per look; a Coral is optional).
+
+You need: a working pycentauri installation (see above), and — only for the
+fast Coral variant — a Coral USB Accelerator plugged into this machine.
+
+### 1. Install the detection add-on
+
+```sh
+sudo -u pycentauri /opt/pycentauri/venv/bin/pip install 'pycentauri[detect,server]'
+```
+
+The `detect` extra adds the inference runtime (LiteRT), `numpy` and `pillow`.
+
+### 2. Get a model
+
+The repository ships no model file. Run the download helper inside the
+application directory:
+
+```sh
+cd /opt/pycentauri && sudo -u pycentauri ./scripts/fetch-smoke-model.sh
+```
+
+This fetches the *smoke model* (a COCO SSD MobileNet V2 in both the Edge-TPU
+and the CPU variant, plus its labels). It knows everyday objects — not
+spaghetti — and exists purely to prove the pipeline works. A real spaghetti
+model is trained separately; see
+[`docs/CORAL_SPAGHETTI_DETECTION.md`](CORAL_SPAGHETTI_DETECTION.md).
+
+### 3. Coral runtime (optional — skip for CPU-only)
+
+On Ubuntu 22.04 / Debian 12 or newer, install Google's runtime:
+
+```sh
+echo "deb [signed-by=/usr/share/keyrings/coral-edgetpu.gpg] https://packages.cloud.google.com/apt coral-edgetpu-stable main" \
+  | sudo tee /etc/apt/sources.list.d/coral-edgetpu.list
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+  | sudo gpg --dearmor -o /usr/share/keyrings/coral-edgetpu.gpg
+sudo apt-get update && sudo apt-get install libedgetpu1-std
+```
+
+Then unplug and re-plug the Coral once. Your desktop user needs permission
+for the USB device (the package ships a rule granting the `plugdev` group
+access; `sudo usermod -aG plugdev $USER`, then log out and in again).
+
+### 4. Turn it on
+
+Set `PYCENTAURI_DETECT=1` in `/etc/pycentauri.conf` (see the variables in the
+Configuration section above) and restart the service. The dashboard gains a
+**DETECT** panel showing the backend, a live WATCHING flag while a print
+runs, and evidence snapshots.
+
+Safety: the default action is *notify only* — an alert writes evidence
+frames to `data/evidence/` (and optionally posts a webhook), but never
+touches the printer. `PYCENTAURI_DETECT_ACTION=pause` or `stop` additionally
+require `PYCENTAURI_ENABLE_CONTROL=1`.
+
+### 5. Verify
+
+```sh
+sudo -u pycentauri /opt/pycentauri/venv/bin/centauri detect check
+```
+
+Expected output: `edge tpu : present` (or `not found ... — CPU fallback`),
+your model path, `backend: edgetpu` (or `cpu`), and an inference time. Then
+start any print and watch the DETECT panel switch to WATCHING after the
+first ~90 seconds.
+
+### If something does not work
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `edge tpu: not found` although the Coral is plugged in | runtime not installed, or container without device passthrough | install `libedgetpu1-std`; in Proxmox LXCs pass the USB device through (`dev0: /dev/bus/usb/…`) |
+| `backend: cpu` although a Coral is present | the model file is not Edge-TPU-compiled | a `*_edgetpu.tflite` must be loaded; the CPU twin (`*.tflite`) is fetched automatically |
+| `inference failed` mentioning `edgetpu-custom-op` | an Edge-TPU model was forced onto the CPU | ship both variants; the fallback loads the uncompiled sibling automatically |
+| webcam snapshot returns HTTP 500/502 | the printer's camera stream is disabled | open the dashboard webcam once (or `/stream`) — the server then enables it |
+| Coral worked, then stopped after a failed run | the stick re-enumerates itself after resets; the stale device node blocks it | re-plug the Coral, or restart the service (`ExecStartPre` re-syncs the node) |
+
+Inside an unprivileged LXC container (Proxmox, Docker-like environments)
+there is no udev daemon, so libusb cannot see the Coral on its own. The
+installer therefore places a `pycentauri-usb-prepare` helper that re-creates
+the device node and a `/run/udev` database entry at every service start —
+the Proxmox device passthrough (`dev0: /dev/bus/usb/…`) plus this helper is
+a proven combination.
 
 ## Network and firewall
 

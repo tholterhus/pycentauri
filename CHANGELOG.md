@@ -7,6 +7,14 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Stranger-proof onboarding for the detection feature**: step-by-step
+  Coral chapter in INSTALL.md (runtime install via the official
+  `packages.cloud.google.com` repo, model download, enabling via service
+  config, verification, and a symptom/cause/fix table), a
+  `scripts/fetch-smoke-model.sh` helper that fetches the COCO smoke model
+  in both variants from Google's public test-data repository, an
+  installer hook that runs it when `PYCENTAURI_DETECT=1` and the model
+  is missing, and a beginner-friendly Quick start in the README.
 - **Failed-print ("spaghetti") detection** with a Google Coral USB
   Accelerator (Edge TPU), CPU fallback included. While a print is
   running (`print_status == 13`, skipping CC2 Canvas filament switches

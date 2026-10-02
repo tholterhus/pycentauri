@@ -63,10 +63,10 @@ dev = [
 centauri = "pycentauri.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/bjan/pycentauri"
-Repository = "https://github.com/bjan/pycentauri"
-Issues = "https://github.com/bjan/pycentauri/issues"
-Changelog = "https://github.com/bjan/pycentauri/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/tholterhus/pycentauri"
+Repository = "https://github.com/tholterhus/pycentauri"
+Issues = "https://github.com/tholterhus/pycentauri/issues"
+Changelog = "https://github.com/tholterhus/pycentauri/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pycentauri"]

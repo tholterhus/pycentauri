@@ -359,37 +359,52 @@ The bridge picks the correct camera port for CC1 vs CC2 automatically.
 
 ## Spaghetti detection (Coral USB / Edge TPU)
 
-Failed-print ("spaghetti") detection runs a quantized SSD detector on a
-Google Coral USB Accelerator — or the same model on the CPU when no
-Coral is present — against the printer's own webcam, and only while a
-print is actually running. It taps the same shared camera stream as the
-dashboard (the printer never sees a second camera connection), skips
-the first `--detect-grace` seconds of a print, and fires at most one
-alert per print when ≥ 4 of the last 6 frames show a detection:
+While a print is running, pycentauri watches the printer's own webcam
+through an object-detection model and raises an alert when the print has
+failed into a stringy mess ("spaghetti"). On a Google Coral USB Accelerator
+each look costs ~5–15 ms; without a Coral the same model runs on the CPU
+(~200 ms at 1 frame/s — a Coral is optional). The detector taps the same
+shared camera stream as the dashboard (the printer never sees a second
+camera connection), skips the first `--detect-grace` seconds of a print,
+and fires at most one alert per print when ≥ 4 of the last 6 frames show a
+detection. The dashboard gains a **DETECT** panel with live state and
+evidence snapshots.
+
+### Quick start
 
 ```sh
-centauri detect check        # verify device, delegate, model, latency
+# 1. install with the detection extra (see INSTALL.md for a full walkthrough)
+pip install 'pycentauri[detect,server]'
 
+# 2. fetch a model — the repository ships none
+./scripts/fetch-smoke-model.sh
+
+# 3. optional: install the Edge TPU runtime for a Coral
+#    (see INSTALL.md, "Failed-print detection (Coral) — step by step")
+
+# 4. verify and run
+centauri detect check
 centauri server --host printer.example --enable-control \
-    --detect --detect-model data/models/spaghetti_edgetpu.tflite \
-    --detect-action stop --detect-webhook https://ntfy.example/spaghetti
+    --detect --detect-action notify
 ```
 
-- **Default action is notify only**: log + evidence frames (triggering
-  JPEG + JSON sidecar) under `data/evidence/` + optional webhook.
-  `--detect-action pause|stop` additionally requires `--enable-control`.
-- Requires the `detect` extra and the Edge TPU runtime
-  (`libedgetpu1-std`) for Coral support. Without a Coral the CPU variant
-  of the model (`<name>.tflite`, the uncompiled sibling of
-  `<name>_edgetpu.tflite` — a TPU-compiled model can't execute on CPU)
-  runs automatically at ~70-300 ms/frame, still fine at 1 fps.
-- Standalone, without the HTTP server: `centauri detect watch --host …`
-  holds one printer connection and polls one-shot snapshots — never a
-  second persistent MJPEG connection.
-- Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs
-  and a `.txt` label sidecar works. Hardware setup (Proxmox USB
-  passthrough into LXC) and training notes:
+Notes:
+
+- **The smoke model detects everyday objects, not spaghetti.** It proves
+  the pipeline end to end; a real spaghetti model is trained separately —
+  the full journey (data collection, labeling, training, Edge TPU
+  compilation) is documented in
   [`docs/CORAL_SPAGHETTI_DETECTION.md`](docs/CORAL_SPAGHETTI_DETECTION.md).
+- **Default action is notify only**: evidence frames land in
+  `data/evidence/` (and optionally a webhook). `--detect-action pause|stop`
+  additionally require `--enable-control`.
+- **Ship models in pairs**: an Edge-TPU-compiled `*_edgetpu.tflite` cannot
+  execute on the CPU — the CPU fallback automatically loads the uncompiled
+  sibling (`<name>.tflite`).
+- Standalone without the HTTP server: `centauri detect watch --host …`.
+  Model debugging against arbitrary JPEGs: `centauri detect test img.jpg`.
+- Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs and a
+  `.txt` label sidecar works.
 
 ## Print status codes
 
@@ -515,7 +530,7 @@ src/pycentauri/
 ## Development
 
 ```sh
-git clone https://github.com/bjan/pycentauri && cd pycentauri
+git clone https://github.com/tholterhus/pycentauri && cd pycentauri
 python -m venv .venv && .venv/bin/pip install -e ".[mcp,server,dev]"
 
 .venv/bin/ruff check . && .venv/bin/ruff format --check .

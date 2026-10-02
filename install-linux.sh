@@ -180,6 +180,18 @@ echo "pycentauri-usb-prepare: coral not on the USB bus — continuing on CPU" >&
 exit 0
 USBPREP
   chmod 0755 /usr/local/sbin/pycentauri-usb-prepare
+  if [[ "$PYCENTAURI_DETECT" == 1 ]]; then
+    model_target="$APP_DIR/$PYCENTAURI_DETECT_MODEL"
+    if [[ -f "$model_target" ]]; then
+      echo "detection model already present: $PYCENTAURI_DETECT_MODEL"
+    elif [[ "$PYCENTAURI_DETECT_MODEL" == data/models/ssd_mobilenet_v2_coco_edgetpu.tflite && -x "$APP_DIR/scripts/fetch-smoke-model.sh" ]]; then
+      install -d -o "$APP_USER" -g "$APP_USER" "$(dirname "$model_target")"
+      sudo -u "$APP_USER" "$APP_DIR/scripts/fetch-smoke-model.sh" "$(dirname "$model_target")" || \
+        echo 'Model download failed — run scripts/fetch-smoke-model.sh later.' >&2
+    else
+      echo 'Detection model not found — place it at the configured PYCENTAURI_DETECT_MODEL path.' >&2
+    fi
+  fi
   cat > "/etc/systemd/system/$SERVICE" <<EOF
 [Unit]
 Description=pycentauri printer server
