@@ -1010,6 +1010,51 @@ def cmd_detect_check(
     typer.echo(f"inference    : {latency * 1000:.1f} ms ({detector.backend_name})")
 
 
+@detect_cmd.command("test")
+def cmd_detect_test(
+    images: Annotated[
+        list[Path],
+        typer.Argument(help="JPEG file(s) to run through the model."),
+    ],
+    model: Annotated[
+        Path | None,
+        typer.Option("--model", help="TFLite model path (default: newest in data/models/)."),
+    ] = None,
+    threshold: Annotated[
+        float, typer.Option("--threshold", help="Minimum detection score, 0..1.")
+    ] = 0.5,
+) -> None:
+    """Run the model on JPEG file(s) — no printer needed.
+
+    The main tool for the training loop: verify a freshly compiled model
+    against collected frames (``centauri snapshot``) before deploying it.
+    """
+    Detector, DetectBackendError = _load_detect_runtime()
+    path = _pick_model(model)
+    try:
+        detector = Detector.from_model(path)
+    except DetectBackendError as err:
+        _echo_err(str(err))
+        raise typer.Exit(code=1) from err
+    typer.echo(f"backend: {detector.backend_name}  model: {path.name}")
+    for img in images:
+        if not img.is_file():
+            _echo_err(f"not a file: {img}")
+            continue
+        try:
+            detections = detector.detect(img.read_bytes(), threshold=threshold)
+        except Exception as err:
+            _echo_err(f"{img.name}: inference failed: {err}")
+            continue
+        latency_ms = (detector.last_inference_s or 0.0) * 1000
+        typer.echo(f"{img.name}: {len(detections)} detection(s) in {latency_ms:.0f} ms")
+        for d in detections:
+            box = tuple(round(v, 2) for v in d.box)
+            typer.echo(f"  {d.label:<24s} {d.score:.2f}  box(x0,y0,x1,y1)={box}")
+        if not detections:
+            typer.echo("  (nothing above threshold)")
+
+
 @detect_cmd.command("watch")
 def cmd_detect_watch(
     host: HostOpt = None,
