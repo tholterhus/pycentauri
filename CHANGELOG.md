@@ -39,6 +39,38 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   setup (Proxmox LXC passthrough) and model training notes:
   `docs/CORAL_SPAGHETTI_DETECTION.md`.
 
+## [0.11.0] - 2026-09-17
+
+> Retroactively documented — version labels 0.11.0–0.11.2 were assigned
+> to the deployed tree without a changelog entry at the time; the
+> feature set below is reconstructed from the code diff against
+> upstream v0.9.0.
+
+### Added
+- **System installer** (`install-linux.sh`): installs the checked-out
+  source into `/opt/pycentauri`, creates a dedicated service account and
+  venv, normalizes file permissions (0644/0755, venv and data exempt),
+  optionally writes a systemd unit with a health-checked start, and
+  seeds `/etc/pycentauri.conf`. Plus the full
+  [`INSTALL.md`](INSTALL.md) walkthrough it references.
+- **Camera stream lifecycle via SDCP Cmd 386**: new client method
+  `set_video_stream()` with `allow_empty_mainboard` request support
+  (works around firmware states that do not emit Attributes), and the
+  server's broadcaster now enables the CC1 camera when the first viewer
+  arrives and disables it after the last one leaves — pairing with
+  0.10.0's idle close to release the printer's camera slots.
+- **PWA assets**: `manifest.webmanifest` and app icons (192/512/SVG) so
+  the dashboard can be installed to a home screen.
+- **`pycentauri.conf-example`**: documented starter configuration.
+- **`PYCENTAURI_LOG_LEVEL` / `--log-level`** (info|warn|critical,
+  default warn) for CLI and server, and `Cache-Control: no-store` on
+  snapshot/stream responses.
+
+### Changed
+- Examples generalized to `printer.example` (upstream shipped real LAN
+  addresses), pyproject metadata refreshed (Python 3.10–3.13
+  classifiers), dashboard icon refreshed.
+
 ## [0.10.0] - 2026-08-30
 
 ### Added
