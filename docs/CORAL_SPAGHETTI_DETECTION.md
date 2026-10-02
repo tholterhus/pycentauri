@@ -1,10 +1,13 @@
 # Coral USB spaghetti-detection — integration plan
 
-Status: **implemented** (Phases 1-2: backend, pipeline, server/CLI
-wiring, tests; smoke model shipped under `data/models/`). Remaining:
-live TPU verification once the Coral is attached (Phase 0 hardware) and
-the custom 2-class model (Phase 3). This doc is the design record for
-the failed-print ("spaghetti") detection feature.
+Status: **implemented and live-verified** (2026-10-02): backend,
+pipeline, server/CLI wiring, dashboard panel, training-frame collection
+and arming are in production; the Edge TPU path is verified against a
+real Coral USB Accelerator inside an unprivileged LXC (see Phase 0
+notes). Remaining: the custom 2-class model (Phase 3) — data
+collection, training and Edge-TPU compilation are described below. This
+doc is the design record for the failed-print ("spaghetti") detection
+feature.
 
 ## What we build on (current state)
 
