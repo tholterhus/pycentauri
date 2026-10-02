@@ -6,6 +6,8 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-02
+
 ### Added
 - **Stranger-proof onboarding for the detection feature**: step-by-step
   Coral chapter in INSTALL.md (runtime install via the official
