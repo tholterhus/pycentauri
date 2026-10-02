@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0d">
+  <title>pycentauri – Centauri Carbon Dashboard</title>
+  <link rel="manifest" href="manifest.webmanifest?v=0.11.2">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=0.11.2">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="icons/icon.svg?v=0.11.2">
+</head>
+<body>
+
+  <nav class="rail rail-top">
+    <div class="rail-group">
+      <span class="logo">pycentauri</span>
+      <span class="rail-sep">/</span>
+      <span class="rail-ver">v<span id="version">-</span></span>
+      <a id="update-badge" class="rail-update" hidden target="_blank" rel="noopener"></a>
+    </div>
+    <div class="rail-group">
+      <span class="rail-dim" id="printer-name">-</span>
+      <span class="rail-sep">/</span>
+      <span class="rail-dim"><span id="firmware">-</span></span>
+      <span class="status-pill" id="status-pill">
+        <span class="status-dot"></span>
+        <span id="status-text">LINK</span>
+      </span>
+    </div>
+  </nav>
+
+  <main class="console">
+    <section class="viewport-col">
+
+      <div class="viewport" role="img" aria-label="Live webcam feed">
+        <!-- No src: app.js fetches /stream itself and paints frames here
+             (a native multipart <img> load can't be torn down reliably). -->
+        <img id="webcam" alt="">
+        <div class="viewport-overlay bot">
+          <a class="snap-btn" href="/snapshot" download="snapshot.jpg">Save snapshot</a>
+        </div>
+      </div>
+
+      <div class="panel job-panel">
+        <header class="panel-header"><span class="panel-tag">Job</span></header>
+        <div class="job-name" id="filename">Idle</div>
+        <div class="bar">
+          <div class="bar-fill" id="progress-bar"></div>
+          <div class="bar-label"><span id="progress-label">0%</span></div>
+        </div>
+        <dl class="job-stats">
+          <div><dt>Layer</dt><dd id="layer">-</dd></div>
+          <div><dt>Elapsed</dt><dd id="elapsed">-</dd></div>
+          <div><dt>ETA</dt><dd id="remaining">-</dd></div>
+          <div><dt>Speed</dt><dd id="speed">-</dd></div>
+        </dl>
+      </div>
+
+      <div class="panel controls" id="controls" hidden>
+        <header class="panel-header"><span class="panel-tag">Controls</span></header>
+        <div class="btn-grid">
+          <button id="btn-pause" class="btn warn" type="button">Pause</button>
+          <button id="btn-resume" class="btn ok" type="button">Resume</button>
+          <button id="btn-stop" class="btn danger" type="button">Stop</button>
+        </div>
+        <div class="upload-row">
+          <input type="file" id="upload-file" class="upload-input">
+          <label class="upload-chk"><input type="checkbox" id="upload-start"> start</label>
+          <button id="btn-upload" class="btn" type="button">Upload</button>
+        </div>
+        <div class="ctrl-msg" id="ctrl-msg" aria-live="polite"></div>
+      </div>
+
+      <div class="panel adjust" id="adjust" hidden>
+        <header class="panel-header"><span class="panel-tag">Adjust</span></header>
+
+        <div class="adj-sub">Speed mode</div>
+        <div class="adj-modes" id="adj-speed-modes">
+          <button class="btn adj-mode" data-mode="silent" type="button">
+            <small>50%</small> Silent
+          </button>
+          <button class="btn adj-mode" data-mode="balanced" type="button">
+            <small>100%</small> Balanced
+          </button>
+          <button class="btn adj-mode" data-mode="sport" type="button">
+            <small>130%</small> Sport
+          </button>
+          <button class="btn adj-mode" data-mode="ludicrous" type="button">
+            <small>160%</small> Ludicrous
+          </button>
+        </div>
+
+        <div class="adj-sub">Light</div>
+        <div class="adj-modes light-row" id="adj-light">
+          <button class="btn adj-light" data-light="on" type="button">On</button>
+          <button class="btn adj-light" data-light="off" type="button">Off</button>
+        </div>
+
+        <div class="adj-sub">Fans</div>
+        <div class="adj-row">
+          <label class="adj-lbl" for="adj-fan-model">Model</label>
+          <input type="range" id="adj-fan-model-slider" min="0" max="100" step="1" value="0">
+          <input type="number" id="adj-fan-model" min="0" max="100" step="1" value="0">
+          <button class="btn adj-apply" data-target="fan-model" type="button">Set</button>
+        </div>
+        <div class="adj-row">
+          <label class="adj-lbl" for="adj-fan-aux">Aux</label>
+          <input type="range" id="adj-fan-aux-slider" min="0" max="100" step="1" value="0">
+          <input type="number" id="adj-fan-aux" min="0" max="100" step="1" value="0">
+          <button class="btn adj-apply" data-target="fan-aux" type="button">Set</button>
+        </div>
+        <div class="adj-row">
+          <label class="adj-lbl" for="adj-fan-chamber">Chamber</label>
+          <input type="range" id="adj-fan-chamber-slider" min="0" max="100" step="1" value="0">
+          <input type="number" id="adj-fan-chamber" min="0" max="100" step="1" value="0">
+          <button class="btn adj-apply" data-target="fan-chamber" type="button">Set</button>
+        </div>
+
+        <div class="adj-sub">Heaters</div>
+        <div class="adj-row">
+          <label class="adj-lbl" for="adj-temp-nozzle">Nozzle</label>
+          <input type="range" id="adj-temp-nozzle-slider" min="0" max="300" step="5" value="0">
+          <input type="number" id="adj-temp-nozzle" min="0" max="300" step="1" value="0">
+          <button class="btn adj-apply" data-target="temp-nozzle" type="button">Set</button>
+        </div>
+        <div class="adj-row">
+          <label class="adj-lbl" for="adj-temp-bed">Bed</label>
+          <input type="range" id="adj-temp-bed-slider" min="0" max="110" step="5" value="0">
+          <input type="number" id="adj-temp-bed" min="0" max="110" step="1" value="0">
+          <button class="btn adj-apply" data-target="temp-bed" type="button">Set</button>
+        </div>
+        <div class="adj-row">
+          <label class="adj-lbl" for="adj-temp-chamber">Chamber</label>
+          <input type="range" id="adj-temp-chamber-slider" min="0" max="60" step="1" value="0">
+          <input type="number" id="adj-temp-chamber" min="0" max="60" step="1" value="0">
+          <button class="btn adj-apply" data-target="temp-chamber" type="button">Set</button>
+        </div>
+
+        <div class="ctrl-msg" id="adj-msg" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <aside class="instruments-col">
+
+      <div class="panel state-panel">
+        <header class="panel-header"><span class="panel-tag">State</span></header>
+        <div class="state-row">
+          <span class="state-code" id="print-status-code">--</span>
+          <span class="state-word" id="print-status">IDLE</span>
+        </div>
+      </div>
+
+      <div class="panel thermal-panel">
+        <header class="panel-header"><span class="panel-tag">Thermal</span></header>
+        <div class="gauges">
+          <div class="gauge" data-id="nozzle">
+            <div class="gauge-head">
+              <span class="gauge-label">Nozzle</span>
+            </div>
+            <div class="gauge-val"><span id="t-nozzle">---.-</span><span class="unit">°C</span></div>
+            <div class="gauge-target">Target <span id="t-nozzle-target">---</span>°</div>
+            <div class="gauge-bar"><div class="gauge-fill" id="t-nozzle-bar"></div></div>
+          </div>
+          <div class="gauge" data-id="bed">
+            <div class="gauge-head">
+              <span class="gauge-label">Bed</span>
+            </div>
+            <div class="gauge-val"><span id="t-bed">---.-</span><span class="unit">°C</span></div>
+            <div class="gauge-target">Target <span id="t-bed-target">---</span>°</div>
+            <div class="gauge-bar"><div class="gauge-fill" id="t-bed-bar"></div></div>
+          </div>
+          <div class="gauge" data-id="chamber">
+            <div class="gauge-head">
+              <span class="gauge-label">Chamber</span>
+            </div>
+            <div class="gauge-val"><span id="t-chamber">---.-</span><span class="unit">°C</span></div>
+            <div class="gauge-target">Ambient <span id="t-chamber-target">---</span>°</div>
+            <div class="gauge-bar"><div class="gauge-fill" id="t-chamber-bar"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel rtsp-panel" id="rtsp-panel" hidden>
+        <header class="panel-header"><span class="panel-tag">Stream</span></header>
+        <div class="rtsp-row">
+          <span class="rtsp-state" id="rtsp-state">-</span>
+          <button id="btn-rtsp-toggle" class="btn rtsp-toggle" type="button" disabled>
+            <span id="btn-rtsp-label">-</span>
+          </button>
+        </div>
+        <div class="rtsp-url-wrap">
+          <code class="rtsp-url" id="rtsp-url">rtsp://-</code>
+          <button id="btn-rtsp-copy" class="copy-btn" type="button" title="Copy URL">Copy</button>
+        </div>
+        <div class="rtsp-meta" id="rtsp-meta"></div>
+        <div class="rtsp-msg" id="rtsp-msg" aria-live="polite"></div>
+      </div>
+
+      <div class="panel tele-panel">
+        <header class="panel-header"><span class="panel-tag">Kinematics</span></header>
+        <div class="coords">
+          <div class="axis"><span class="axis-lbl">X</span><span class="axis-val" id="pos-x">---.--</span></div>
+          <div class="axis"><span class="axis-lbl">Y</span><span class="axis-val" id="pos-y">---.--</span></div>
+          <div class="axis"><span class="axis-lbl">Z</span><span class="axis-val" id="pos-z">---.--</span></div>
+        </div>
+        <dl class="tele-dl">
+          <div id="head-speed-row" hidden title="Commanded speed of the current gcode move (matches the printer screen's readout). Briefly spikes on travel moves."><dt>Head speed</dt><dd id="head-speed">-</dd></div>
+          <div><dt>Z offset</dt><dd id="z-offset">-</dd></div>
+          <div><dt>Fan model</dt><dd id="fan-model">-</dd></div>
+          <div><dt>Fan aux</dt><dd id="fan-aux">-</dd></div>
+          <div><dt>Fan chamber</dt><dd id="fan-box">-</dd></div>
+          <div id="fan-controller-row" hidden><dt>Fan ctrl</dt><dd id="fan-controller">-</dd></div>
+          <div id="fan-heater-row" hidden><dt>Fan heater</dt><dd id="fan-heater">-</dd></div>
+          <div><dt>Mainboard</dt><dd class="mono-xs" id="mainboard">-</dd></div>
+        </dl>
+      </div>
+
+      <div class="panel canvas-panel" id="canvas-panel" hidden>
+        <header class="panel-header"><span class="panel-tag">Canvas</span></header>
+        <div class="canvas-trays" id="canvas-trays"></div>
+        <div class="canvas-meta">
+          <span class="canvas-refill-label">Auto-refill</span>
+          <span class="canvas-refill-state" id="canvas-refill-state">-</span>
+          <button class="btn canvas-refill-toggle" id="canvas-refill-toggle" type="button" hidden>
+            <span id="canvas-refill-btn-label">-</span>
+          </button>
+          <button class="btn canvas-refresh" id="canvas-refresh" type="button" title="Refresh Canvas status">Refresh</button>
+        </div>
+        <div class="ctrl-msg" id="canvas-msg" aria-live="polite"></div>
+      </div>
+
+      <div class="panel files-panel" id="files-panel" hidden>
+        <header class="panel-header">
+          <span class="panel-tag">Files</span>
+          <span class="files-disk" id="files-disk"></span>
+        </header>
+        <div class="files-list" id="files-list"></div>
+        <div class="files-meta">
+          <select class="files-storage" id="files-storage" title="Storage">
+            <option value="local">Local</option>
+            <option value="u-disk">USB</option>
+          </select>
+          <button class="btn files-refresh" id="files-refresh" type="button">Refresh</button>
+        </div>
+        <div class="ctrl-msg" id="files-msg" aria-live="polite"></div>
+      </div>
+
+      <div class="panel history-panel" id="history-panel" hidden>
+        <header class="panel-header"><span class="panel-tag">Print history</span></header>
+        <div class="files-list" id="history-list"></div>
+        <div class="files-meta">
+          <button class="btn files-refresh" id="history-refresh" type="button">Refresh</button>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="rail rail-bottom">
+    <div class="rail-group">
+      <span class="rail-dim">Host</span>
+      <span id="host">-</span>
+    </div>
+    <div class="rail-group">
+      <a href="/docs">API docs</a>
+      <span class="rail-sep">/</span>
+      <a href="https://github.com/bjan/pycentauri" target="_blank" rel="noopener">Source</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

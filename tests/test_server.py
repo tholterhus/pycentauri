@@ -1,0 +1,455 @@
+"""Tests for the FastAPI HTTP server.
+
+Uses the existing ``_FakePrinter`` fixture from ``test_client`` to stand up
+a local SDCP WebSocket server, then spins up the FastAPI app against it.
+We hit the app through httpx's ASGI transport — no real HTTP port bound.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+
+pytest.importorskip("fastapi")
+
+from pycentauri import server as server_module
+from pycentauri.client import Printer, RequestTimeoutError
+from tests.test_client import MAINBOARD, _FakePrinter
+
+
+@pytest.fixture(autouse=True)
+def _bypass_connect_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the server use Printer.connect directly, skipping port detection."""
+
+    async def _direct_connect(host, **kwargs):  # type: ignore[no-untyped-def]
+        kwargs.pop("access_code", None)
+        return await Printer.connect(host, **kwargs)
+
+    monkeypatch.setattr("pycentauri.server.connect_auto", _direct_connect)
+
+
+async def _asgi_client(app: Any) -> httpx.AsyncClient:
+    transport = httpx.ASGITransport(app=app)
+    return httpx.AsyncClient(transport=transport, base_url="http://test")
+
+
+async def test_read_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+    # Mimic the lifespan manager manually: the async-context machinery
+    # under httpx.AsyncClient doesn't drive lifespan, so do it ourselves.
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        # /api/info is the JSON health endpoint; / redirects to /ui/.
+        r = await client.get("/api/info")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["service"] == "pycentauri"
+        assert body["printer_host"] == "127.0.0.1"
+
+        r = await client.get("/ui/", follow_redirects=False)
+        assert r.status_code == 200
+        assert "<!DOCTYPE html>" in r.text
+
+        r = await client.get("/status")
+        assert r.status_code == 200
+        s = r.json()
+        assert s["print_status"] == 13
+        assert s["temperatures"]["nozzle"]["actual"] == 210.0
+
+        r = await client.get("/attributes")
+        assert r.status_code == 200
+        assert r.json()["mainboard_id"] == MAINBOARD
+
+    await server.stop()
+
+
+async def test_openapi_schema_generates(monkeypatch: pytest.MonkeyPatch) -> None:
+    # /openapi.json (and thus /docs) must render. Regression for a request
+    # body model defined inside create_app(), whose forward refs couldn't
+    # be resolved under `from __future__ import annotations`. Control on so
+    # every body model — including the Canvas RefillBody — is registered.
+    app = server_module.create_app("127.0.0.1", enable_control=True, mainboard_id=MAINBOARD)
+    async with await _asgi_client(app) as client:
+        r = await client.get("/openapi.json")
+        assert r.status_code == 200
+        assert r.json()["info"]["title"]
+
+
+async def test_upload_endpoint_spools_and_forwards(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    captured: dict[str, Any] = {}
+
+    async def fake_upload(
+        self: Any,
+        local_path: Any,
+        *,
+        remote_name: Any = None,
+        timeout: float = 180.0,
+        progress: Any = None,
+    ) -> Any:
+        captured["content"] = Path(local_path).read_bytes()
+        captured["remote_name"] = remote_name
+        return remote_name
+
+    monkeypatch.setattr("pycentauri.client.Printer.upload_file", fake_upload)
+
+    app = server_module.create_app("127.0.0.1", enable_control=True, mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        # A malicious filename must be reduced to its basename (no traversal).
+        r = await client.post(
+            "/files/upload",
+            files={"file": ("../../etc/model.gcode", b"G28\nG1 X0 Y0\n", "text/plain")},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True
+        assert body["filename"] == "model.gcode"
+        assert "start_response" not in body
+
+    assert captured["content"] == b"G28\nG1 X0 Y0\n"
+    assert captured["remote_name"] == "model.gcode"
+    await server.stop()
+
+
+async def test_upload_endpoint_404_without_control(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.post("/files/upload", files={"file": ("x.gcode", b"G28\n", "text/plain")})
+        assert r.status_code == 404
+    await server.stop()
+
+
+async def test_control_endpoints_404_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        for path in ("/print/start", "/print/pause", "/print/resume", "/print/stop"):
+            r = await client.post(
+                path, json={"filename": "x.gcode"} if path.endswith("start") else {}
+            )
+            assert r.status_code == 404, (
+                f"control endpoint {path} should not exist without enable_control"
+            )
+    await server.stop()
+
+
+async def test_control_endpoints_registered_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", enable_control=True, mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.post("/print/pause")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+        r = await client.post("/print/resume")
+        assert r.status_code == 200
+
+    # The fake printer recorded the Cmd.PAUSE_PRINT + Cmd.RESUME_PRINT commands.
+    from pycentauri.sdcp import Cmd
+
+    cmds = [m["Data"]["Cmd"] for m in server.received]
+    assert int(Cmd.PAUSE_PRINT) in cmds
+    assert int(Cmd.RESUME_PRINT) in cmds
+    await server.stop()
+
+
+async def test_adjust_endpoints_registered_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", enable_control=True, mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.post("/print/speed", json={"mode": "sport"})
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+        r = await client.post("/print/fan", json={"model": 30, "chamber": 50})
+        assert r.status_code == 200
+
+        r = await client.post("/print/temperature", json={"nozzle": 200, "bed": 55})
+        assert r.status_code == 200
+
+        # No-target → 400 from the library
+        r = await client.post("/print/fan", json={})
+        assert r.status_code == 400
+
+        # Pydantic-level bounds (≥0, ≤100) → 422
+        r = await client.post("/print/fan", json={"model": 150})
+        assert r.status_code == 422
+
+    from pycentauri.sdcp import Cmd as _Cmd
+
+    sent = [m["Data"] for m in server.received if m["Data"]["Cmd"] == int(_Cmd.CHANGE_PRINT_PARAMS)]
+    assert len(sent) == 3
+    speed, fan, temp = sent
+    assert speed["Data"] == {"PrintSpeedPct": 130}
+    assert fan["Data"] == {"TargetFanSpeed": {"ModelFan": 30, "BoxFan": 50}}
+    assert temp["Data"] == {"TempTargetNozzle": 200.0, "TempTargetHotbed": 55.0}
+    await server.stop()
+
+
+async def test_adjust_endpoints_404_without_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        for path in ("/print/speed", "/print/fan", "/print/temperature"):
+            r = await client.post(path, json={})
+            assert r.status_code == 404, path
+    await server.stop()
+
+
+async def test_rtsp_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.get("/api/rtsp")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["enabled"] is False
+        assert body["running"] is False
+
+        # Start/stop should 404 when feature is off.
+        r = await client.post("/api/rtsp/start")
+        assert r.status_code == 404
+    await server.stop()
+
+
+async def test_rtsp_enabled_reports_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # Don't actually spawn mediamtx — point the override at a fake binary so
+    # the availability check passes for /api/rtsp/start's "could not launch"
+    # path to be exercised, then end with a real stop() no-op.
+    fake_mtx = tmp_path / "mediamtx"
+    fake_mtx.write_text("#!/bin/sh\nsleep 60\n")
+    fake_mtx.chmod(0o755)
+    fake_ffmpeg = tmp_path / "ffmpeg"
+    fake_ffmpeg.write_text("#!/bin/sh\nsleep 60\n")
+    fake_ffmpeg.chmod(0o755)
+
+    from pycentauri.rtsp import RtspConfig
+
+    cfg = RtspConfig(
+        printer_host="192.0.2.10",
+        rtsp_port=18554,
+        bind="127.0.0.1",
+        path="printer",
+        mediamtx_path=str(fake_mtx),
+        ffmpeg_path=str(fake_ffmpeg),
+    )
+
+    fake_ws = _FakePrinter()
+    await fake_ws.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", fake_ws.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD, rtsp_config=cfg)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.get("/api/rtsp")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["enabled"] is True
+        assert body["available"] is True
+        assert body["running"] is False
+        assert body["port"] == 18554
+        assert body["path"] == "printer"
+        assert body["urls"] == ["rtsp://127.0.0.1:18554/printer"]
+
+        # Start will spawn the fake binary (which just sleeps).
+        r = await client.post("/api/rtsp/start")
+        assert r.status_code == 200
+        assert r.json()["running"] is True
+
+        # Stop cleans up.
+        r = await client.post("/api/rtsp/stop")
+        assert r.status_code == 200
+        assert r.json()["running"] is False
+    await fake_ws.stop()
+
+
+async def test_rtsp_unavailable_when_binaries_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from pycentauri.rtsp import RtspConfig
+
+    cfg = RtspConfig(
+        printer_host="192.0.2.10",
+        mediamtx_path=str(tmp_path / "does-not-exist"),
+    )
+
+    fake_ws = _FakePrinter()
+    await fake_ws.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", fake_ws.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD, rtsp_config=cfg)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.get("/api/rtsp")
+        body = r.json()
+        assert body["enabled"] is True
+        assert body["available"] is False
+        assert body["running"] is False
+        assert "MediaMTX" in (body["reason"] or "")
+
+        # Start should 503 with an install hint.
+        r = await client.post("/api/rtsp/start")
+        assert r.status_code == 503
+        assert "MediaMTX" in r.text
+    await fake_ws.stop()
+
+
+async def test_canvas_unsupported_maps_to_501(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CC1 has no Canvas: GET /canvas must be 501 (so the UI stops asking),
+    reserving 504 for transient timeouts on a real CC2."""
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.get("/canvas")
+        assert r.status_code == 501
+        assert "CC1" in r.json()["detail"]
+    await server.stop()
+
+
+async def test_history_timeout_maps_to_504(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A transient RequestTimeoutError on /history must surface as 504, not 501.
+
+    RequestTimeoutError subclasses PrinterError, so a bare `except PrinterError`
+    would mislabel a timeout as 501 — which the web UI reads as "unsupported"
+    and hides the history panel until reload. 504 is retryable; the panel stays.
+    """
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    async def _boom(self: Any, **kwargs: Any) -> dict[str, Any]:
+        raise RequestTimeoutError("no response within 10.0s")
+
+    monkeypatch.setattr("pycentauri.client.Printer.print_history", _boom)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.get("/history")
+        assert r.status_code == 504
+    await server.stop()
+
+
+async def test_delete_rejects_non_list_filenames(monkeypatch: pytest.MonkeyPatch) -> None:
+    """POST /files/delete with a bare string must 400, not iterate per-character
+    into a batch of malformed delete Cmds on the crash-prone SDCP channel."""
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", enable_control=True, mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.post("/files/delete", json={"filenames": "cube.gcode"})
+        assert r.status_code == 400
+    await server.stop()
+
+
+def test_update_available_logic() -> None:
+    """PEP 440 comparison; a local dev build ahead of PyPI never nags."""
+    from pycentauri.server import _update_available
+
+    assert _update_available("0.8.0", "0.9.0") is True
+    assert _update_available("0.8.0", "0.8.0") is False
+    assert _update_available("0.9.0", "0.8.0") is False  # dev ahead of PyPI
+    assert _update_available("0.8.0", None) is False
+    assert _update_available("0.8.0", "not-a-version") is False
+
+
+async def test_api_info_reports_update_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    """/api/info always carries latest_version + update_available. With the
+    check off (default) latest is None; once a newer version is known it flips."""
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        info = (await client.get("/api/info")).json()
+        assert info["latest_version"] is None
+        assert info["update_available"] is False
+
+        # Simulate a completed PyPI check reporting a newer version.
+        app.state.update.latest = "999.0.0"
+        info2 = (await client.get("/api/info")).json()
+        assert info2["latest_version"] == "999.0.0"
+        assert info2["update_available"] is True
+    await server.stop()
+
+
+async def test_start_print_request_body_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", enable_control=True, mainboard_id=MAINBOARD)
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        r = await client.post("/print/start", json={})
+        assert r.status_code == 422  # filename is required
+
+        r = await client.post("/print/start", json={"filename": "cube.gcode"})
+        assert r.status_code == 200
+    await server.stop()
+
+
+async def test_stream_raw_serves_octet_stream_with_boundary_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """/stream/raw exists because WebKit cannot fetch() multipart — same
+    MJPEG bytes, but application/octet-stream with the boundary moved to
+    X-Stream-Boundary (normalized: CC1 declares `boundary=--foo`)."""
+    server = _FakePrinter()
+    await server.start()
+    monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+    app = server_module.create_app("127.0.0.1", mainboard_id=MAINBOARD)
+
+    frame = b"--foo\r\nContent-Type: image/jpeg\r\nContent-Length: 2\r\n\r\n\xff\xd8\r\n"
+
+    class _Cam:
+        async def subscribe(self):  # type: ignore[no-untyped-def]
+            async def gen():
+                yield frame
+                yield frame
+
+            return "multipart/x-mixed-replace; boundary=--foo", gen()
+
+    async with app.router.lifespan_context(app), await _asgi_client(app) as client:
+        app.state.manager.camera = _Cam()
+        r = await client.get("/stream/raw")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "application/octet-stream"
+        assert r.headers["x-stream-boundary"] == "--foo"
+        assert r.headers["cache-control"] == "no-store"
+        assert r.content == frame + frame
+    await server.stop()
