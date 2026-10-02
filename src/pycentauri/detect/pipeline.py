@@ -311,6 +311,14 @@ class DetectionController:
     # --- detection session --------------------------------------------------
 
     async def _session_loop(self) -> None:
+        # Self-healing: retry the model load once per print — if the user
+        # adds the model (or the Coral) later, the next print picks it up.
+        await self._ensure_backend()
+        if self._backend is None:
+            # No usable model: do NOT hold the camera subscription open for
+            # nothing — the printer's camera slots are scarce.
+            log.debug("detection: no backend loaded — session skipped")
+            return
         started = time.monotonic()
         last_infer = 0.0
         try:

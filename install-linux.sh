@@ -137,10 +137,12 @@ if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then
   control_args=(); [[ "$PYCENTAURI_ENABLE_CONTROL" == 1 ]] && control_args+=(--enable-control)
   detect_args=(); [[ "$PYCENTAURI_DETECT" == 1 ]] && detect_args+=(--detect --detect-model "$PYCENTAURI_DETECT_MODEL" --detect-action "$PYCENTAURI_DETECT_ACTION" --detect-threshold "$PYCENTAURI_DETECT_THRESHOLD")
   # Inside an unprivileged LXC there is no udevd; libusb needs a hand-made
-  # device node plus a /run/udev database entry to see the Coral. No-op with
-  # a warning when the stick is absent or on a normal host.
-  install -d -m 0755 /usr/local/sbin
-  cat > /usr/local/sbin/pycentauri-usb-prepare <<'USBPREP'
+  # device node plus /run/udev database entry to see the Coral. No-op with
+  # a warning when the stick is absent or on a normal host. Only installed
+  # when detection is enabled — Coral-less setups get no helper code.
+  if [[ "$PYCENTAURI_DETECT" == 1 ]]; then
+    install -d -m 0755 /usr/local/sbin
+    cat > /usr/local/sbin/pycentauri-usb-prepare <<'USBPREP'
 #!/bin/sh
 # pycentauri: make the Coral USB Accelerator visible to libusb inside the
 # unprivileged LXC. The container runs no udevd, so Debian's libusb (udev
@@ -179,7 +181,10 @@ done
 echo "pycentauri-usb-prepare: coral not on the USB bus — continuing on CPU" >&2
 exit 0
 USBPREP
-  chmod 0755 /usr/local/sbin/pycentauri-usb-prepare
+    chmod 0755 /usr/local/sbin/pycentauri-usb-prepare
+  fi
+  prep_line=""
+  if [[ "$PYCENTAURI_DETECT" == 1 ]]; then prep_line="ExecStartPre=+/usr/local/sbin/pycentauri-usb-prepare"; fi
   if [[ "$PYCENTAURI_DETECT" == 1 ]]; then
     model_target="$APP_DIR/$PYCENTAURI_DETECT_MODEL"
     if [[ -f "$model_target" ]]; then
@@ -204,7 +209,7 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=-$CONFIG_FILE
-ExecStartPre=+/usr/local/sbin/pycentauri-usb-prepare
+${prep_line}
 ExecStart=$APP_DIR/venv/bin/centauri server --host \${PYCENTAURI_HOST} --bind \${PYCENTAURI_BIND} --port \${PYCENTAURI_PORT} ${control_args[*]} ${rtsp_args[*]} ${detect_args[*]}
 Restart=always
 RestartSec=5

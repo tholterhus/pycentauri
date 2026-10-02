@@ -499,16 +499,22 @@ async def test_controller_notify_only_without_control(
 
 
 async def test_controller_surfaces_model_load_error(tmp_path: Path) -> None:
+    """Model load failure: server keeps running, but no camera is held."""
     cfg = DetectConfig(model_path=tmp_path / "missing_edgetpu.tflite")
+    camera = FakeCamera([_jpeg()] * 4)
     controller = DetectionController(
-        cfg, camera=FakeCamera([]), get_printer=lambda: FakePrinter([0])
+        cfg, camera=camera, get_printer=lambda: FakePrinter([PRINTING] * 5 + [9])
     )
     await controller.start()
+    await _wait_for(lambda: controller.state()["processing"] is False, timeout_s=5.0)
     state = controller.state()
     await controller.stop()
     assert state["enabled"] is True
     assert state["backend"] is None
     assert "model load failed" in (state["error"] or "")
+    # Without a backend the session must not subscribe to the camera —
+    # the printer's scarce camera slots are not wasted on nothing.
+    assert camera.subscribe_count == 0
 
 
 # --- server endpoints ----------------------------------------------------------
