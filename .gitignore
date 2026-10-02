@@ -67,3 +67,6 @@ config.local.toml
 data/models/
 data/evidence/
 data/collect/
+
+# Training: roboflow downloads + assembled datasets
+data/train/
