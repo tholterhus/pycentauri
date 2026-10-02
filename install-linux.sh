@@ -165,16 +165,27 @@ for d in /sys/bus/usb/devices/*; do
     busdir=$(printf '/dev/bus/usb/%03d' "$bus")
     node=$(printf '%s/%03d' "$busdir" "$dev")
     mkdir -p "$busdir" /run/udev/data
-    [ -e "$node" ] || mknod "$node" c 189 "$minor"
-    chmod 0666 "$node"
-    {
-        printf 'I: 1\n'
-        printf 'E:DEVPATH=%s\n' "$d"
-        printf 'E:SUBSYSTEM=usb\nE:DEVTYPE=usb_device\n'
-        printf 'E:DEVNAME=%s\n' "$node"
-        printf 'E:ID_BUS=usb\nE:ID_VENDOR_ID=%s\nE:ID_MODEL_ID=%s\n' "$vendor" "$product"
-        printf 'E:MAJOR=189\nE:MINOR=%d\n' "$minor"
-    } > "/run/udev/data/c189:$minor"
+    if [ -e "$node" ]; then
+        : # the node exists — udev (or a previous run) manages it
+    else
+        mknod "$node" c 189 "$minor"
+        chmod 0666 "$node"
+    fi
+    dbfile="/run/udev/data/c189:$minor"
+    # On hosts with a running udevd the database entry already exists and is
+    # maintained by udev itself — leave it untouched. On udev-less containers
+    # (unprivileged LXC, some Docker setups) we provide it, and refresh it
+    # when the Coral re-enumerated with a different devnum.
+    if ! grep -qs "DEVNAME=$node" "$dbfile"; then
+        {
+            printf 'I: 1\n'
+            printf 'E:DEVPATH=%s\n' "$d"
+            printf 'E:SUBSYSTEM=usb\nE:DEVTYPE=usb_device\n'
+            printf 'E:DEVNAME=%s\n' "$node"
+            printf 'E:ID_BUS=usb\nE:ID_VENDOR_ID=%s\nE:ID_MODEL_ID=%s\n' "$vendor" "$product"
+            printf 'E:MAJOR=189\nE:MINOR=%d\n' "$minor"
+        } > "$dbfile"
+    fi
     echo "pycentauri-usb-prepare: coral ready at $node (c189:$minor)"
     exit 0
 done

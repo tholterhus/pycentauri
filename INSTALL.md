@@ -214,6 +214,28 @@ the device node and a `/run/udev` database entry at every service start —
 the Proxmox device passthrough (`dev0: /dev/bus/usb/…`) plus this helper is
 a proven combination.
 
+The helper is deliberately no-op on regular hosts: when a running udev
+already manages the device node and its database entry, it changes nothing.
+
+### Docker
+
+Pass the device (and, ideally, the udev database) into the container:
+
+```sh
+docker run ... --device /dev/bus/usb:/dev/bus/usb   -v /run/udev:/run/udev:ro ...
+```
+
+If `/run/udev` cannot be mounted, run `/usr/local/sbin/pycentauri-usb-prepare`
+as root before starting the server (the systemd unit does this via
+`ExecStartPre`) — it creates the device node and database entry itself.
+
+### Raspberry Pi
+
+Works on Raspberry Pi 4/5 with the 64-bit Raspberry Pi OS (Python 3.10+
+ships with Bookworm): LiteRT publishes `aarch64` wheels, `libedgetpu1-std`
+installs from the same Google repository, and the CPU fallback needs
+nothing extra at all.
+
 ## Network and firewall
 
 The Linux host needs outbound access to the printer. The exact ports depend on
