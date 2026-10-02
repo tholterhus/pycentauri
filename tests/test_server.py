@@ -60,7 +60,12 @@ async def test_read_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
         assert r.status_code == 200
         s = r.json()
         assert s["print_status"] == 13
-        assert s["temperatures"]["nozzle"]["actual"] == 210.0
+        # The fake printer heats: nozzle = 210.0 + push_index (every 50 ms),
+        # so the exact value depends on read timing. The bed is constant and
+        # carries the exact mapping check.
+        assert 210.0 <= s["temperatures"]["nozzle"]["actual"] <= 240.0
+        assert s["temperatures"]["bed"]["actual"] == 60.0
+        assert s["temperatures"]["chamber"]["actual"] == 30.0
 
         r = await client.get("/attributes")
         assert r.status_code == 200
