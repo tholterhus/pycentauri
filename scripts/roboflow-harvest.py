@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -107,8 +108,15 @@ def cmd_download(args: argparse.Namespace) -> int:
         base = slug.rstrip("/")
         try:
             d = api(base, key)
-            versions = sorted((v.get("version") or ""), key=str) or []
-            want = args.version or (versions[-1] if versions else "1")
+            versions = d.get("versions") or []
+
+            def _vnum(v: dict) -> int:
+                try:
+                    return int(str(v.get("id")).split("/")[-1])
+                except ValueError:
+                    return 0
+
+            want = args.version or (str(_vnum(max(versions, key=_vnum))) if versions else "1")
             meta = api(f"{base}/{want}?format={args.format}", key)
         except Exception as err:
             print(f"== {slug}: FEHLER {err}")
@@ -116,18 +124,38 @@ def cmd_download(args: argparse.Namespace) -> int:
             continue
         export = meta.get("export") or {}
         link = export.get("link")
-        if not link:
-            state = export.get("generateRequested") or export.get("generating")
+        for attempt in range(1, args.wait + 1):
+            if link:
+                break
             print(
-                f"== {slug}: Export nicht bereit ({export.get('status') or state}) — in 1–2 Min erneut."
+                f"== {slug}: Export wird serverseitig generiert (Versuch {attempt}/{args.wait}) …"
             )
+            time.sleep(30)
+            meta = api(f"{base}/{want}?format={args.format}", key)
+            export = meta.get("export") or {}
+            link = export.get("link")
+        if not link:
+            print(f"== {slug}: Export blieb unbereit - spaeter erneut ausfuehren.")
             rc = 3
             continue
         project = base.split("/")[-1]
         dest = OUT_DIR / f"{project}-v{want}"
         zpath = dest.with_suffix(".zip")
-        print(f"== {slug}: lade Version {want} → {zpath}")
-        urllib.request.urlretrieve(link, zpath)
+        print(f"== {slug}: lade Version {want} (kann einige Minuten dauern) -> {zpath}")
+        for attempt in range(1, 4):
+            try:
+                with urllib.request.urlopen(link, timeout=120) as src, open(zpath, "wb") as dst:
+                    while True:
+                        chunk = src.read(4 * 1024 * 1024)
+                        if not chunk:
+                            break
+                        dst.write(chunk)
+                break
+            except Exception as err:
+                print(f"   download-versuch {attempt}/3 fehlgeschlagen: {err}")
+                if attempt == 3:
+                    raise
+                time.sleep(10)
         with zipfile.ZipFile(zpath) as z:
             z.extractall(dest)
         zpath.unlink()
@@ -205,6 +233,12 @@ def main() -> int:
     c_dl.add_argument("--version", help="Version (default: neueste)")
     c_dl.add_argument("--format", default="yolov8", help="yolov8|voc|coco (default: yolov8)")
     c_dl.add_argument("--key", help="Roboflow API-Key (sonst ~/.roboflow-key)")
+    c_dl.add_argument(
+        "--wait",
+        type=int,
+        default=3,
+        help="wie oft 30 s auf die serverseitige Export-Generierung gewartet wird",
+    )
     sub.add_parser("report", help="zusammenfassung der heruntergeladenen daten")
     c_add = sub.add_parser("add", help="slug in die kandidatendatei aufnehmen")
     c_add.add_argument("slug", help="<workspace>/<project>")
