@@ -19,23 +19,29 @@ if [ ! -f unified.zip ]; then
     exit 1
 fi
 
-PY=""
-for c in python3.12 python3.11 python3; do
-    if command -v "$c" >/dev/null && [ "$("$c" -c 'import sys; print(sys.version_info >= (3, 10))')" = "True" ]; then
-        PY="$c"; break
-    fi
-done
-[ -n "$PY" ] || { echo "kein python3.10+ — brew install python@3.12"; exit 1; }
-echo "python: $($PY --version)  arch: $(uname -m)"
-
-if [ ! -d venv ]; then
-    "$PY" -m venv venv
-    ./venv/bin/pip install --quiet --upgrade pip
-    if [ "$(uname -m)" = "arm64" ]; then
-        ./venv/bin/pip install --quiet "tensorflow>=2.16,<2.21"
-    else
-        ./venv/bin/pip install --quiet "tensorflow-cpu==2.15.1"
-    fi
+# Nimm den ersten Python, mit dem sich TensorFlow installieren lässt —
+# Pythons ohne TF-Wheels (z.B. 3.14) werden automatisch übersprungen.
+if [ ! -d venv ] || ! ./venv/bin/python -c "import tensorflow" 2>/dev/null; then
+    rm -rf venv
+    PY_OK=""
+    for c in python3.12 python3.11 python3; do
+        command -v "$c" >/dev/null || continue
+        "$c" -c 'import sys; exit(0 if sys.version_info >= (3, 10) else 1)' || continue
+        echo "versuche venv mit $c ($($c --version 2>&1)) …"
+        "$c" -m venv venv
+        ./venv/bin/pip install --quiet --upgrade pip
+        if [ "$(uname -m)" = "arm64" ]; then
+            TF_SPEC="tensorflow>=2.16,<2.21"
+        else
+            TF_SPEC="tensorflow-cpu==2.15.1"
+        fi
+        if ./venv/bin/pip install --quiet "$TF_SPEC"; then
+            PY_OK="$c"; break
+        fi
+        echo "  tensorflow nicht verfügbar für $c — nächster python …"
+        rm -rf venv
+    done
+    [ -n "$PY_OK" ] || { echo "kein python mit tensorflow-support gefunden — brew install python@3.12"; exit 1; }
 fi
 ./venv/bin/python -c "import tensorflow as tf; print('TF', tf.__version__)" \
     || { echo "TF-Import fehlgeschlagen — Mac ohne AVX? Dann Colab/Kaggle nutzen."; exit 1; }
