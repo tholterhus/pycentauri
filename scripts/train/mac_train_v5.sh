@@ -25,14 +25,16 @@ fi
 if [ ! -d venv ] || ! ./venv/bin/python -c "import tensorflow" 2>/dev/null; then
     rm -rf venv
     PY_OK=""
-    for c in python3.12 python3.11 python3; do
+    # OD-API braucht tf.compat.v1.estimator — entfernt ab TF 2.16.
+    # Daher: TF 2.15.x (letzte Estimator-Version) → Python 3.11 Pflicht.
+    for c in python3.11 python3; do
         command -v "$c" >/dev/null || continue
         "$c" -c 'import sys; exit(0 if sys.version_info >= (3, 10) else 1)' || continue
-        echo "versuche venv mit $c ($($c --version 2>&1)) …"
+        echo "versuche venv mit $c ($($c --version 2>&1)) — TF 2.15 braucht python<=3.11!"
         "$c" -m venv venv
         ./venv/bin/pip install --quiet --upgrade pip
         if [ "$(uname -m)" = "arm64" ]; then
-            TF_SPEC="tensorflow>=2.16,<2.21"
+            TF_SPEC="tensorflow==2.15.1"   # arm64-wheel vorhanden
         else
             TF_SPEC="tensorflow-cpu==2.15.1"
         fi
