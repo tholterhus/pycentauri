@@ -50,7 +50,7 @@ if [ ! -d models/research ]; then
     git clone --quiet --depth 1 https://github.com/tensorflow/models.git
 fi
 # protos werden mit grpcio-tools generiert (passend zur protobuf-runtime)
-./venv/bin/pip install --quiet grpcio-tools lxml matplotlib pycocotools tf-slim scipy opencv-python-headless
+./venv/bin/pip install --quiet grpcio-tools lxml matplotlib pycocotools tf-slim scipy opencv-python-headless lvis
 # gencode der pb2-dateien muss zur protobuf-runtime passen (TF 2.20 → 6.33):
 # deshalb grpc_tools.protoc statt des brew-protoc
 ./venv/bin/python -m grpc_tools.protoc -Imodels/research --python_out=models/research models/research/object_detection/protos/*.proto
@@ -93,6 +93,9 @@ open("pipeline.config", "w").write(cfg)
 print("config ok:", "num_classes: 1" in cfg)
 PY2
 fi
+
+# runtime-deps bei jedem lauf sicherstellen (idempotent, schnell wenn vorhanden)
+./venv/bin/pip install --quiet lvis matplotlib pycocotools tf-slim lxml scipy || true
 
 if pgrep -f "model_main_tf2" > /dev/null; then
     echo "training läuft bereits — monitor: tail -f training.log"
