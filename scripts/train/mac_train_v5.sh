@@ -107,7 +107,7 @@ fi
     --classes-file dataset/classes.txt \
     --train-out train.record --val-out val.record
 
-if [ ! -f pipeline.config ]; then
+if true; then  # config immer neu generieren (platzhalter-ersatz)
     MODEL=ssd_mobilenet_v2_320x320_coco17_tpu-8
     curl -fsSL -o m.tar.gz "http://download.tensorflow.org/models/object_detection/tf2/20200711/${MODEL}.tar.gz"
     tar -xzf m.tar.gz && rm m.tar.gz
@@ -122,6 +122,7 @@ cfg = re.sub(r"fine_tune_checkpoint: \"[^\"]*\"",
 cfg = cfg.replace("PATH_TO_BE_CONFIGURED/train.record", "train.record")
 cfg = cfg.replace("PATH_TO_BE_CONFIGURED/val.record", "val.record")
 cfg = cfg.replace("PATH_TO_BE_CONFIGURED/label_map.pbtxt", "label_map.pbtxt")
+cfg = cfg.replace("PATH_TO_BE_CONFIGURED", "ssd_mobilenet_v2_320x320_coco17_tpu-8/checkpoint/ckpt-0")  # nackter fine_tune-platzhalter
 cfg = re.sub(r"keep_checkpoint_max: \d+", "keep_checkpoint_max: 2", cfg)
 open("pipeline.config", "w").write(cfg)
 print("config ok:", "num_classes: 1" in cfg)
