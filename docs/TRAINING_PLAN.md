@@ -124,6 +124,26 @@ Decision to make at deploy time: commit the model pair into the
 repository (`models/` tracked, ~10 MB) so strangers get a turnkey
 setup, or keep them in `data/models/` and document the download.
 
+## Model training data (attribution — required for shipping)
+
+* "3D Printer Spaghetti Detection" dataset by training-l9tjj
+  (Roboflow Universe, Public Domain)
+* "Spaghetti" dataset by aiot-innowork (Roboflow Universe, **CC BY 4.0**)
+  — modified: only the spaghetti class subset used
+* Base architecture: SSD MobileNet V2 320×320, TensorFlow Object
+  Detection API (Apache-2.0)
+
+→ Copy this block into the README when the model ships. The int8 model
+file itself may be distributed in this repository.
+
+## Mac training option (no cloud, no GPU rental)
+
+`scripts/train/mac_train.sh` + `mac_export.sh` run the whole training
+locally on a Mac (M-series ~3-6 h, Intel ~8-15 h): one-time setup,
+then a detached `caffeinate`-wrapped training that survives idle
+timers. The Mac must stay connected to power; lid closed works only in
+clamshell mode with an external display.
+
 ## Acceptance criteria before arming
 
 * Recall on spaghetti in the validation split: ≥ 90 % at the shipped
