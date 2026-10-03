@@ -58,9 +58,8 @@ fi
 ./venv/bin/pip install --quiet lxml || true
 # Garantiert importierbar: research-Root auf den PYTHONPATH (klappt immer)
 export PYTHONPATH="$PWD/models/research:${PYTHONPATH:-}"
-./venv/bin/python -c "import object_detection" \
-    || { echo "object_detection nicht importierbar — diag:"; ./venv/bin/pip show object-detection || true; echo "PYTHONPATH=${PYTHONPATH:-UNSET}"; exit 1; }
-echo "object_detection: import OK"
+./venv/bin/python -c "import object_detection, lvis, tf_slim, pycocotools, matplotlib" || { echo "trainings-imports fehlen — fix: ./venv/bin/pip install lvis tf-slim pycocotools matplotlib lxml"; ./venv/bin/pip show object-detection | grep Location || true; exit 1; }
+echo "alle trainings-imports OK"
 
 if [ ! -d dataset ]; then
     mkdir dataset && unzip -q unified.zip -d dataset
