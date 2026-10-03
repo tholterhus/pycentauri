@@ -46,10 +46,6 @@ if [ ! -d venv ] || ! ./venv/bin/python -c "import tensorflow" 2>/dev/null; then
 fi
 ./venv/bin/python -c "import tensorflow as tf; print('TF', tf.__version__)" \
     || { echo "TF-Import fehlgeschlagen — Mac ohne AVX? Dann Colab/Kaggle nutzen."; exit 1; }
-./venv/bin/python -c "import object_detection" \
-    || { echo "object_detection nicht importierbar — diag:"; ./venv/bin/pip show object-detection || true; echo "PYTHONPATH=$PYTHONPATH"; exit 1; }
-echo "object_detection: import OK"
-
 if [ ! -d models/research ]; then
     git clone --quiet --depth 1 https://github.com/tensorflow/models.git
 fi
@@ -63,6 +59,9 @@ cp models/research/object_detection/packages/tf2/setup.py models/research/setup.
 ./venv/bin/pip install --quiet lxml || true
 # Garantiert importierbar: research-Root auf den PYTHONPATH (klappt immer)
 export PYTHONPATH="$PWD/models/research:${PYTHONPATH:-}"
+./venv/bin/python -c "import object_detection" \
+    || { echo "object_detection nicht importierbar — diag:"; ./venv/bin/pip show object-detection || true; echo "PYTHONPATH=${PYTHONPATH:-UNSET}"; exit 1; }
+echo "object_detection: import OK"
 
 if [ ! -d dataset ]; then
     mkdir dataset && unzip -q unified.zip -d dataset
