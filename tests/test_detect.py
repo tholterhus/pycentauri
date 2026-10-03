@@ -561,6 +561,34 @@ async def test_collect_disabled_by_default(tmp_path: Path) -> None:
     assert controller.state()["collect"]["enabled"] is False
 
 
+async def test_collect_per_print_cap_and_fifo(tmp_path: Path) -> None:
+    """Retention: max frames per print + global FIFO deletes the oldest."""
+    cfg = DetectConfig(
+        model_path=tmp_path / "missing_edgetpu.tflite",
+        collect_dir=tmp_path / "collect",
+        collect_interval_s=0.0,
+        collect_max_per_print=3,
+        collect_max_files=4,
+    )
+    # Zwei alte Frames vorab — beim 4. gesammelten Frame fliegt der älteste raus.
+    for name in ("20250101-000001.jpg", "20250101-000002.jpg"):
+        (tmp_path / "collect").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "collect" / name).write_bytes(_jpeg())
+    camera = FakeCamera([_jpeg()] * 8)
+    controller = DetectionController(
+        cfg, camera=camera, get_printer=lambda: FakePrinter([PRINTING] * 20 + [9])
+    )
+    controller.set_collecting(True)
+    await controller.start()
+    await _wait_for(lambda: controller._collect_count() >= 4, timeout_s=5.0)
+    await _wait_for(lambda: controller.state()["processing"] is False, timeout_s=5.0)
+    await controller.stop()
+    assert controller._collect_count() == 4  # cap global: 2 alt + 3 neu - 1 fifo
+    remaining = sorted(p.name for p in (tmp_path / "collect").glob("*.jpg"))
+    assert "20250101-000001.jpg" not in remaining  # ältestes per FIFO entfernt
+    assert len([p for p in remaining if p.startswith("2")]) >= 2  # neue frames da
+
+
 def test_set_action_runtime_gating(tmp_path: Path) -> None:
     cfg = DetectConfig(model_path=tmp_path / "m.tflite")
     controller = DetectionController(

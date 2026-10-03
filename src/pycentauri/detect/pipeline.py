@@ -93,6 +93,10 @@ class DetectConfig:
     collect_dir: Path = Path("data/collect")
     collect_target: int = 1000
     collect_interval_s: float = 5.0
+    # Retention: max frames per print and global FIFO cap — a 10 h print
+    # must not fill the disk with near-duplicate frames.
+    collect_max_per_print: int = 200
+    collect_max_files: int = 2000
 
     def __post_init__(self) -> None:
         if self.action not in ACTIONS:
@@ -247,6 +251,8 @@ class DetectionController:
                 "count": self._collect_count(),
                 "target": self.cfg.collect_target,
                 "interval_s": self.cfg.collect_interval_s,
+                "max_per_print": self.cfg.collect_max_per_print,
+                "max_files": self.cfg.collect_max_files,
             },
             "control_allowed": self._control_allowed,
             "last_event": self._last_event.as_dict() if self._last_event else None,
@@ -368,6 +374,7 @@ class DetectionController:
         started = time.monotonic()
         last_infer = 0.0
         last_collect = 0.0
+        collect_saved = 0
         try:
             _media_type, chunks = await self._camera.subscribe()
         except Exception as err:
@@ -385,9 +392,15 @@ class DetectionController:
                     continue
                 # Collection has no grace period — priming and first layers
                 # are valuable training material too.
-                if self._collecting and now - last_collect >= self.cfg.collect_interval_s:
+                if (
+                    self._collecting
+                    and collect_saved < self.cfg.collect_max_per_print
+                    and now - last_collect >= self.cfg.collect_interval_s
+                ):
                     last_collect = now
+                    collect_saved += 1
                     await self._save_collect_frame(jpeg)
+                    await self._enforce_collect_fifo()
                 if self._backend is None or now - started < self.cfg.grace_s:
                     continue
                 if now - last_infer < self.cfg.min_frame_interval_s:
@@ -410,6 +423,23 @@ class DetectionController:
             path.write_bytes(jpeg)
 
         await asyncio.get_running_loop().run_in_executor(None, _write)
+
+    async def _enforce_collect_fifo(self) -> None:
+        """Global FIFO cap: delete the oldest frames beyond the limit."""
+        limit = self.cfg.collect_max_files
+
+        def _trim() -> int:
+            frames = sorted(self.cfg.collect_dir.glob("*.jpg"))
+            removed = 0
+            for old in frames[: max(0, len(frames) - limit)]:
+                old.unlink(missing_ok=True)
+                old.with_suffix(".json").unlink(missing_ok=True)
+                removed += 1
+            return removed
+
+        removed = await asyncio.get_running_loop().run_in_executor(None, _trim)
+        if removed:
+            log.info("detection: collect FIFO trimmed %d oldest frames", removed)
 
     async def _evaluate(self, jpeg: bytes) -> None:
         if self._backend is None:
