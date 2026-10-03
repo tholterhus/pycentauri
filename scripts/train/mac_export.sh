@@ -3,6 +3,7 @@
 # (training.log ends with 15000/15000). Produces model-result.zip.
 set -euo pipefail
 cd "$(dirname "$0")"
+export PYTHONPATH="$PWD/models/research:${PYTHONPATH:-}"
 caffeinate -im ./venv/bin/python models/research/object_detection/export_tflite_graph_tf2.py \
     --pipeline_config_path=pipeline.config --trained_checkpoint_dir=training \
     --output_directory=export_tflite

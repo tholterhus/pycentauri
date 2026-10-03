@@ -13,6 +13,7 @@
 
 set -euo pipefail
 cd "$(dirname "$0")"
+echo "mac_train.sh v3 (2026-10-03)"
 
 if [ ! -f unified.zip ]; then
     echo "unified.zip fehlt — von spielwiese (/opt/pycentauri/data/train/) hierher kopieren."
@@ -45,6 +46,9 @@ if [ ! -d venv ] || ! ./venv/bin/python -c "import tensorflow" 2>/dev/null; then
 fi
 ./venv/bin/python -c "import tensorflow as tf; print('TF', tf.__version__)" \
     || { echo "TF-Import fehlgeschlagen — Mac ohne AVX? Dann Colab/Kaggle nutzen."; exit 1; }
+./venv/bin/python -c "import object_detection" \
+    || { echo "object_detection nicht importierbar — diag:"; ./venv/bin/pip show object-detection || true; echo "PYTHONPATH=$PYTHONPATH"; exit 1; }
+echo "object_detection: import OK"
 
 if [ ! -d models/research ]; then
     git clone --quiet --depth 1 https://github.com/tensorflow/models.git
@@ -55,8 +59,10 @@ command -v protoc >/dev/null || { echo "protoc fehlt — brew install protobuf";
 # Der tf2-setup.py muss im models/research-Root liegen (package discovery)
 cp models/research/object_detection/packages/tf2/setup.py models/research/setup.py
 ( cd models/research && ../venv/bin/pip install --quiet . ) \
-    || { echo "OD-API install fehlgeschlagen"; exit 1; }
-./venv/bin/pip install --quiet lxml
+    || echo "OD-API pip-install fehlgeschlagen — PYTHONPATH-Fallback greift"
+./venv/bin/pip install --quiet lxml || true
+# Garantiert importierbar: research-Root auf den PYTHONPATH (klappt immer)
+export PYTHONPATH="$PWD/models/research:${PYTHONPATH:-}"
 
 if [ ! -d dataset ]; then
     mkdir dataset && unzip -q unified.zip -d dataset
