@@ -62,17 +62,16 @@ def read_data_yaml(directory: Path) -> list[str]:
     for line in yaml.read_text(encoding="utf-8", errors="replace").splitlines():
         stripped = line.strip()
         if stripped.startswith("names:"):
-            in_names = True
+            rest = stripped.split(":", 1)[1].strip()
+            if rest.startswith("["):  # inline list: names: ['a', 'b']
+                names = [n.strip().strip("\"'") for n in rest.strip("[]").split(",") if n.strip()]
+                break
+            in_names = True  # block list: "names:" followed by "- x" lines
             continue
         if in_names:
             if stripped.startswith("-"):
-                names.append(stripped[1:].strip().strip("'\""))
-            elif stripped.startswith("["):
-                names = [
-                    n.strip().strip("'\"") for n in stripped.strip("[]").split(",") if n.strip()
-                ]
-                break
-            elif stripped and not stripped.startswith("-"):
+                names.append(stripped[1:].strip().strip("\"'"))
+            elif stripped:
                 break
     return names
 
@@ -86,9 +85,15 @@ def collect_yolo(source: Path) -> list[tuple[Path, list[tuple[str, float, float,
     out: list[tuple[Path, list[tuple[str, float, float, float, float]]]] = []
     names = read_data_yaml(source)
     splits = [s for s in ("train", "valid", "test") if (source / s).is_dir()]
+    corrupt = 0
     for split in splits:
         labels = source / split / "labels"
         for label_file in sorted(labels.glob("*.txt")):
+            # Roboflow zips sometimes carry macOS AppleDouble metadata
+            # (._label.txt) — skip those and any file we cannot parse.
+            if label_file.name.startswith("._"):
+                corrupt += 1
+                continue
             for ext in (".jpg", ".jpeg", ".png"):
                 image = source / split / "images" / (label_file.stem + ext)
                 if image.is_file():
@@ -96,20 +101,35 @@ def collect_yolo(source: Path) -> list[tuple[Path, list[tuple[str, float, float,
             else:
                 continue
             boxes: list[tuple[str, float, float, float, float]] = []
-            for line in label_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                lines = label_file.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                corrupt += 1
+                continue
+            for line in lines:
                 parts = line.split()
                 if len(parts) != 5:
                     continue
-                idx = int(parts[0])
-                if idx >= len(names):
+                try:
+                    idx = int(parts[0])
+                    cx, cy, w, h = (float(v) for v in parts[1:5])
+                except ValueError:
+                    corrupt += 1
+                    continue
+                if idx >= len(names) or max(w, h) > 1.5:
                     continue
                 target = map_class(names[idx])
                 if target is None:
                     continue
-                cx, cy, w, h = (float(v) for v in parts[1:5])
                 boxes.append((target, cx, cy, w, h))
             if boxes:
                 out.append((image, boxes))
+            else:
+                corrupt += 1
+    if corrupt:
+        print(
+            f"  {source.name}: {corrupt} label-dateien/zeilen übersprungen (leer, korrupt oder fremdklasse)"
+        )
     return out
 
 
