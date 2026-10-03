@@ -50,7 +50,7 @@ if [ ! -d models/research ]; then
     git clone --quiet --depth 1 https://github.com/tensorflow/models.git
 fi
 # protos werden mit grpcio-tools generiert (passend zur protobuf-runtime)
-./venv/bin/pip install --quiet grpcio-tools lxml
+./venv/bin/pip install --quiet grpcio-tools lxml matplotlib pycocotools tf-slim scipy opencv-python-headless
 # gencode der pb2-dateien muss zur protobuf-runtime passen (TF 2.20 → 6.33):
 # deshalb grpc_tools.protoc statt des brew-protoc
 ./venv/bin/python -m grpc_tools.protoc -Imodels/research --python_out=models/research models/research/object_detection/protos/*.proto
