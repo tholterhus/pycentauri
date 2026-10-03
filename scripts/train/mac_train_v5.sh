@@ -51,6 +51,28 @@ fi
 if [ ! -d models/research ]; then
     git clone --quiet --depth 1 https://github.com/tensorflow/models.git
 fi
+
+# Alle REQUIRED_PACKAGES des OD-API aus dem geklonten setup.py lesen und
+# ZUSAMMEN mit den TF-2.15-Pins installieren (ein Resolver-Aufruf = eine
+# kohärente Versionskette: numpy<2, protobuf 4.25, grpcio-tools 1.62).
+./venv/bin/python - << 'PY2'
+import ast
+src = open("models/research/object_detection/packages/tf2/setup.py").read()
+tree = ast.parse(src)
+pkgs = []
+for node in ast.walk(tree):
+    if isinstance(node, ast.Assign):
+        for t in node.targets:
+            if getattr(t, "id", None) == "REQUIRED_PACKAGES":
+                pkgs = [ast.literal_eval(e) for e in node.value.elts]
+keep = [p for p in pkgs if not p.startswith(("tensorflow==", "tf-models-official", "keras"))]
+open("/tmp/od-deps.txt", "w").write("\n".join(keep))
+print("od-deps:", keep)
+PY2
+./venv/bin/pip install --quiet "numpy==1.26.4" "protobuf==4.25.8" "grpcio-tools==1.62.3" \
+    "tf-models-official==2.15.2" "tensorflow_io==0.35.0" lvis matplotlib pycocotools tf-slim lxml scipy \
+    opencv-python-headless $(tr '\n' ' ' < /tmp/od-deps.txt) \
+    || echo "dep-install hatte konflikte —_training.log zeigt den grund"
 # protos werden mit grpcio-tools generiert (passend zur protobuf-runtime)
 ./venv/bin/pip install --quiet "grpcio-tools==1.62.3" "protobuf==4.25.8" "numpy==1.26.4" lxml matplotlib pycocotools tf-slim scipy opencv-python-headless lvis
 # gencode der pb2-dateien muss zur protobuf-runtime passen (TF 2.20 → 6.33):
@@ -94,9 +116,6 @@ open("pipeline.config", "w").write(cfg)
 print("config ok:", "num_classes: 1" in cfg)
 PY2
 fi
-
-# runtime-deps bei jedem lauf sicherstellen (idempotent, schnell wenn vorhanden)
-./venv/bin/pip install --quiet "numpy==1.26.4" "protobuf==4.25.8" "grpcio-tools==1.62.3" lvis matplotlib pycocotools tf-slim lxml scipy opencv-python-headless || true
 
 if pgrep -f "model_main_tf2" > /dev/null; then
     echo "training läuft bereits — monitor: tail -f training.log"
