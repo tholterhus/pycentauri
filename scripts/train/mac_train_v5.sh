@@ -77,6 +77,12 @@ PY2
 ./venv/bin/pip install --quiet "grpcio-tools==1.62.3" "protobuf==4.25.8" "numpy==1.26.4" lxml matplotlib pycocotools tf-slim scipy opencv-python-headless lvis
 # gencode der pb2-dateien muss zur protobuf-runtime passen (TF 2.20 → 6.33):
 # deshalb grpc_tools.protoc statt des brew-protoc
+# OD-API master: model_builder importiert pauschal alle feature-extractors.
+# Der EfficientNet-BiFPN braucht tf-models-official ('official.') -> tensorflow-text
+# - dafuer existiert kein arm64/py3.12-wheel zur TF 2.15. Wir nutzen ihn nicht
+# (wir trainieren SSD MobileNet) -> referenzen + datei entfernen.
+sed -i '' '/ssd_efficientnet_bifpn/d' models/research/object_detection/builders/model_builder.py
+rm -f models/research/object_detection/models/ssd_efficientnet_bifpn_feature_extractor.py
 ./venv/bin/python -m grpc_tools.protoc -Imodels/research --python_out=models/research models/research/object_detection/protos/*.proto
 # OD-API: setup.py liegt in object_detection/packages/tf2/ (liefert auch lxml)
 ./venv/bin/pip install --quiet lxml || true
