@@ -52,7 +52,9 @@ fi
 command -v protoc >/dev/null || { echo "protoc fehlt — brew install protobuf"; exit 1; }
 (cd models/research && protoc object_detection/protos/*.proto --python_out=.)
 # OD-API: setup.py liegt in object_detection/packages/tf2/ (liefert auch lxml)
-./venv/bin/pip install --quiet ./models/research/object_detection/packages/tf2/ \
+# Der tf2-setup.py muss im models/research-Root liegen (package discovery)
+cp models/research/object_detection/packages/tf2/setup.py models/research/setup.py
+( cd models/research && ../venv/bin/pip install --quiet . ) \
     || { echo "OD-API install fehlgeschlagen"; exit 1; }
 ./venv/bin/pip install --quiet lxml
 
