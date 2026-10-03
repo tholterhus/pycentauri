@@ -51,7 +51,10 @@ if [ ! -d models/research ]; then
 fi
 command -v protoc >/dev/null || { echo "protoc fehlt — brew install protobuf"; exit 1; }
 (cd models/research && protoc object_detection/protos/*.proto --python_out=.)
-./venv/bin/pip install --quiet models/research || echo "OD-API install: siehe models/research — setup.py alternativ manuell"
+# OD-API: setup.py liegt in object_detection/packages/tf2/ (liefert auch lxml)
+./venv/bin/pip install --quiet ./models/research/object_detection/packages/tf2/ \
+    || { echo "OD-API install fehlgeschlagen"; exit 1; }
+./venv/bin/pip install --quiet lxml
 
 if [ ! -d dataset ]; then
     mkdir dataset && unzip -q unified.zip -d dataset
