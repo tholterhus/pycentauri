@@ -43,6 +43,29 @@ the Edge TPU, deployed as a model pair in `data/models/`.
 
 Class set (from the verified community model design — see
 "Reference model"): `spaghetti`, `blobs`, `cracks`, `warping`.
+
+### Collect mechanics & retention (how the frames are made)
+
+* While the printer reports `print_status == 13`, one frame is written
+  to `data/collect/` every `collect_interval_s` (**5 s** default →
+  12 frames/minute), named by UTC timestamp.
+* Measured reality (first collection run, ~65 min print): 811 frames,
+  ~20 MB total (~25 KB per 640×360 JPEG).
+* Retention caps (both shown in the DETECT panel):
+  * `collect_max_per_print` (**200**): a print stops collecting after
+    200 frames (~the first 17 minutes) — near-duplicate frames add
+    nothing to training.
+  * `collect_max_files` (**2000**): global FIFO — when the directory
+    exceeds this, the oldest frames are deleted automatically after
+    every save. Worst-case disk usage ≈ 50 MB.
+* Without the caps a 12 h print would produce ~8,600 frames ≈ 215 MB.
+* Both limits live in `DetectConfig` (`src/pycentauri/detect/pipeline.py`);
+  collection toggles in the dashboard and resets to off on service
+  restart.
+* Known limitation: with the per-print cap the saved frames come from
+  the print's first minutes. An adaptive interval (spreading the 200
+  frames across the remaining print time, estimable from TotalTicks)
+  is a possible improvement — not implemented yet.
 Frames showing a healthy print get **no boxes** (negative examples —
 do not skip them; they are what keeps false alarms down).
 
