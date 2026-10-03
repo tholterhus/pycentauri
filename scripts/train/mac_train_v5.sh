@@ -70,7 +70,7 @@ open("/tmp/od-deps.txt", "w").write("\n".join(keep))
 print("od-deps:", keep)
 PY2
 ./venv/bin/pip install --quiet "numpy==1.26.4" "protobuf==4.25.8" "grpcio-tools==1.62.3" \
-    "tf-models-official==2.15.2" "tensorflow_io==0.35.0" lvis matplotlib pycocotools tf-slim lxml scipy \
+    "tf-models-official==2.15.0" tensorflow_io lvis matplotlib pycocotools tf-slim lxml scipy \
     opencv-python-headless $(tr '\n' ' ' < /tmp/od-deps.txt) \
     || echo "dep-install hatte konflikte —_training.log zeigt den grund"
 # protos werden mit grpcio-tools generiert (passend zur protobuf-runtime)
