@@ -169,25 +169,34 @@ def collect_voc(source: Path) -> list[tuple[Path, list[tuple[str, float, float, 
 
 
 def write_voc(
-    image: Path, boxes: list[tuple[str, float, float, float, float]], out_xml: Path, stem: str
+    image: Path,
+    boxes: list[tuple[str, float, float, float, float]],
+    out_xml: Path,
+    stem: str,
+    width_px: int,
+    height_px: int,
 ) -> None:
+    """Boxes arrive normalized (0..1) and are scaled with the REAL image
+    dimensions (x by width, y by height — a 640x360 camera frame has a
+    different height scale than a square roboflow image)."""
     ann = ET.Element("annotation")
     ET.SubElement(ann, "filename").text = stem + image.suffix
     size = ET.SubElement(ann, "size")
-    # width/height are re-measured by the OD API anyway; use placeholders
-    ET.SubElement(size, "width").text = "640"
-    ET.SubElement(size, "height").text = "640"
+    ET.SubElement(size, "width").text = str(width_px)
+    ET.SubElement(size, "height").text = str(height_px)
     ET.SubElement(size, "depth").text = "3"
     for target, cx, cy, w, h in boxes:
         obj = ET.SubElement(ann, "object")
         ET.SubElement(obj, "name").text = target
         bnd = ET.SubElement(obj, "bndbox")
-        ET.SubElement(bnd, "xmin").text = str(max(0.0, cx - w / 2))
-        ET.SubElement(bnd, "ymin").text = str(max(0.0, cy - h / 2))
-        ET.SubElement(bnd, "xmax").text = str(min(1.0, cx + w / 2))
-        ET.SubElement(bnd, "ymax").text = str(min(1.0, cy + h / 2))
-        for el in (bnd.find("xmin"), bnd.find("ymin"), bnd.find("xmax"), bnd.find("ymax")):
-            el.text = str(round(float(el.text or 0) * 640, 1))  # px @640 for readability
+        x0 = max(0.0, (cx - w / 2)) * width_px
+        y0 = max(0.0, (cy - h / 2)) * height_px
+        x1 = min(1.0, cx + w / 2) * width_px
+        y1 = min(1.0, cy + h / 2) * height_px
+        ET.SubElement(bnd, "xmin").text = str(round(x0, 1))
+        ET.SubElement(bnd, "ymin").text = str(round(y0, 1))
+        ET.SubElement(bnd, "xmax").text = str(round(x1, 1))
+        ET.SubElement(bnd, "ymax").text = str(round(y1, 1))
     ET.ElementTree(ann).write(out_xml, encoding="utf-8", xml_declaration=True)
 
 
@@ -239,7 +248,13 @@ def main() -> int:
         split = "val" if i < n_val else "train"
         stem = f"{i:05d}_{image.parent.name[:20].replace(' ', '_')}"
         shutil.copy2(image, out / split / "images" / (stem + image.suffix))
-        write_voc(image, known, out / split / "annotations" / (stem + ".xml"), stem)
+        from PIL import Image
+
+        with Image.open(image) as im:
+            width_px, height_px = im.size
+        write_voc(
+            image, known, out / split / "annotations" / (stem + ".xml"), stem, width_px, height_px
+        )
         for target, *_ in known:
             counts[target] += 1
 
