@@ -49,13 +49,12 @@ fi
 if [ ! -d models/research ]; then
     git clone --quiet --depth 1 https://github.com/tensorflow/models.git
 fi
-command -v protoc >/dev/null || { echo "protoc fehlt — brew install protobuf"; exit 1; }
-(cd models/research && protoc object_detection/protos/*.proto --python_out=.)
+# protos werden mit grpcio-tools generiert (passend zur protobuf-runtime)
+./venv/bin/pip install --quiet grpcio-tools lxml
+# gencode der pb2-dateien muss zur protobuf-runtime passen (TF 2.20 → 6.33):
+# deshalb grpc_tools.protoc statt des brew-protoc
+./venv/bin/python -m grpc_tools.protoc -Imodels/research --python_out=models/research models/research/object_detection/protos/*.proto
 # OD-API: setup.py liegt in object_detection/packages/tf2/ (liefert auch lxml)
-# Der tf2-setup.py muss im models/research-Root liegen (package discovery)
-cp models/research/object_detection/packages/tf2/setup.py models/research/setup.py
-( cd models/research && ../venv/bin/pip install --quiet . ) \
-    || echo "OD-API pip-install fehlgeschlagen — PYTHONPATH-Fallback greift"
 ./venv/bin/pip install --quiet lxml || true
 # Garantiert importierbar: research-Root auf den PYTHONPATH (klappt immer)
 export PYTHONPATH="$PWD/models/research:${PYTHONPATH:-}"
