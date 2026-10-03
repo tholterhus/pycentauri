@@ -68,7 +68,9 @@ def read_data_yaml(directory: Path) -> list[str]:
             if stripped.startswith("-"):
                 names.append(stripped[1:].strip().strip("'\""))
             elif stripped.startswith("["):
-                names = [n.strip().strip("'\"") for n in stripped.strip("[]").split(",") if n.strip()]
+                names = [
+                    n.strip().strip("'\"") for n in stripped.strip("[]").split(",") if n.strip()
+                ]
                 break
             elif stripped and not stripped.startswith("-"):
                 break
@@ -146,7 +148,9 @@ def collect_voc(source: Path) -> list[tuple[Path, list[tuple[str, float, float, 
     return out
 
 
-def write_voc(image: Path, boxes: list[tuple[str, float, float, float, float]], out_xml: Path, stem: str) -> None:
+def write_voc(
+    image: Path, boxes: list[tuple[str, float, float, float, float]], out_xml: Path, stem: str
+) -> None:
     ann = ET.Element("annotation")
     ET.SubElement(ann, "filename").text = stem + image.suffix
     size = ET.SubElement(ann, "size")
@@ -168,9 +172,15 @@ def write_voc(image: Path, boxes: list[tuple[str, float, float, float, float]], 
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--roboflow", action="append", default=[], help="roboflow YOLO source dir (repeatable)")
-    ap.add_argument("--own", action="append", default=[], help="own Label Studio VOC export dir (repeatable)")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--roboflow", action="append", default=[], help="roboflow YOLO source dir (repeatable)"
+    )
+    ap.add_argument(
+        "--own", action="append", default=[], help="own Label Studio VOC export dir (repeatable)"
+    )
     ap.add_argument("--out", default="data/train/unified", help="output directory")
     ap.add_argument("--val-split", type=float, default=0.2)
     ap.add_argument("--seed", type=int, default=42)
@@ -221,7 +231,9 @@ def main() -> int:
     ]
     print("\n".join(report))
     (out / "report.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
-    print(f"→ {out}\nNächster Schritt: dataset-zip nach Colab (docs/TRAINING_PLAN.md, Training-Schritt).")
+    print(
+        f"→ {out}\nNächster Schritt: dataset-zip nach Colab (docs/TRAINING_PLAN.md, Training-Schritt)."
+    )
     return 0
 
 
