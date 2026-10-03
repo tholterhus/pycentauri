@@ -114,17 +114,29 @@ if true; then  # config immer neu generieren (platzhalter-ersatz)
     ./venv/bin/python - << 'PY2'
 import re
 cfg = open("ssd_mobilenet_v2_320x320_coco17_tpu-8/pipeline.config").read()
-cfg = re.sub(r"num_classes: \d+", "num_classes: 1", cfg)
-cfg = re.sub(r"batch_size: \d+", "batch_size: 8", cfg)
-cfg = re.sub(r"num_steps: \d+", "num_steps: 15000", cfg)
-cfg = re.sub(r"fine_tune_checkpoint: \"[^\"]*\"",
-             'fine_tune_checkpoint: "ssd_mobilenet_v2_320x320_coco17_tpu-8/checkpoint/ckpt-0"', cfg)
-cfg = cfg.replace("PATH_TO_BE_CONFIGURED/train.record", "train.record")
-cfg = cfg.replace("PATH_TO_BE_CONFIGURED/val.record", "val.record")
-cfg = cfg.replace("PATH_TO_BE_CONFIGURED/label_map.pbtxt", "label_map.pbtxt")
-cfg = cfg.replace("PATH_TO_BE_CONFIGURED", "ssd_mobilenet_v2_320x320_coco17_tpu-8/checkpoint/ckpt-0")  # nackter fine_tune-platzhalter
-cfg = re.sub(r"keep_checkpoint_max: \d+", "keep_checkpoint_max: 2", cfg)
+MODEL_DIR = "ssd_mobilenet_v2_320x320_coco17_tpu-8"
+cfg = re.sub(r"num_classes: \\d+", "num_classes: 1", cfg)
+cfg = re.sub(r"batch_size: \\d+", "batch_size: 8", cfg)
+cfg = re.sub(r"num_steps: \\d+", "num_steps: 15000", cfg)
+cfg = re.sub(r"keep_checkpoint_max: \\d+", "keep_checkpoint_max: 2", cfg)
+
+# das template hat fuenf NACKTE "PATH_TO_BE_CONFIGURED"-platzhalter in
+# fester reihenfolge (feinjustiert-checkpoint, train-labelmap, train-input,
+# eval-labelmap, eval-input) — positionsabhaengig ersetzen:
+values = [
+    MODEL_DIR + "/checkpoint/ckpt-0",
+    "dataset/classes_label_map.pbtxt",
+    "train.record",
+    "dataset/classes_label_map.pbtxt",
+    "val.record",
+]
+parts = cfg.split('"PATH_TO_BE_CONFIGURED"')
+assert len(parts) - 1 == len(values), f"platzhalter-anzahl un erwartet: {len(parts) - 1}"
+cfg = parts[0]
+for value, tail in zip(values, parts[1:]):
+    cfg += '"' + value + '"' + tail
 open("pipeline.config", "w").write(cfg)
+print("config ok:", cfg.count("PATH_TO_BE_CONFIGURED") == 0 and "num_classes: 1" in cfg)
 print("config ok:", "num_classes: 1" in cfg)
 PY2
 fi
