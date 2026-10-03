@@ -76,7 +76,17 @@ PY2
 # protos werden mit grpcio-tools generiert (passend zur protobuf-runtime)
 ./venv/bin/pip install --quiet "grpcio-tools==1.62.3" "protobuf==4.25.8" "numpy==1.26.4" lxml matplotlib pycocotools tf-slim scipy opencv-python-headless lvis
 # gencode der pb2-dateien muss zur protobuf-runtime passen (TF 2.20 → 6.33):
-./venv/bin/pip install --quiet --no-deps "tf-models-official==2.15.0"  # official.* fuer efficientnet-import, ohne tensorflow-text
+./venv/bin/pip install --quiet --no-deps "tf-models-official==2.15.0"
+# alle deps des official-pakets — AUSSER tensorflow-text (kein wheel) und
+# tensorflow (gepinnt). install via requirements-file (markers korrekt):
+./venv/bin/python - << 'PY3'
+import importlib.metadata as im
+deps = im.requires("tf-models-official") or []
+keep = [d for d in deps if not d.split(";")[0].strip().startswith(("tensorflow-text", "tensorflow"))]
+open("/tmp/official-deps.txt", "w").write("\n".join(keep))
+print("official-deps installiert:", keep)
+PY3
+./venv/bin/pip install --quiet -r /tmp/official-deps.txt || echo "official-deps: teilausfall — training.log zeigt es"
 # deshalb grpc_tools.protoc statt des brew-protoc
 ./venv/bin/python -m grpc_tools.protoc -Imodels/research --python_out=models/research models/research/object_detection/protos/*.proto
 # OD-API: setup.py liegt in object_detection/packages/tf2/ (liefert auch lxml)
