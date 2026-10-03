@@ -136,6 +136,16 @@ nohup caffeinate -ims ./venv/bin/python models/research/object_detection/model_m
     --model_dir=training --pipeline_config_path=pipeline.config \
     --num_train_steps=15000 > training.log 2>&1 &
 disown
-echo "training gestartet (PID $!) — caffeinate hält den Mac wach"
+TPID=$!
+echo "training gestartet (PID $TPID) — caffeinate hält den Mac wach"
+# Crash-früherkennung: stirbt der prozess in den ersten 90 s, wird der
+# fehler automatisch ausgegeben (statt demutzer fern-diagnose)
+sleep 90
+if ! kill -0 "$TPID" 2>/dev/null; then
+    echo "=== TRAINING FRÜH GESCHEITERT — letzte 40 zeilen: ==="
+    tail -40 training.log
+    exit 1
+fi
+echo "training läuft stabil — monitor: tail -f training.log"
 echo "monitor: tail -f training.log   |   netzteil anschließen!"
 echo "nach dem letzten Schritt (15000/15000): bash mac_export.sh"
