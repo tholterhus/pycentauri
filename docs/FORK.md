@@ -19,10 +19,20 @@ outline for any future upstream contribution.
 
 ## Features added in this fork
 
-* **0.11.x era (retroactively documented in CHANGELOG 0.11.0)**: system
-  installer + INSTALL.md, camera stream lifecycle (SDCP Cmd 386 with
-  `allow_empty_mainboard`), PWA assets, `LOG_LEVEL`,
-  `pycentauri.conf-example`, generalized example addresses
+* **Installation & operations (0.11.x)**:
+  * `install-linux.sh` — one-command setup as a systemd service (venv,
+    unit file, `/etc/pycentauri.conf`), with a plain-language
+    [`INSTALL.md`](INSTALL.md) walkthrough
+  * **Camera lifecycle**: the printer only runs its webcam while someone
+    is "watching". The dashboard asks it to start the stream (SDCP
+    command 386) and keeps it alive with a synthetic viewer
+    (`allow_empty_mainboard`) while the dashboard is open, then lets it
+    sleep again — no permanent second connection to the printer
+  * **PWA assets**: the dashboard can be installed as an app on phone
+    and desktop (icons, manifest)
+  * Configurable log verbosity (`LOG_LEVEL`), an example service config
+    (`pycentauri.conf-example`) and `printer.example` placeholders
+    instead of the hardcoded LAN addresses in upstream's examples
 * **Failed-print ("spaghetti") detection** (v0.12.0):
   * `src/pycentauri/detect/` — LiteRT/Edge-TPU backend with CPU fallback
     and automatic loading of the uncompiled model sibling, plus the
