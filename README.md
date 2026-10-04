@@ -482,12 +482,16 @@ Notes:
 
 A trained 1-class spaghetti model (SSD MobileNet V2 320×320) ships as
 assets of the [v0.13.0 release](https://github.com/tholterhus/pycentauri/releases/tag/v0.13.0):
-`spaghetti.tflite` (int8, the CPU/pairing variant),
+`spaghetti_edgetpu.tflite` (the Coral variant),
+`spaghetti.tflite` (int8, the CPU sibling),
 `spaghetti-float32.tflite`, `spaghetti.txt` (labels) and
-`model-result.zip` (the original export bundle). Copy them into
-`data/models/` and run `centauri detect check`; the Edge-TPU-compiled
-variant is one free Colab pass away
-(`scripts/train/colab_edgetpu_compile.md`).
+`model-result.zip` (the original export bundle).
+
+**One manual step is required**: the pip package does not bundle any
+model — download the files above into `data/models/` (the installer
+only auto-fetches the COCO *smoke* model as a pipeline test) and point
+`DETECT_MODEL` at `data/models/spaghetti_edgetpu.tflite`. Then run
+`centauri detect check`; details in [INSTALL.md](INSTALL.md).
 
 The model was trained on 7,295 images / 13,791 boxes assembled from:
 
