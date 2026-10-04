@@ -407,6 +407,26 @@ Notes:
 - Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs and a
   `.txt` label sidecar works.
 
+### Trained model & training data attribution
+
+A trained 1-class spaghetti model (SSD MobileNet V2 320×320) ships as
+assets of the [v0.13.0 release](https://github.com/tholterhus/pycentauri/releases/tag/v0.13.0):
+`spaghetti.tflite` (int8, the CPU/pairing variant),
+`spaghetti-float32.tflite`, `spaghetti.txt` (labels) and
+`model-result.zip` (the original export bundle). Copy them into
+`data/models/` and run `centauri detect check`; the Edge-TPU-compiled
+variant is one free Colab pass away
+(`scripts/train/colab_edgetpu_compile.md`).
+
+The model was trained on 7,295 images / 13,791 boxes assembled from:
+
+- "3D Printer Spaghetti Detection" dataset by training-l9tjj (Roboflow
+  Universe, Public Domain)
+- "Spaghetti" dataset by aiot-innowork (Roboflow Universe, CC BY 4.0) —
+  modified: only the spaghetti class subset used
+- Base architecture: SSD MobileNet V2 320×320, TensorFlow Object
+  Detection API (Apache-2.0)
+
 ## Print status codes
 
 `print_status` in the API and library uses the CC1 firmware's code

@@ -131,11 +131,8 @@ def main() -> int:
     ap.add_argument("--val-out", default="val.record")
     args = ap.parse_args()
 
-    classes = [
-        c.strip()
-        for c in open(args.classes_file, encoding="utf-8").read().splitlines()
-        if c.strip()
-    ]
+    with open(args.classes_file, encoding="utf-8") as classes_fh:
+        classes = [c.strip() for c in classes_fh.read().splitlines() if c.strip()]
     label_to_id = {name: i + 1 for i, name in enumerate(classes)}  # 1-based
     with tf.io.gfile.GFile(args.classes_file.replace(".txt", "_label_map.pbtxt"), "w") as f:
         for name, cid in label_to_id.items():

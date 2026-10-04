@@ -11,27 +11,36 @@ the Edge TPU, deployed as a model pair in `data/models/`.
 
 ## Status checklist
 
+Status 2026-10-04: dataset + Mac training complete, int8 model exported
+and probe-verified. Open: Edge-TPU compilation (Colab, see
+`scripts/train/colab_edgetpu_compile.md`), deployment + acceptance run,
+own-frame labeling for the 4-class v2 model.
+
 - [x] Collect mode live in dashboard (`POST /api/detect/collect`)
 - [x] `scripts/fetch-smoke-model.sh` (pipeline smoke test)
 - [x] `centauri detect test` (model-vs-image validation tool)
-- [ ] **User: print with Collect enabled** — target 600+ own frames,
-      incl. 50–100 real failure frames (deliberate filament pulls)
-- [ ] **User: free Roboflow account + API key** →
-      `install -m 600 /dev/null ~/.roboflow-key` (paste key)
-- [ ] **User: browse candidates below in the browser**, note license +
-      image count in `scripts/roboflow-candidates.txt`
-- [ ] Run `scripts/roboflow-harvest.py check` (needs the key)
-- [ ] Run `scripts/roboflow-harvest.py download` (YOLO-format zips →
-      `data/train/roboflow/`)
-- [ ] Label own frames (Label Studio, see below) — classes must match
-- [ ] `scripts/prepare-dataset.py` (assembly: Roboflow + own frames →
-      unified Pascal VOC + train/val split) — write when data exists
-- [ ] Colab training run (steps below)
-- [ ] int8 TFLite export + `edgetpu_compiler`
+- [x] **User: print with Collect enabled** — 1,011 own frames collected
+      (200-per-print cap hit); no deliberate failure frames yet
+- [x] **User: free Roboflow account + API key** → `~/.roboflow-key`
+- [x] **User: browse candidates below** — licenses verified: Public
+      Domain (training-l9tjj) + CC BY 4.0 (aiot-innowork)
+- [x] `scripts/roboflow-harvest.py check` (3,177 images in v3)
+- [x] Roboflow download — via browser (the script route is
+      Cloudflare-blocked); unified dataset: 7,295 images / 13,791 boxes
+- [ ] Label own frames (Label Studio, see below) — classes must match;
+      feeds the 4-class v2 model (v1 = Roboflow data only)
+- [x] `scripts/prepare-dataset.py` + TFRecords (built on the Mac:
+      5,836 train / 1,459 val)
+- [x] Training run — done **on the Mac** (`mac_train_v5.sh`, TF 2.15.1),
+      not Colab; int8 TFLite exported (`mac_export_v4.sh`)
+- [ ] `edgetpu_compiler` → `spaghetti_edgetpu.tflite`
+      (compile-only Colab: `scripts/train/colab_edgetpu_compile.md`)
 - [ ] Deploy model pair + labels to `data/models/`, validate with
-      `centauri detect test` over labeled samples
+      `centauri detect test` over labeled samples (int8 + float32 +
+      labels are in place; the Edge-TPU variant is missing)
 - [ ] Tune threshold/window; arm via dashboard (Pause first, Stop later)
-- [ ] Release as v0.13.0 (CHANGELOG, docs, tag)
+- [x] Release as v0.13.0 (CHANGELOG, docs, tag) — model artifacts
+      attached to the release; deploy/acceptance checkboxes stay open
 
 ## Data sources
 

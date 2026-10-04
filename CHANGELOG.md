@@ -6,9 +6,31 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-04
+
 ### Added
+- Trained spaghetti model artifacts (v1: 1 class, SSD MobileNet V2
+  320×320; int8 + float32 pair + labels) attached to this release.
+  Trained on 7,295 images / 13,791 boxes — Roboflow Universe datasets
+  plus frames collected from this printer (attribution in the README).
+- Full training pipeline: `scripts/prepare-dataset.py` (Roboflow YOLO +
+  own frames → unified dataset), `scripts/train/build_tfrecords.py`
+  (TFRecord builder), `scripts/train/mac_train_v5.sh` /
+  `mac_export_v4.sh` (local training on Apple Silicon, TF 2.15.1 OD-API)
+  and `scripts/train/colab_spaghetti.py` (Colab cells incl. Edge TPU
+  compilation) with the `scripts/train/HANDOFF_MAC.md` handover.
+- Collect retention caps: max 200 frames per print and a global FIFO of
+  2,000 files (both limits visible in the DETECT panel).
 - `docs/FORK.md`: divergence map against upstream (features, deliberate
   behavior changes, upstream sync routine, contribution path).
+
+### Fixed
+- `centauri detect check` probe: run inference with the batch dimension
+  added, so the classes/scores output disambiguation works with real
+  exported models (verified against the trained model).
+- Mac training scripts: OD-API dependency pinning (TF 2.15.1 +
+  tensorflow_io), proto generation via grpcio-tools, pipeline.config
+  placeholder replacement, early-crash log reporting.
 
 ## [0.12.0] - 2026-10-02
 
