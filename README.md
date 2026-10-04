@@ -478,6 +478,16 @@ Notes:
 - Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs and a
   `.txt` label sidecar works.
 
+### What the model detects — and what it doesn't
+
+The shipped model knows exactly **one failure mode: spaghetti** (a print
+that has detached and turned into a stringy mess). It does **not**
+detect warping, zits/scars, layer shifts, or other defect types — those
+require a retrained multi-class model (spaghetti, blobs, cracks,
+warping), which in turn needs labeled examples of each failure mode on
+your own camera. Until then: treat the detector as a runaway-print
+alarm, not a general print-quality inspector.
+
 ### Trained model & training data attribution
 
 A trained 1-class spaghetti model (SSD MobileNet V2 320×320) ships as
