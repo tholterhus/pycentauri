@@ -6,6 +6,23 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-10-05
+
+### Added
+- Configurable analysis interval: `--detect-interval` / `DETECT_INTERVAL`
+  (seconds between analyzed frames, default 1).
+- Status alerts carry print context (job name, layer/progress) and a
+  best-effort pause reason — on a CC2 an empty filament sensor while
+  paused is reported as "(filament runout)". Raw firmware status codes
+  are logged with every alert.
+- The armed response (notify/pause/stop) persists across service
+  restarts (`DETECT_ACTION` in the config is the initial default).
+- Telegram alerts for print-state changes — paused (e.g. filament
+  switch), aborted, finished, printer error — each a one-liner with the
+  latest camera frame.
+- Layer-aware training-frame collection: first layers densely, then one
+  frame per `total_layers // collect_max_per_print` layer changes.
+
 ## [0.13.1] - 2026-10-05
 
 ### Changed
