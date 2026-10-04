@@ -14,6 +14,10 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   removed (sed 's/PYCENTAURI_//g').
 
 ### Added
+- Layer-aware training-frame collection: first 3 layers densely (5 s),
+  then one frame per `total_layers // collect_max_per_print` layer
+  changes (20 s floor) — the per-print budget now covers the whole
+  print. Config: `collect_first_layers`, `collect_min_gap_s`.
 - Telegram alerts for print-state changes — paused (e.g. filament
   switch), aborted, finished, printer error — each a one-liner with the
   latest camera frame, sent whenever the printer's status code changes

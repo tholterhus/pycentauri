@@ -60,9 +60,15 @@ Class set (from the verified community model design — see
 
 ### Collect mechanics & retention (how the frames are made)
 
-* While the printer reports `print_status == 13`, one frame is written
-  to `data/collect/` every `collect_interval_s` (**5 s** default →
-  12 frames/minute), named by UTC timestamp.
+* While the printer reports `print_status == 13`, frames are written
+  to `data/collect/`, named by UTC timestamp. Layer-aware schedule
+  (2026-10-05): the **first `collect_first_layers` layers (3)** collect
+  densely every `collect_interval_s` (**5 s**) — the bed-adhesion zone —
+  then one frame per `total_layers // collect_max_per_print` **layer
+  changes** (e.g. 2,000-layer print / 200 budget → every 10th layer),
+  floor-limited by `collect_min_gap_s` (**20 s**). Result: the budget
+  spreads over the WHOLE print instead of the first 17 minutes. Without
+  layer info the old time-interval mode applies as fallback.
 * Measured reality (first collection run, ~65 min print): 811 frames,
   ~20 MB total (~25 KB per 640×360 JPEG).
 * Retention caps (both shown in the DETECT panel):
@@ -76,10 +82,6 @@ Class set (from the verified community model design — see
 * Both limits live in `DetectConfig` (`src/pycentauri/detect/pipeline.py`);
   collection toggles in the dashboard and resets to off on service
   restart.
-* Known limitation: with the per-print cap the saved frames come from
-  the print's first minutes. An adaptive interval (spreading the 200
-  frames across the remaining print time, estimable from TotalTicks)
-  is a possible improvement — not implemented yet.
 Frames showing a healthy print get **no boxes** (negative examples —
 do not skip them; they are what keeps false alarms down).
 

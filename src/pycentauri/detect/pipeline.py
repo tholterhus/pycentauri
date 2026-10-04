@@ -116,6 +116,11 @@ class DetectConfig:
     collect_dir: Path = Path("data/collect")
     collect_target: int = 1000
     collect_interval_s: float = 5.0
+    # Layer-aware collection: the first layers densely (interval), then one
+    # frame per total//max_per_print layer changes — evenly spread over the
+    # WHOLE print instead of burning the budget in the first minutes.
+    collect_first_layers: int = 3
+    collect_min_gap_s: float = 20.0  # floor between two adaptive frames
     # Retention: max frames per print and global FIFO cap — a 10 h print
     # must not fill the disk with near-duplicate frames.
     collect_max_per_print: int = 200
@@ -284,6 +289,9 @@ class DetectionController:
         self._active = False  # printing-ish (13 or filament switch) — subscribed
         self._fired = False  # one alert per print
         self._last_code: int | None = None  # previous print_status
+        self._layer: int | None = None
+        self._total_layers: int | None = None
+        self._last_collect_layer: int | None = None
         self._last_frame: bytes | None = None  # latest camera JPEG
         self._status_posts: set[asyncio.Task[None]] = set()
         self._window: deque[bool] = deque(maxlen=cfg.window_size)
@@ -420,6 +428,9 @@ class DetectionController:
             backoff = min(backoff * 2, 30.0)
 
     def _on_status(self, st: Status) -> None:
+        pi = st.print_info
+        self._layer = pi.current_layer if pi else None
+        self._total_layers = pi.total_layer if pi else None
         code = st.print_status
         prev = self._last_code
         self._last_code = code
@@ -500,13 +511,10 @@ class DetectionController:
                 self._last_frame = jpeg
                 # Collection has no grace period — priming and first layers
                 # are valuable training material too.
-                if (
-                    self._collecting
-                    and collect_saved < self.cfg.collect_max_per_print
-                    and now - last_collect >= self.cfg.collect_interval_s
-                ):
+                if self._collecting and self._collect_due(now, last_collect, collect_saved):
                     last_collect = now
                     collect_saved += 1
+                    self._last_collect_layer = self._layer
                     await self._save_collect_frame(jpeg)
                     await self._enforce_collect_fifo()
                 if self._backend is None or now - started < self.cfg.grace_s:
@@ -515,6 +523,25 @@ class DetectionController:
                     continue
                 last_infer = now
                 await self._evaluate(jpeg)
+
+    def _collect_due(self, now: float, last_collect: float, collect_saved: int) -> bool:
+        """Decide whether to save a training frame at ``now``.
+
+        First layers (and any print without layer info) collect on the
+        time interval; afterwards one frame per ``total // max_per_print``
+        layer changes, floor-limited by ``collect_min_gap_s``.
+        """
+        if collect_saved >= self.cfg.collect_max_per_print:
+            return False
+        layer = self._layer or 0
+        total = self._total_layers or 0
+        if layer <= 0 or total <= 0 or layer <= self.cfg.collect_first_layers:
+            return now - last_collect >= self.cfg.collect_interval_s
+        gap_layers = max(1, total // self.cfg.collect_max_per_print)
+        last = self._last_collect_layer
+        if last is None or layer - last < gap_layers:
+            return False
+        return now - last_collect >= self.cfg.collect_min_gap_s
 
     async def _save_collect_frame(self, jpeg: bytes) -> None:
         """Write one training frame (off the event loop), timestamped."""

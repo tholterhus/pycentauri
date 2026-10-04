@@ -789,11 +789,11 @@ def cmd_server(
     detect_webhook: str | None = typer.Option(
         None, "--detect-webhook", help="POST a JSON alert to this URL on detection."
     ),
-    detect_telegram_token: str | None = typer.Option(
-        None, "--detect-telegram-token", help="Telegram bot token (BotFather) for push alerts."
+    telegram_token: str | None = typer.Option(
+        None, "--telegram-token", help="Telegram bot token (BotFather) for push alerts."
     ),
-    detect_telegram_chat_id: str | None = typer.Option(
-        None, "--detect-telegram-chat-id", help="Telegram chat id receiving the alerts."
+    telegram_chat_id: str | None = typer.Option(
+        None, "--telegram-chat-id", help="Telegram chat id receiving the alerts."
     ),
     detect_threshold: float = typer.Option(
         0.5, "--detect-threshold", help="Minimum detection score, 0..1."
@@ -835,8 +835,8 @@ def cmd_server(
             grace_s=detect_grace,
             action=detect_action,
             webhook_url=detect_webhook,
-            telegram_token=detect_telegram_token,
-            telegram_chat_id=detect_telegram_chat_id,
+            telegram_token=telegram_token,
+            telegram_chat_id=telegram_chat_id,
             evidence_dir=detect_evidence_dir,
             force_cpu=detect_cpu,
         )

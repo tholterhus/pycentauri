@@ -886,3 +886,32 @@ async def test_controller_sends_telegram_on_status_changes(
     # one alert per printing segment — pause/resume re-arms by design
     assert len(detections) == 2
     assert all(d["event"]["evidence"] for d in detections)
+
+
+def test_collect_due_layer_aware(tmp_path: Path) -> None:
+    from pycentauri.detect.pipeline import DetectionController
+
+    cfg = DetectConfig(
+        model_path=tmp_path / "m.tflite",
+        collect_max_per_print=200,
+        collect_first_layers=3,
+        collect_interval_s=5.0,
+        collect_min_gap_s=20.0,
+    )
+    c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+
+    # no layer info / dense phase: time interval, min-gap floor does not apply
+    assert c._collect_due(100.0, 95.0, 0)
+    c._layer, c._total_layers = 2, 2000
+    assert c._collect_due(100.0, 95.0, 0)
+
+    # adaptive phase (2000 layers / 200 budget -> every 10 layers)
+    c._layer = 4
+    c._last_collect_layer = None
+    assert not c._collect_due(100.0, 95.0, 0)  # no reference layer yet
+    c._last_collect_layer = 3
+    assert not c._collect_due(100.0, 95.0, 0)  # 4-3 < 10
+    c._layer = 13
+    assert c._collect_due(100.0, 75.0, 0)  # 13-3 >= 10, 25 s gap ok
+    assert not c._collect_due(100.0, 90.0, 0)  # min-gap floor (5 s < 20 s)
+    assert not c._collect_due(100.0, 0.0, 200)  # budget exhausted
