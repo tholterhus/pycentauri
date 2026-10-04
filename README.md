@@ -415,6 +415,8 @@ pip install 'pycentauri[detect,server]'
 
 # 3. optional: install the Edge TPU runtime for a Coral
 #    (see INSTALL.md, "Failed-print detection (Coral) — step by step")
+#    No Coral? Skip this — detection then runs on the CPU, ~200 ms per
+#    look instead of ~5-15 ms. Everything else behaves identically.
 
 # 4. verify and run
 centauri detect check

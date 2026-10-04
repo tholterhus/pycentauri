@@ -41,9 +41,14 @@ outline for any future upstream contribution.
     (`pycentauri.conf-example`) and `printer.example` placeholders
     instead of the hardcoded LAN addresses in upstream's examples
 * **Failed-print ("spaghetti") detection** (v0.12.0):
-  * `src/pycentauri/detect/` — LiteRT/Edge-TPU backend with CPU fallback
-    and automatic loading of the uncompiled model sibling, plus the
-    collection + arming pipeline
+  * `src/pycentauri/detect/` — **works with or without a Google Coral**:
+    with the Coral stick, its AI chip does the camera analysis (~5–15 ms
+    per look); without one, the same analysis runs on the normal CPU
+    (~200 ms — still plenty at one look per second). The right variant
+    is chosen automatically at startup, and the two model files ship as
+    a pair so a missing Coral never breaks anything. Includes the alert
+    pipeline (evidence snapshots, Telegram, optional pause/stop) and
+    training-frame collection
   * Dashboard DETECT panel: backend badge, WATCHING flag, K-of-M window,
     evidence thumbnails, runtime response switch (training-frame
     collection runs headless via `POST /api/detect/collect` and persists
