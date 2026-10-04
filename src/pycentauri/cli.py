@@ -798,6 +798,11 @@ def cmd_server(
     detect_threshold: float = typer.Option(
         0.5, "--detect-threshold", help="Minimum detection score, 0..1."
     ),
+    detect_interval: float = typer.Option(
+        1.0,
+        "--detect-interval",
+        help="Seconds between analyzed frames (default 1; raise it to reduce CPU/TPU work).",
+    ),
     detect_grace: float = typer.Option(
         90.0, "--detect-grace", help="Seconds after print start to skip (priming noise)."
     ),
@@ -832,6 +837,7 @@ def cmd_server(
         detect_cfg = DetectConfig(
             model_path=detect_model,
             threshold=detect_threshold,
+            min_frame_interval_s=detect_interval,
             grace_s=detect_grace,
             action=detect_action,
             webhook_url=detect_webhook,
