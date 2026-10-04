@@ -7,7 +7,7 @@
   <title>pycentauri – Centauri Carbon Dashboard</title>
   <link rel="manifest" href="manifest.webmanifest?v=0.13.0">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=0.13.0">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=3">
   <link rel="icon" href="icons/icon.svg?v=0.13.0">
 </head>
 <body>
@@ -204,17 +204,12 @@
         </header>
         <div class="detect-live">
           <span class="detect-state" id="detect-state">-</span>
-          <span class="detect-window" id="detect-window" title="Positive frames in the current K-of-M decision window">-</span>
+          <span class="detect-window" id="detect-window" title="How many of the last N analyzed frames showed a detection; the alert fires at K positives (not necessarily consecutive).">-</span>
         </div>
-        <div class="detect-collect">
-          <button class="btn detect-collect-toggle" id="detect-collect-toggle" type="button">
-            <span id="detect-collect-label">Collect frames</span>
-          </button>
-          <span class="detect-collect-count" id="detect-collect-count" title="Training frames saved while printing (data/collect)">-</span>
-        </div>
-        <div class="bar detect-collect-bar"><div class="bar-fill" id="detect-collect-bar"></div></div>
-        <div class="detect-arm-hint" id="detect-arm-hint" hidden>
-          Dataset target reached — label the frames, train a model, then arm the response below.
+        <div class="detect-note" id="detect-note">
+          Watches every print automatically, start to finish — no switch
+          needed. Alerts appear here (with evidence snapshots) and as
+          Telegram push when configured.
         </div>
         <dl class="tele-dl detect-cfg">
           <div><dt>Model</dt><dd class="mono-xs" id="detect-model">-</dd></div>
@@ -313,6 +308,6 @@
     </div>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

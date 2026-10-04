@@ -678,26 +678,13 @@ function renderDetect(state) {
 
   const w = state.window || {};
   $("detect-window").textContent =
-    `${w.positives ?? 0} / ${w.needed ?? "—"} of ${w.size ?? "—"}`;
+    `${w.positives ?? 0}/${w.size ?? "—"} frames positive · needs ${w.needed ?? "—"}`;
 
   $("detect-model").textContent = (state.model || "—").split("/").pop();
   $("detect-model").title = state.model || "";
   $("detect-threshold").textContent = state.threshold ?? "—";
 
-  // Training-frame collection + dataset progress ("Schwungmasse").
-  const col = state.collect || {};
-  const toggleBtn = $("detect-collect-toggle");
-  toggleBtn.classList.toggle("on", !!col.enabled);
-  $("detect-collect-label").textContent = col.enabled ? "COLLECTING" : "Collect frames";
-  const count = col.count || 0;
-  const target = col.target || 0;
-  $("detect-collect-count").textContent = target ? `${count} / ${target} frames` : `${count} frames`;
-  $("detect-collect-bar").style.width = target
-    ? Math.min(100, (count * 100) / target) + "%"
-    : "0%";
-
-  // Readiness hint + arming buttons (arm requires server-side control).
-  $("detect-arm-hint").hidden = !(target && count >= target && state.action === "notify");
+  // Arming buttons (arm requires server-side control).
   $("detect-arm").hidden = !state.control_allowed;
   for (const b of document.querySelectorAll(".detect-action-btn")) {
     b.classList.toggle("on", b.dataset.action === state.action);
@@ -785,10 +772,6 @@ async function postDetect(path, body) {
 }
 
 function wireDetect() {
-  $("detect-collect-toggle")?.addEventListener("click", () => {
-    const on = $("detect-collect-toggle").classList.contains("on");
-    postDetect("/api/detect/collect", { enabled: !on });
-  });
   for (const b of document.querySelectorAll(".detect-action-btn")) {
     b.addEventListener("click", () => {
       const action = b.dataset.action;

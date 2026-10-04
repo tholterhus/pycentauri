@@ -915,3 +915,15 @@ def test_collect_due_layer_aware(tmp_path: Path) -> None:
     assert c._collect_due(100.0, 75.0, 0)  # 13-3 >= 10, 25 s gap ok
     assert not c._collect_due(100.0, 90.0, 0)  # min-gap floor (5 s < 20 s)
     assert not c._collect_due(100.0, 0.0, 200)  # budget exhausted
+
+
+def test_collect_toggle_persists_across_restart(tmp_path: Path) -> None:
+    cfg = DetectConfig(model_path=tmp_path / "m.tflite", collect_dir=tmp_path / "col")
+    c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    assert not c._collecting  # default off without a marker file
+    c.set_collecting(True)
+    assert (tmp_path / "col" / ".collecting").is_file()
+    restored = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    assert restored._collecting  # "rebooted" controller keeps the toggle
+    restored.set_collecting(False)
+    assert not (tmp_path / "col" / ".collecting").exists()

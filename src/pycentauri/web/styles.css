@@ -923,3 +923,5 @@ body {
   border-color: var(--ok);
   color: var(--ok);
 }
+
+.detect-note { color: #8a8f98; font-size: 12px; line-height: 1.4; margin: 6px 0 10px; }

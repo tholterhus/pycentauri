@@ -296,7 +296,13 @@ class DetectionController:
         self._status_posts: set[asyncio.Task[None]] = set()
         self._window: deque[bool] = deque(maxlen=cfg.window_size)
         self._backend: Any = None  # detect.backend.Detector, loaded lazily
-        self._collecting = False  # training-frame collection toggle
+        # Training-frame collection toggle — restored across restarts via a
+        # dotfile in collect_dir (the FIFO only touches *.jpg / *.json).
+        marker = cfg.collect_dir / ".collecting"
+        try:
+            self._collecting = marker.is_file()
+        except OSError:
+            self._collecting = False
         self._last_event: DetectionEvent | None = None
         self._error: str | None = None
 
@@ -356,6 +362,17 @@ class DetectionController:
         except OSError:
             return []
 
+    def _persist_collect(self) -> None:
+        marker = self.cfg.collect_dir / ".collecting"
+        try:
+            self.cfg.collect_dir.mkdir(parents=True, exist_ok=True)
+            if self._collecting:
+                marker.write_text("on\n")
+            else:
+                marker.unlink(missing_ok=True)
+        except OSError as err:
+            log.debug("detection: cannot persist collect toggle: %r", err)
+
     def _collect_count(self) -> int:
         try:
             return len(list(self.cfg.collect_dir.glob("*.jpg")))
@@ -371,6 +388,7 @@ class DetectionController:
         would otherwise only start one on the next printing transition).
         """
         self._collecting = bool(enabled)
+        self._persist_collect()
         if (
             self._collecting
             and self._active
