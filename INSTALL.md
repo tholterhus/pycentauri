@@ -263,9 +263,12 @@ avoid underpowered hubs, the stick is picky about power.
 All architectures LiteRT runs on — that covers **x86-64 and ARM-64 Linux**
 (including Raspberry Pi 4/5) and **macOS on Apple Silicon (M-series) as
 well as Intel**. The fallback is pure software, so no special
-instructions or accelerator are needed anywhere. The Coral stick,
-by contrast, requires Linux on x86-64 plus the Edge-TPU runtime —
-on macOS the detection simply always uses the CPU path.
+instructions or accelerator are needed anywhere. The Coral stick requires
+Linux (x86-64 **or** ARM-64, e.g. the Raspberry Pi) plus the Edge-TPU
+runtime — on macOS the detection simply always uses the CPU path. Note
+the split: the *runtime* that executes a compiled model exists for both
+architectures, while the *compiler* that produces such a model is
+x86-64-only (see [`scripts/train/README.md`](scripts/train/README.md)).
 
 ## Network and firewall
 
