@@ -289,9 +289,11 @@ with `--enable-control`.
   page.
 
 All three share the same server, so each viewer counts once for the
-camera: the stream starts when the first client opens and sleeps again
-when the last one leaves. Detection subscribes to the same stream
-without opening a second camera slot.
+camera. One extra "viewer" is the failed-print detection: while a print
+runs it subscribes to the same stream (no second camera slot), so the
+camera stays on for the whole print even when no dashboard is open —
+that is the monitoring working. With no print and no UI client, the
+camera sleeps.
 
 ### Endpoints
 
