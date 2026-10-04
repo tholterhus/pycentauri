@@ -832,7 +832,16 @@ def cmd_server(
         if detect_action in ("pause", "stop") and not enable_control:
             _echo_err(f"--detect-action {detect_action} requires --enable-control.")
             raise typer.Exit(code=2)
-        if not detect_model.is_file():
+        if detect_model is None or detect_model == Path("auto"):
+            from pycentauri.detect.backend import discover_model
+
+            detect_model = discover_model(Path("data/models"))
+        if detect_model is None:
+            _echo_err(
+                "no model found — bundled models missing? Get one from the release "
+                "assets (README 'Trained model') or run scripts/fetch-smoke-model.sh"
+            )
+        elif not detect_model.is_file():
             _echo_err(f"warning: model not found yet: {detect_model} (will report in /api/detect)")
         detect_cfg = DetectConfig(
             model_path=detect_model,

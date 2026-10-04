@@ -130,15 +130,28 @@ def _load_labels(*model_paths: Path) -> list[str]:
     return []
 
 
-def discover_model(search_dir: Path) -> Path | None:
-    """Pick a model to run: prefer Edge TPU-compiled ones, newest first."""
-    if not search_dir.is_dir():
-        return None
-    candidates = sorted(
-        list(search_dir.glob("*_edgetpu.tflite")) + list(search_dir.glob("*.tflite")),
-        key=lambda p: (not _is_edgetpu_compiled(p), -p.stat().st_mtime),
-    )
-    return candidates[0] if candidates else None
+def bundled_models_dir() -> Path:
+    """Models shipped inside the package — detection works out of the box."""
+    return Path(__file__).resolve().parent / "detect_models"
+
+
+def discover_model(search_dir: Path | None = None) -> Path | None:
+    """Pick a model to run: prefer Edge TPU-compiled ones, newest first.
+
+    Searches ``search_dir`` (typically the user's ``data/models/``) first
+    so a locally deployed model wins, then falls back to the models
+    bundled with the package.
+    """
+    for directory in (search_dir, bundled_models_dir()):
+        if directory is None or not directory.is_dir():
+            continue
+        candidates = sorted(
+            list(directory.glob("*_edgetpu.tflite")) + list(directory.glob("*.tflite")),
+            key=lambda p: (not _is_edgetpu_compiled(p), -p.stat().st_mtime),
+        )
+        if candidates:
+            return candidates[0]
+    return None
 
 
 def _build_interpreter(model_path: Path, delegate: Any) -> Any:
