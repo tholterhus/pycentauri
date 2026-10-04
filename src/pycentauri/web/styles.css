@@ -917,7 +917,8 @@ body {
 
 .detect-action-modes { display: flex; gap: 6px; }
 
-/* exactly ONE button (the armed action) is framed; the others are dimmed */
+/* exactly ONE button (the armed action) is framed; the others are dimmed.
+   Color = severity: notify green, pause amber, stop red. */
 .detect-action-btn { opacity: 0.5; }
 .detect-action-btn.on {
   opacity: 1;
@@ -925,10 +926,13 @@ body {
   border-color: var(--danger);
   color: var(--danger);
 }
-
 .detect-action-btn[data-action="notify"].on {
   border-color: var(--ok);
   color: var(--ok);
+}
+.detect-action-btn[data-action="pause"].on {
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .detect-note { color: #8a8f98; font-size: 12px; line-height: 1.4; margin: 6px 0 10px; }
