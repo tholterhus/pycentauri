@@ -51,12 +51,16 @@ to and speaks the right protocol:
 
 For a Python/library installation:
 
+Install from this repository directly (the `pycentauri` name on PyPI
+belongs to the upstream project — a bare `pip install pycentauri`
+would install *their* package, not this one):
+
 ```sh
-pip install pycentauri                    # library + CLI
-pip install "pycentauri[mcp]"             # + MCP server
-pip install "pycentauri[server]"          # + HTTP REST/SSE server + web UI
-pip install "pycentauri[mcp,server]"      # all Python surfaces
-pip install "pycentauri[detect]"          # + failed-print detection (Coral/CPU)
+pip install "pycentauri @ git+https://github.com/tholterhus/pycentauri.git"                             # library + CLI
+pip install "pycentauri[mcp] @ git+https://github.com/tholterhus/pycentauri.git"                        # + MCP server
+pip install "pycentauri[server] @ git+https://github.com/tholterhus/pycentauri.git"                     # + HTTP REST/SSE server + web UI
+pip install "pycentauri[mcp,server] @ git+https://github.com/tholterhus/pycentauri.git"                 # all Python surfaces
+pip install "pycentauri[detect,server] @ git+https://github.com/tholterhus/pycentauri.git"              # + failed-print detection (CPU/Coral)
 ```
 
 For a Linux service installation with an optional systemd unit, see the

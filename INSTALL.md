@@ -30,9 +30,11 @@ or another user-owned directory:
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/pip install pycentauri
+# Install from this GitHub repository — a bare `pip install pycentauri`
+# would pull the upstream project's package from PyPI!
+.venv/bin/pip install "pycentauri @ git+https://github.com/tholterhus/pycentauri.git"
 # Optional surfaces:
-.venv/bin/pip install 'pycentauri[mcp,server]'
+.venv/bin/pip install "pycentauri[mcp,server] @ git+https://github.com/tholterhus/pycentauri.git"
 ```
 
 ### System installation with the installer
@@ -147,10 +149,10 @@ fast Coral variant — a Coral USB Accelerator plugged into this machine.
 ### 1. Install the detection add-on
 
 ```sh
-sudo -u pycentauri /opt/pycentauri/venv/bin/pip install 'pycentauri[detect,server]'
+sudo -u pycentauri /opt/pycentauri/venv/bin/pip install '/opt/pycentauri[detect,server]'
 ```
 
-The `detect` extra adds the inference runtime (LiteRT), `numpy` and `pillow`.
+The `detect` extra adds the inference runtime (LiteRT), `numpy` and `pillow`. Note the local path (`/opt/pycentauri[...]`): it upgrades your checked-out copy in place — a bare `pip install pycentauri` would fetch the upstream project from PyPI instead.
 
 ### 2. Get a model
 
