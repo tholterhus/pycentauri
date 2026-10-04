@@ -6,6 +6,13 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Optional Telegram push on detection: a bot token + chat id
+  (`--detect-telegram-token` / `--detect-telegram-chat-id`, or the
+  `PYCENTAURI_DETECT_TELEGRAM_*` service config) sends the evidence
+  photo with a caption to a chat. Fully optional — without credentials
+  the behavior is unchanged.
+
 ## [0.13.0] - 2026-10-04
 
 ### Added

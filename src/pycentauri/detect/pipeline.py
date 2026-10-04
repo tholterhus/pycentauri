@@ -68,6 +68,8 @@ __all__ = [
     "jpeg_from_part",
     "post_webhook",
     "save_evidence",
+    "send_telegram",
+    "telegram_notifier_for",
     "webhook_poster_for",
 ]
 
@@ -84,6 +86,9 @@ class DetectConfig:
     grace_s: float = 90.0
     action: str = "notify"
     webhook_url: str | None = None
+    # Optional Telegram push (photo + caption); both must be set.
+    telegram_token: str | None = None
+    telegram_chat_id: str | None = None
     evidence_dir: Path = Path("data/evidence")
     force_cpu: bool = False
     # Training-data collection: while a print runs, frames are written to
@@ -151,6 +156,53 @@ async def post_webhook(url: str, payload: dict[str, Any]) -> None:
         await client.post(url, json=payload)
 
 
+def telegram_notifier_for(token: str | None, chat_id: str | None) -> WebhookPoster | None:
+    """Bind :func:`send_telegram` to credentials; ``None`` when either is unset."""
+    if not token or not chat_id:
+        return None
+
+    async def _post(payload: dict[str, Any]) -> None:
+        await send_telegram(token, chat_id, payload)
+
+    return _post
+
+
+async def send_telegram(
+    token: str,
+    chat_id: str,
+    payload: dict[str, Any],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> None:
+    """Send an alert to a Telegram chat: evidence photo + caption.
+
+    Falls back to a text message when the evidence JPEG is missing.
+    Raises on failure — callers decide policy (the controller logs).
+    """
+    event = payload.get("event", {})
+    caption = (
+        f"{event.get('label', 'detection')} detected — score {event.get('score', 0):.2f}\n"
+        f"{event.get('when', '')} · backend {event.get('backend', '?')}"
+    )
+    async with httpx.AsyncClient(timeout=10.0, transport=transport) as client:
+        evidence = event.get("evidence")
+        path = Path(evidence) if evidence else None
+        if path and path.is_file():
+            resp = await client.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data={"chat_id": chat_id, "caption": caption},
+                files={"photo": ("evidence.jpg", path.read_bytes(), "image/jpeg")},
+            )
+        else:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": caption},
+            )
+        ok = resp.status_code == 200 and resp.json().get("ok") is True
+        if not ok:
+            raise RuntimeError(f"telegram send failed: HTTP {resp.status_code} {resp.text[:200]}")
+
+
 def save_evidence(evidence_dir: Path, event: DetectionEvent, jpeg: bytes) -> Path:
     """Write the triggering frame + a JSON sidecar; returns the JPEG path.
 
@@ -194,6 +246,7 @@ class DetectionController:
         control_allowed: bool = False,
         action_runner: ActionRunner | None = None,
         webhook_poster: WebhookPoster | None = None,
+        telegram_poster: WebhookPoster | None = None,
     ) -> None:
         self.cfg = cfg
         self._camera = camera
@@ -201,6 +254,7 @@ class DetectionController:
         self._control_allowed = control_allowed
         self._action_runner = action_runner
         self._webhook_poster = webhook_poster
+        self._telegram_poster = telegram_poster
         self._closing = False
         self._status_task: asyncio.Task[None] | None = None
         self._session_task: asyncio.Task[None] | None = None
@@ -494,6 +548,13 @@ class DetectionController:
                 await self._webhook_poster(payload)
             except Exception as err:
                 log.error("detection: webhook delivery failed: %r", err)
+        if self._telegram_poster is not None:
+            try:
+                await self._telegram_poster(
+                    {"type": "spaghetti_detected", "event": event.as_dict()}
+                )
+            except Exception as err:
+                log.error("detection: telegram delivery failed: %r", err)
         if self.cfg.action in ("pause", "stop"):
             if not self._control_allowed or self._action_runner is None:
                 log.error(

@@ -431,7 +431,11 @@ def create_app(
         # printer; started only once the printer connection exists.
         controller: DetectionController | None = None
         if detect_config is not None:
-            from pycentauri.detect.pipeline import DetectionController, webhook_poster_for
+            from pycentauri.detect.pipeline import (
+                DetectionController,
+                telegram_notifier_for,
+                webhook_poster_for,
+            )
 
             async def _run_action(verb: str) -> None:
                 await getattr(manager.printer, verb)()
@@ -446,6 +450,9 @@ def create_app(
                     webhook_poster_for(detect_config.webhook_url)
                     if detect_config.webhook_url
                     else None
+                ),
+                telegram_poster=telegram_notifier_for(
+                    detect_config.telegram_token, detect_config.telegram_chat_id
                 ),
             )
         app.state.detect = controller

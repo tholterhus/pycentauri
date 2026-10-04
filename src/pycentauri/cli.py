@@ -789,6 +789,12 @@ def cmd_server(
     detect_webhook: str | None = typer.Option(
         None, "--detect-webhook", help="POST a JSON alert to this URL on detection."
     ),
+    detect_telegram_token: str | None = typer.Option(
+        None, "--detect-telegram-token", help="Telegram bot token (BotFather) for push alerts."
+    ),
+    detect_telegram_chat_id: str | None = typer.Option(
+        None, "--detect-telegram-chat-id", help="Telegram chat id receiving the alerts."
+    ),
     detect_threshold: float = typer.Option(
         0.5, "--detect-threshold", help="Minimum detection score, 0..1."
     ),
@@ -829,6 +835,8 @@ def cmd_server(
             grace_s=detect_grace,
             action=detect_action,
             webhook_url=detect_webhook,
+            telegram_token=detect_telegram_token,
+            telegram_chat_id=detect_telegram_chat_id,
             evidence_dir=detect_evidence_dir,
             force_cpu=detect_cpu,
         )
@@ -1080,6 +1088,12 @@ def cmd_detect_watch(
     webhook: Annotated[
         str | None, typer.Option("--webhook", help="POST a JSON alert to this URL.")
     ] = None,
+    telegram_token: Annotated[
+        str | None, typer.Option("--telegram-token", help="Telegram bot token (BotFather).")
+    ] = None,
+    telegram_chat_id: Annotated[
+        str | None, typer.Option("--telegram-chat-id", help="Telegram chat id receiving alerts.")
+    ] = None,
     evidence_dir: Annotated[
         Path, typer.Option("--evidence-dir", help="Where to save triggering frames.")
     ] = Path("data/evidence"),
@@ -1175,6 +1189,13 @@ def cmd_detect_watch(
                         with contextlib.suppress(Exception):
                             await post_webhook(
                                 webhook, {"type": "spaghetti_detected", "event": event.as_dict()}
+                            )
+                    if telegram_token and telegram_chat_id:
+                        from pycentauri.detect.pipeline import send_telegram
+
+                        with contextlib.suppress(Exception):
+                            await send_telegram(
+                                telegram_token, telegram_chat_id, {"event": event.as_dict()}
                             )
                     if action in ("pause", "stop"):
                         result = await getattr(printer, action)()

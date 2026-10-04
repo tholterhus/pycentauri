@@ -733,3 +733,92 @@ async def test_detect_post_endpoints(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         r = await client2.post("/api/detect/action", json={"action": "destroy"})
         assert r.status_code == 400
     await server.stop()
+
+
+# --- telegram notifications -----------------------------------------------------
+
+
+def test_telegram_notifier_factory_unset_credentials() -> None:
+    from pycentauri.detect.pipeline import telegram_notifier_for
+
+    assert telegram_notifier_for(None, "42") is None
+    assert telegram_notifier_for("TOK", None) is None
+    assert telegram_notifier_for("", "42") is None
+    assert telegram_notifier_for("TOK", "42") is not None
+
+
+def test_send_telegram_photo_fallback_and_failure(tmp_path: Path) -> None:
+    import httpx
+
+    from pycentauri.detect.pipeline import send_telegram
+
+    jpg = tmp_path / "ev.jpg"
+    jpg.write_bytes(_jpeg())
+    payload = {
+        "event": {
+            "label": "spaghetti",
+            "score": 0.87,
+            "when": "t",
+            "backend": "edgetpu",
+            "evidence": str(jpg),
+        }
+    }
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    asyncio.run(send_telegram("TOK", "42", payload, transport=httpx.MockTransport(handler)))
+    assert "sendPhoto" in str(seen[0].url)
+    assert b"42" in seen[0].read()
+
+    no_photo = {"event": {"label": "spaghetti", "score": 0.5, "when": "t", "backend": "cpu"}}
+    asyncio.run(send_telegram("TOK", "42", no_photo, transport=httpx.MockTransport(handler)))
+    assert "sendMessage" in str(seen[1].url)
+
+    def bad(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": False, "description": "chat not found"})
+
+    with pytest.raises(RuntimeError, match="telegram send failed"):
+        asyncio.run(send_telegram("TOK", "42", no_photo, transport=httpx.MockTransport(bad)))
+
+
+async def test_controller_sends_telegram_on_fire(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        detect_backend.Detector,
+        "from_model",
+        staticmethod(lambda path, force_cpu=False: FakeDetector()),
+    )
+    cfg = DetectConfig(
+        model_path=tmp_path / "m_edgetpu.tflite",
+        grace_s=0.0,
+        min_frame_interval_s=0.0,
+        window_size=4,
+        window_needed=3,
+        action="notify",
+        evidence_dir=tmp_path / "ev",
+    )
+    camera = FakeCamera([_jpeg()] * 12)
+    tg: list[dict[str, Any]] = []
+
+    async def telegram_poster(payload: dict[str, Any]) -> None:
+        tg.append(payload)
+
+    controller = DetectionController(
+        cfg,
+        camera=camera,
+        get_printer=lambda: FakePrinter([0] + [PRINTING] * 20 + [9]),
+        telegram_poster=telegram_poster,
+    )
+    await controller.start()
+    fired = await _wait_for(lambda: controller._last_event is not None)
+    assert fired, f"no event fired; state={controller.state()}"
+    await _wait_for(lambda: bool(tg) or controller.state()["processing"] is False)
+    await controller.stop()
+
+    assert len(tg) == 1  # exactly once per print
+    assert tg[0]["type"] == "spaghetti_detected"
+    assert tg[0]["event"]["evidence"]  # evidence JPEG saved alongside
