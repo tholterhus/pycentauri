@@ -60,7 +60,7 @@ sudo env PYCENTAURI_HOST=printer.example \
   ./install-linux.sh
 ```
 
-The installer requires `PYCENTAURI_HOST`. Defaults are loopback binding,
+The installer requires `PYCENTAURI_HOST` (that prefix is intentional here — it is the installer's own option name, not the config file's). Defaults are loopback binding,
 port `8787`, read-only mode, and RTSP disabled. Override paths with
 `APP_DIR`, `DATA_DIR`, `APP_USER`, or `SERVICE` when your host layout requires
 it. The script is intended to be rerunnable; it refreshes the application and
@@ -93,21 +93,30 @@ The service reads `/etc/pycentauri.conf`. A generic starting point is:
 
 ```sh
 # Printer address or DNS name; replace the placeholder locally.
-PYCENTAURI_HOST=printer.example
+HOST=printer.example
 # Required for CC2; leave empty for CC1. Store this file securely.
-PYCENTAURI_ACCESS_CODE=
-PYCENTAURI_PORT=8787
-# Prefer loopback unless an authenticated proxy or trusted LAN is used.
-PYCENTAURI_BIND=127.0.0.1
-PYCENTAURI_ENABLE_CONTROL=0
-PYCENTAURI_RTSP=0
+ACCESS_CODE=
+PORT=8787
+# Prefer 127.0.0.1 ("only this computer may connect") unless a login
+# proxy or a trusted network is used.
+BIND=127.0.0.1
+ENABLE_CONTROL=0
+RTSP=0
 # Set only when RTSP is enabled and MediaMTX is not on PATH.
-PYCENTAURI_MEDIAMTX_PATH=
+MEDIAMTX_PATH=
+# Log verbosity: info | warn | critical (default: warn)
+LOG_LEVEL=warn
 # Failed-print ("spaghetti") detection; see the step-by-step chapter below.
-PYCENTAURI_DETECT=0
-PYCENTAURI_DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
-PYCENTAURI_DETECT_ACTION=notify
-PYCENTAURI_DETECT_THRESHOLD=0.65
+DETECT=0
+DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
+DETECT_ACTION=notify
+DETECT_THRESHOLD=0.65
+# Seconds between analyzed frames (default 1; raise to reduce CPU load).
+DETECT_INTERVAL=1
+# Optional Telegram push (detection AND print-state changes, with a
+# camera photo). Bot via @BotFather; empty = off.
+TELEGRAM_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
 Use restrictive permissions, for example `root:pycentauri` and mode `0640`.
@@ -118,7 +127,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart pycentauri.service
 ```
 
-`PYCENTAURI_ENABLE_CONTROL=1` enables print and heater controls. Enable it
+`ENABLE_CONTROL=1` enables print and heater controls. Enable it
 only when the HTTP endpoint is protected and the operational risk is
 understood. CC2 access codes are credentials; never commit them or paste them
 into public issue reports.
@@ -154,9 +163,15 @@ cd /opt/pycentauri && sudo -u pycentauri ./scripts/fetch-smoke-model.sh
 
 This fetches the *smoke model* (a COCO SSD MobileNet V2 in both the Edge-TPU
 and the CPU variant, plus its labels). It knows everyday objects — not
-spaghetti — and exists purely to prove the pipeline works. A real spaghetti
-model is trained separately; see
-[`docs/CORAL_SPAGHETTI_DETECTION.md`](CORAL_SPAGHETTI_DETECTION.md).
+spaghetti — and exists purely to prove the pipeline works end to end.
+
+The **real spaghetti model** ships ready-made: download
+`spaghetti_edgetpu.tflite`, `spaghetti.tflite` and `spaghetti.txt` from the
+[v0.13.0 release](https://github.com/tholterhus/pycentauri/releases/tag/v0.13.0)
+into `/opt/pycentauri/data/models/`, then set
+`DETECT_MODEL=data/models/spaghetti_edgetpu.tflite` in the config. How that
+model was trained — and how to retrain your own — is documented in
+[`scripts/train/README.md`](scripts/train/README.md).
 
 ### 3. Coral runtime (optional — skip for CPU-only)
 
@@ -176,15 +191,15 @@ access; `sudo usermod -aG plugdev $USER`, then log out and in again).
 
 ### 4. Turn it on
 
-Set `PYCENTAURI_DETECT=1` in `/etc/pycentauri.conf` (see the variables in the
+Set `DETECT=1` in `/etc/pycentauri.conf` (see the variables in the
 Configuration section above) and restart the service. The dashboard gains a
 **DETECT** panel showing the backend, a live WATCHING flag while a print
 runs, and evidence snapshots.
 
 Safety: the default action is *notify only* — an alert writes evidence
 frames to `data/evidence/` (and optionally posts a webhook), but never
-touches the printer. `PYCENTAURI_DETECT_ACTION=pause` or `stop` additionally
-require `PYCENTAURI_ENABLE_CONTROL=1`.
+touches the printer. `DETECT_ACTION=pause` or `stop` additionally
+requires `ENABLE_CONTROL=1`.
 
 ### 5. Verify
 
@@ -249,7 +264,7 @@ the model:
 - Optional RTSP output: TCP `8554` by default, when enabled.
 
 Permit only the required paths in the host and network firewalls. Keep
-`PYCENTAURI_BIND=127.0.0.1` when only local clients need access. If clients on
+`BIND=127.0.0.1` when only local clients need access. If clients on
 a trusted LAN need access, bind to the host's LAN address rather than all
 interfaces where practical and restrict the source subnet. The HTTP server has
 no built-in authentication.
@@ -347,7 +362,7 @@ checking the printer and deciding whether pausing it is appropriate.
 - **Cannot connect to a printer:** verify its address, model-specific ports,
   firewall rules, and (for CC2) LAN-only mode and access code handling.
 - **UI works but controls are absent:** the service is likely read-only;
-  explicitly set `PYCENTAURI_ENABLE_CONTROL=1` and restart after securing the
+  explicitly set `ENABLE_CONTROL=1` and restart after securing the
   endpoint.
 - **RTSP fails:** verify `ffmpeg`, MediaMTX, executable permissions, and the
   configured path; RTSP is intentionally off by default.

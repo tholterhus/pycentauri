@@ -449,7 +449,8 @@ Notes:
   by default — raise it via `--detect-interval` / `DETECT_INTERVAL`
   (service config) if you want it lazier. Note what does and does not
   cost network: the camera stream itself is the only real traffic (the
-  printer sends one MJPEG flow, a few Mbit/s, to the server; every UI
+  printer sends one continuous JPEG flow ("MJPEG"), a few Mbit/s, to
+  the server; every UI
   viewer pulls its own copy from the server), while the detection adds
   nothing — it just picks frames from that shared stream. A Telegram
   alert costs one ~25 KB image.
