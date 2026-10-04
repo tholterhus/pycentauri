@@ -917,7 +917,14 @@ body {
 
 .detect-action-modes { display: flex; gap: 6px; }
 
-.detect-action-btn.on { border-color: var(--danger); color: var(--danger); }
+/* exactly ONE button (the armed action) is framed; the others are dimmed */
+.detect-action-btn { opacity: 0.5; }
+.detect-action-btn.on {
+  opacity: 1;
+  border-width: 2px;
+  border-color: var(--danger);
+  color: var(--danger);
+}
 
 .detect-action-btn[data-action="notify"].on {
   border-color: var(--ok);

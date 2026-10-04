@@ -687,7 +687,9 @@ function renderDetect(state) {
   // Arming buttons (arm requires server-side control).
   $("detect-arm").hidden = !state.control_allowed;
   for (const b of document.querySelectorAll(".detect-action-btn")) {
-    b.classList.toggle("on", b.dataset.action === state.action);
+    const active = b.dataset.action === state.action;
+    b.classList.toggle("on", active);
+    b.setAttribute("aria-pressed", String(active));
   }
 
   const ev = state.last_event;
