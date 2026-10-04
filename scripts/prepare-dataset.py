@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble the spaghetti-model training dataset (plan: docs/TRAINING_PLAN.md).
+"""Assemble the spaghetti-model training dataset (see scripts/train/README.md).
 
 Unifies three sources into one Pascal-VOC dataset with a train/val split:
 
@@ -267,7 +267,7 @@ def main() -> int:
     print("\n".join(report))
     (out / "report.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
     print(
-        f"→ {out}\nNächster Schritt: dataset-zip nach Colab (docs/TRAINING_PLAN.md, Training-Schritt)."
+        f"→ {out}\nNächster Schritt: dataset-zip nach Colab (scripts/train/colab_spaghetti.py)."
     )
     return 0
 

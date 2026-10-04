@@ -409,10 +409,10 @@ Notes:
 
 - **The smoke model detects everyday objects, not spaghetti.** It proves
   the pipeline end to end; a real spaghetti model is trained separately —
-  the full journey (data collection, labeling, training, Edge TPU
-  compilation) is documented in
+  the full journey (data collection, training, Edge TPU compilation) is
+  documented in
   [`docs/CORAL_SPAGHETTI_DETECTION.md`](docs/CORAL_SPAGHETTI_DETECTION.md)
-  and the follow-up [`docs/TRAINING_PLAN.md`](docs/TRAINING_PLAN.md).
+  and [`scripts/train/README.md`](scripts/train/README.md).
 - **Default action is notify only**: evidence frames land in
   `data/evidence/` (and optionally a webhook). `--detect-action pause|stop`
   additionally require `--enable-control`.

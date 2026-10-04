@@ -2,7 +2,7 @@
 """Roboflow Universe harvest helper — standalone, stdlib only.
 
 Human-operated tool for the pycentauri spaghetti-model training plan
-(docs/TRAINING_PLAN.md). No AI, no venv needed: runs with any
+(scripts/train/README.md). No AI, no venv needed: runs with any
 Python 3.9+ that has internet access.
 
 Modes:

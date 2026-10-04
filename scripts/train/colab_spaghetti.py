@@ -1,7 +1,8 @@
 """Spaghetti-model training on Google Colab — run top to bottom.
 
-Prepared for the 4-class SSD MobileNet V2 320 model of
-docs/TRAINING_PLAN.md (classes: spaghetti, blobs, cracks, warping).
+Cell-by-cell recipe for training a spaghetti detector (SSD MobileNet
+V2 320; the deployed model uses a single `spaghetti` class — set the
+class list to match your dataset). See scripts/train/README.md.
 Works in a fresh Colab VM (Runtime → GPU). Pinned versions matter.
 
 Before running: upload the assembled dataset zip
