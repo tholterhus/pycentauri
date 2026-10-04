@@ -114,7 +114,8 @@ fi
 chown root:"$APP_USER" "$CONFIG_FILE"
 chmod 0640 "$CONFIG_FILE"
 
-if [[ ! -e "$APP_DIR/pycentauri.conf-example" ]]; then
+# Always refresh the example file so it matches the current option set.
+if true; then
   cat > "$APP_DIR/pycentauri.conf-example" <<'EOF'
 # Copy to /etc/pycentauri.conf and adapt for the local printer.
 HOST=printer.example

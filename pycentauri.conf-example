@@ -1,12 +1,23 @@
 # pycentauri service configuration
 # Copy this file to /etc/pycentauri.conf and adapt it locally.
 # Keep the installed configuration readable only by root and the service user.
-PYCENTAURI_HOST=printer.example
-PYCENTAURI_ACCESS_CODE=
-PYCENTAURI_PORT=8787
-PYCENTAURI_BIND=127.0.0.1
-PYCENTAURI_RTSP=0
-PYCENTAURI_ENABLE_CONTROL=0
+HOST=printer.example
+ACCESS_CODE=
+PORT=8787
+BIND=127.0.0.1
+RTSP=0
+ENABLE_CONTROL=0
 # Log verbosity: info | warn | critical (default: warn)
-PYCENTAURI_LOG_LEVEL=warn
-PYCENTAURI_MEDIAMTX_PATH=
+LOG_LEVEL=warn
+MEDIAMTX_PATH=
+# Failed-print (spaghetti) detection; see docs/CORAL_SPAGHETTI_DETECTION.md.
+# notify-only by default — pause/stop additionally require ENABLE_CONTROL=1.
+DETECT=0
+DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
+DETECT_ACTION=notify
+DETECT_THRESHOLD=0.65
+# Optional Telegram push: alerts on detection AND print-state changes
+# (paused / filament switch / aborted / finished / error), each with a
+# camera frame. Bot via @BotFather; empty values disable it.
+TELEGRAM_TOKEN=
+TELEGRAM_CHAT_ID=
