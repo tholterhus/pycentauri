@@ -6,7 +6,7 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.14.0] - 2026-10-05
+## [0.13.1] - 2026-10-05
 
 ### Changed
 - **Breaking:** the service config (`/etc/pycentauri.conf`) and code
