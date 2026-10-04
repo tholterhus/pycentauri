@@ -58,6 +58,41 @@ itself (`POST /api/detect/collect`):
    the TPU while the service is watching it — concurrent device access
    makes libedgetpu re-enumerate the USB device.
 
+## Road to v2 — the 4-class model
+
+The current model sees only `spaghetti`. The planned v2 model adds
+`blobs`, `cracks` and `warping`. The tooling is already class-agnostic
+(`prepare-dataset.py` targets exactly those four classes); what v2 needs
+is **labeled examples of each failure mode**. From scratch:
+
+1. **Collect frames** — run prints with frame collection on
+   (`POST /api/detect/collect {"enabled": true}`; frames land in
+   `data/collect/`, FIFO-capped at 2,000). For real failure examples,
+   deliberately pull the filament mid-print or remove supports early —
+   50–100 failure frames are worth more than thousands of healthy ones.
+2. **Label own frames** in Label Studio (self-hosted, no cloud):
+
+   ```sh
+   docker run -d -p 8080:8080 -v ~/label-studio:/label-studio/data heartexlabs/label-studio
+   ```
+
+   Project type: *Object detection with bounding boxes*; labels exactly
+   `spaghetti, blobs, cracks, warping` (this order = class order).
+   Import a sample (200–400 frames, healthy prints included — they get
+   **no** boxes and are what keeps false alarms down). Export as
+   **Pascal VOC XML** — that is the format `prepare-dataset.py` reads.
+3. **Fetch the Roboflow datasets again** — the Universe website blocks
+   scripted downloads (Cloudflare), so use a browser: open the dataset
+   page → *Download Dataset* → format **YOLOv8** → unzip into
+   `data/train/roboflow/<project>-v<version>/`. Verify licenses
+   (CC0/CC BY 4.0 only) on the dataset page.
+4. **Assemble + train** — the exact chain above: `prepare-dataset.py`
+   (merges Roboflow exports + Label Studio XML) → `build_tfrecords.py`
+   → the Colab recipe in `colab_spaghetti.py` (set the class list to 4)
+   → Edge-TPU compile → deploy both variants. Acceptance: per-class
+   recall eyeballed with `centauri detect test`, then the same
+   criteria below.
+
 ## Acceptance criteria used
 
 - Recall ≥ 90 % on spaghetti in the validation split at the shipped
