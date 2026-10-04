@@ -13,7 +13,8 @@ MEDIAMTX_PATH=
 # Failed-print (spaghetti) detection; see docs/CORAL_SPAGHETTI_DETECTION.md.
 # notify-only by default — pause/stop additionally require ENABLE_CONTROL=1.
 DETECT=0
-DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
+# auto = the bundled trained spaghetti model (data/models wins if you put one there)
+DETECT_MODEL=auto
 DETECT_ACTION=notify
 DETECT_THRESHOLD=0.65
 # Seconds between analyzed frames (default 1; raise to reduce CPU/TPU load).
