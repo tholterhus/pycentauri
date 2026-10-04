@@ -10,7 +10,7 @@ Register with an agent as a stdio server. Examples:
     # With control actions (start/pause/resume/stop):
     claude mcp add pycentauri -- python -m pycentauri.mcp --enable-control
 
-The printer host is read from ``PYCENTAURI_HOST`` (preferred) or from a
+The printer host is read from ``HOST`` (preferred) or from a
 ``--host`` argument at launch time — it is **not** a per-tool parameter, so
 an LLM cannot be tricked into targeting an arbitrary IP through prompt
 injection.
@@ -28,16 +28,15 @@ from pycentauri.client import Printer
 from pycentauri.connect import connect_auto
 from pycentauri.discovery import discover as _lan_discover
 
-_HOST_ENV = "PYCENTAURI_HOST"
-_ACCESS_CODE_ENV = "PYCENTAURI_ACCESS_CODE"
+_HOST_ENV = "HOST"
+_ACCESS_CODE_ENV = "ACCESS_CODE"
 
 
 def _resolve_host() -> str:
     host = os.environ.get(_HOST_ENV)
     if not host:
         raise RuntimeError(
-            f"{_HOST_ENV} is not set; launch the server with --host IP or "
-            "export PYCENTAURI_HOST first"
+            f"{_HOST_ENV} is not set; launch the server with --host IP or export HOST first"
         )
     return host
 
@@ -49,13 +48,13 @@ async def _resolve_target() -> tuple[str, str | None]:
     lookup so subsequent tool invocations don't each pay the discovery cost.
     """
     host = _resolve_host()
-    cached = os.environ.get("PYCENTAURI_MAINBOARD_ID")
+    cached = os.environ.get("MAINBOARD_ID")
     if cached:
         return host, cached
     found = await _lan_discover(timeout=1.0, retries=2)
     for p in found:
         if p.host == host and p.mainboard_id:
-            os.environ["PYCENTAURI_MAINBOARD_ID"] = p.mainboard_id
+            os.environ["MAINBOARD_ID"] = p.mainboard_id
             return host, p.mainboard_id
     return host, None
 
@@ -363,7 +362,7 @@ def _cli() -> None:
     )
     parser.add_argument(
         "--host",
-        help="Printer host/IP. Overrides $PYCENTAURI_HOST for this process.",
+        help="Printer host/IP. Overrides $HOST for this process.",
     )
     args = parser.parse_args()
     if args.host:

@@ -6,7 +6,18 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** the service config (`/etc/pycentauri.conf`) and code
+  env-var reads drop the `PYCENTAURI_` prefix (`HOST`, `PORT`, `DETECT`,
+  `DETECT_TELEGRAM_TOKEN`, …). The installer's invocation knobs keep
+  their `PYCENTAURI_*` names; existing config files need the prefix
+  removed (sed 's/PYCENTAURI_//g').
+
 ### Added
+- Telegram alerts for print-state changes — paused (e.g. filament
+  switch), aborted, finished, printer error — each a one-liner with the
+  latest camera frame, sent whenever the printer's status code changes
+  while a Telegram bot is configured.
 - Optional Telegram push on detection: a bot token + chat id
   (`--detect-telegram-token` / `--detect-telegram-chat-id`, or the
   `PYCENTAURI_DETECT_TELEGRAM_*` service config) sends the evidence

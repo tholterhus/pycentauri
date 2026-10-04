@@ -117,22 +117,22 @@ chmod 0640 "$CONFIG_FILE"
 if [[ ! -e "$APP_DIR/pycentauri.conf-example" ]]; then
   cat > "$APP_DIR/pycentauri.conf-example" <<'EOF'
 # Copy to /etc/pycentauri.conf and adapt for the local printer.
-PYCENTAURI_HOST=printer.example
-PYCENTAURI_ACCESS_CODE=
-PYCENTAURI_PORT=8787
-PYCENTAURI_BIND=127.0.0.1
-PYCENTAURI_RTSP=0
-PYCENTAURI_ENABLE_CONTROL=0
-PYCENTAURI_MEDIAMTX_PATH=
+HOST=printer.example
+ACCESS_CODE=
+PORT=8787
+BIND=127.0.0.1
+RTSP=0
+ENABLE_CONTROL=0
+MEDIAMTX_PATH=
 # Failed-print (spaghetti) detection; see docs/CORAL_SPAGHETTI_DETECTION.md.
 # notify-only by default — pause/stop additionally require ENABLE_CONTROL=1.
-PYCENTAURI_DETECT=0
-PYCENTAURI_DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
-PYCENTAURI_DETECT_ACTION=notify
-PYCENTAURI_DETECT_THRESHOLD=0.65
+DETECT=0
+DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
+DETECT_ACTION=notify
+DETECT_THRESHOLD=0.65
 # Optional Telegram push on detection (bot token from BotFather + chat id).
-PYCENTAURI_DETECT_TELEGRAM_TOKEN=
-PYCENTAURI_DETECT_TELEGRAM_CHAT_ID=
+DETECT_TELEGRAM_TOKEN=
+DETECT_TELEGRAM_CHAT_ID=
 EOF
   chown root:"$APP_USER" "$APP_DIR/pycentauri.conf-example"
   chmod 0644 "$APP_DIR/pycentauri.conf-example"

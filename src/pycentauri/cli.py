@@ -1,6 +1,6 @@
 """Typer-based CLI for pycentauri.
 
-All commands accept ``--host`` (or ``PYCENTAURI_HOST``); if none is given,
+All commands accept ``--host`` (or ``HOST``); if none is given,
 we run discovery and bail out if there isn't exactly one printer on the
 LAN. Control actions additionally require ``--enable-control``.
 """
@@ -49,7 +49,7 @@ HostOpt = Annotated[
     typer.Option(
         "--host",
         "-H",
-        envvar="PYCENTAURI_HOST",
+        envvar="HOST",
         help="Printer IP/hostname. If unset, auto-discover on the LAN.",
     ),
 ]
@@ -57,7 +57,7 @@ ControlOpt = Annotated[
     bool,
     typer.Option(
         "--enable-control",
-        envvar="PYCENTAURI_ENABLE_CONTROL",
+        envvar="ENABLE_CONTROL",
         help="Required for write actions. Off by default for safety.",
     ),
 ]
@@ -65,7 +65,7 @@ AccessCodeOpt = Annotated[
     str | None,
     typer.Option(
         "--access-code",
-        envvar="PYCENTAURI_ACCESS_CODE",
+        envvar="ACCESS_CODE",
         help="CC2 API key / access code (required for Centauri Carbon 2).",
     ),
 ]
@@ -747,7 +747,7 @@ def cmd_server(
     port: int = typer.Option(8787, "--port", "-p"),
     enable_control: ControlOpt = False,
     log_level: str = typer.Option(
-        "", "--log-level", help="info | warn | critical (default: PYCENTAURI_LOG_LEVEL or warn)"
+        "", "--log-level", help="info | warn | critical (default: LOG_LEVEL or warn)"
     ),
     rtsp: bool = typer.Option(
         False,
@@ -949,7 +949,7 @@ def cmd_mcp(
         _echo_err(f"(missing dependency: {e})")
         raise typer.Exit(code=1) from e
     if host:
-        os.environ["PYCENTAURI_HOST"] = host
+        os.environ["HOST"] = host
     run_stdio(enable_control=enable_control)
 
 

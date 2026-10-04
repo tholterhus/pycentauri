@@ -330,7 +330,7 @@ class CC2Printer(Printer):
             raise PrinterError(
                 "CC2Printer.connect() requires access_code (the printer's "
                 "API key, shown on its screen). Pass --access-code or set "
-                "PYCENTAURI_ACCESS_CODE."
+                "ACCESS_CODE."
             )
         if not serial_number:
             serial_number = await _fetch_serial(host, access_code, connect_timeout)

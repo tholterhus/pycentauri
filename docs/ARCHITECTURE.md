@@ -53,7 +53,7 @@ else is built on top of them.
 | Entrypoint | Connection strategy |
 |---|---|
 | `centauri <subcommand>` | One connection per invocation: probe → open → command → close (WS for CC1, MQTT session for CC2) |
-| `python -m pycentauri.mcp` (a tool call) | One connection per tool invocation. Cached `PYCENTAURI_MAINBOARD_ID` env between calls in the same process |
+| `python -m pycentauri.mcp` (a tool call) | One connection per tool invocation. Cached `MAINBOARD_ID` env between calls in the same process |
 | `centauri server` | **One** long-lived connection held by `PrinterManager` for the app's lifetime. Auto-reconnects with exponential backoff (1 s → 30 s); on CC2, paho's own reconnect also re-registers with the printer from `_on_connect` |
 | `centauri rtsp` | Zero control connection to the printer. Reads MJPEG over HTTP via the MediaMTX→ffmpeg pipeline (camera port picked by probing :1883 only — :3030 is never touched) |
 

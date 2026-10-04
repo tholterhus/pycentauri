@@ -61,7 +61,7 @@ Python 3.10+. Core dependencies: `websockets`, `paho-mqtt`, `httpx`,
 
 **CC2** needs its IP *and* its access code, found on the printer's
 touchscreen under network/connectivity settings. Pass it as
-`--access-code` / `access_code=` / `PYCENTAURI_ACCESS_CODE`. The examples
+`--access-code` / `access_code=` / `ACCESS_CODE`. The examples
 below use `ACCESS_CODE` as a stand-in — substitute your own.
 
 > **Enable "LAN Only" mode on the CC2** (network settings on the
@@ -71,7 +71,7 @@ below use `ACCESS_CODE` as a stand-in — substitute your own.
 > connection error. This is required on firmware 2.0 and recommended on
 > all CC2 firmware.
 
-Every CLI command accepts `--host` (env: `PYCENTAURI_HOST`). With no host
+Every CLI command accepts `--host` (env: `HOST`). With no host
 given, commands try UDP discovery, which only finds CC1s.
 
 ## CLI
@@ -306,13 +306,13 @@ hands on your printer:
 
 ```sh
 # Read-only (status, snapshot, attributes, discovery, canvas)
-claude mcp add pycentauri --env PYCENTAURI_HOST=printer.example \
+claude mcp add pycentauri --env HOST=printer.example \
     -- python -m pycentauri.mcp
 
 # With control tools
 claude mcp add pycentauri-cc2 \
-    --env PYCENTAURI_HOST=printer-cc2.example \
-    --env PYCENTAURI_ACCESS_CODE=ACCESS_CODE \
+    --env HOST=printer-cc2.example \
+    --env ACCESS_CODE=ACCESS_CODE \
     -- python -m pycentauri.mcp --enable-control
 ```
 
@@ -407,7 +407,7 @@ Notes:
   to a chat on every alert (bot via @BotFather; find the chat id by
   messaging the bot once and opening
   `https://api.telegram.org/bot<token>/getUpdates`). In the systemd
-  service set `PYCENTAURI_DETECT_TELEGRAM_TOKEN` / `..._CHAT_ID` in
+  service set `DETECT_TELEGRAM_TOKEN` / `..._CHAT_ID` in
   `/etc/pycentauri.conf` — empty values disable it.
 - Standalone without the HTTP server: `centauri detect watch --host …`.
   Model debugging against arbitrary JPEGs: `centauri detect test img.jpg`.

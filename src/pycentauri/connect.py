@@ -51,7 +51,7 @@ async def connect_auto(
             raise PrinterError(
                 f"{host} appears to be a CC2 (MQTT :1883 open) but no "
                 "access_code was provided. Pass --access-code or set "
-                "PYCENTAURI_ACCESS_CODE."
+                "ACCESS_CODE."
             )
         log.info("detected CC2 (MQTT :1883) at %s", host)
         return await CC2Printer.connect(

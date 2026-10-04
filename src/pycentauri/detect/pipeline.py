@@ -48,6 +48,24 @@ log = logging.getLogger(__name__)
 
 #: ``print_status`` code for an actively running print (both models).
 PRINTING = 13
+PAUSED = 6  # print paused (filament runout on the CC1, user pause)
+STOPPING = 7
+STOPPED = 8
+COMPLETED = 9
+ERROR = 14
+
+#: Status-code → Telegram one-liner; sent (with the latest camera frame)
+#: whenever the printer's code CHANGES while a telegram poster is wired.
+STATUS_ALERTS = {
+    PAUSED: "⏸️ print paused",
+    27: "🔁 filament switch",
+    28: "🔁 filament switch",
+    29: "🔁 filament switch",
+    STOPPING: "🛑 print aborted",
+    STOPPED: "🛑 print aborted",
+    COMPLETED: "✅ print finished",
+    ERROR: "❗ printer error",
+}
 #: CC2 Canvas filament-switch states: the head parks at the purge chute,
 #: physically outside the print area. Keep the camera subscription (it
 #: would churn the printer's camera slots to drop it for the duration of
@@ -180,18 +198,22 @@ async def send_telegram(
     Raises on failure — callers decide policy (the controller logs).
     """
     event = payload.get("event", {})
-    caption = (
+    caption = event.get("text") or (
         f"{event.get('label', 'detection')} detected — score {event.get('score', 0):.2f}\n"
         f"{event.get('when', '')} · backend {event.get('backend', '?')}"
     )
-    async with httpx.AsyncClient(timeout=10.0, transport=transport) as client:
+    photo: bytes | None = event.get("photo")
+    if photo is None:
         evidence = event.get("evidence")
         path = Path(evidence) if evidence else None
         if path and path.is_file():
+            photo = path.read_bytes()
+    async with httpx.AsyncClient(timeout=10.0, transport=transport) as client:
+        if photo:
             resp = await client.post(
                 f"https://api.telegram.org/bot{token}/sendPhoto",
                 data={"chat_id": chat_id, "caption": caption},
-                files={"photo": ("evidence.jpg", path.read_bytes(), "image/jpeg")},
+                files={"photo": ("frame.jpg", photo, "image/jpeg")},
             )
         else:
             resp = await client.post(
@@ -261,6 +283,9 @@ class DetectionController:
         self._printing = False  # status == 13 — inference runs
         self._active = False  # printing-ish (13 or filament switch) — subscribed
         self._fired = False  # one alert per print
+        self._last_code: int | None = None  # previous print_status
+        self._last_frame: bytes | None = None  # latest camera JPEG
+        self._status_posts: set[asyncio.Task[None]] = set()
         self._window: deque[bool] = deque(maxlen=cfg.window_size)
         self._backend: Any = None  # detect.backend.Detector, loaded lazily
         self._collecting = False  # training-frame collection toggle
@@ -277,7 +302,7 @@ class DetectionController:
 
     async def stop(self) -> None:
         self._closing = True
-        for task in (self._session_task, self._status_task):
+        for task in (self._session_task, self._status_task, *self._status_posts):
             if task is not None and not task.done():
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -396,6 +421,8 @@ class DetectionController:
 
     def _on_status(self, st: Status) -> None:
         code = st.print_status
+        prev = self._last_code
+        self._last_code = code
         was_active = self._active
         self._printing = code == PRINTING
         self._active = code == PRINTING or (code is not None and code in FILAMENT_SWITCH)
@@ -404,6 +431,32 @@ class DetectionController:
         elif not self._active and was_active:
             # Session loop observes the flag and unsubscribes itself.
             self._fired = False
+        if (
+            self._telegram_poster is not None
+            and prev is not None
+            and code != prev
+            and code in STATUS_ALERTS
+        ):
+            self._post_status_alert(STATUS_ALERTS[code])
+
+    def _post_status_alert(self, text: str) -> None:
+        task = asyncio.create_task(self._send_status_alert(text))
+        self._status_posts.add(task)
+        task.add_done_callback(self._status_posts.discard)
+
+    async def _send_status_alert(self, text: str) -> None:
+        payload = {
+            "type": "print_status",
+            "event": {
+                "text": text,
+                "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "photo": self._last_frame,
+            },
+        }
+        try:
+            await self._telegram_poster(payload)
+        except Exception as err:
+            log.error("detection: telegram delivery failed: %r", err)
 
     def _begin_session(self) -> None:
         self._fired = False
@@ -444,6 +497,7 @@ class DetectionController:
                 jpeg = jpeg_from_part(part)
                 if jpeg is None:
                     continue
+                self._last_frame = jpeg
                 # Collection has no grace period — priming and first layers
                 # are valuable training material too.
                 if (

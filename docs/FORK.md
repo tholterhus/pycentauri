@@ -21,7 +21,7 @@ outline for any future upstream contribution.
 
 * **0.11.x era (retroactively documented in CHANGELOG 0.11.0)**: system
   installer + INSTALL.md, camera stream lifecycle (SDCP Cmd 386 with
-  `allow_empty_mainboard`), PWA assets, `PYCENTAURI_LOG_LEVEL`,
+  `allow_empty_mainboard`), PWA assets, `LOG_LEVEL`,
   `pycentauri.conf-example`, generalized example addresses
 * **Failed-print ("spaghetti") detection** (v0.12.0):
   * `src/pycentauri/detect/` — LiteRT/Edge-TPU backend with CPU fallback
@@ -36,7 +36,7 @@ outline for any future upstream contribution.
 * **Deployment hardening**: `pycentauri-usb-prepare` (device node +
   udev-database entry for udev-less containers, no-op elsewhere),
   `scripts/fetch-smoke-model.sh`, installer knobs
-  (`PYCENTAURI_DETECT*`), runtime cache-busting strings
+  (`DETECT*`), runtime cache-busting strings
 
 ## Deliberate behavior changes
 

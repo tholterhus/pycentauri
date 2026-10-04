@@ -822,3 +822,67 @@ async def test_controller_sends_telegram_on_fire(
     assert len(tg) == 1  # exactly once per print
     assert tg[0]["type"] == "spaghetti_detected"
     assert tg[0]["event"]["evidence"]  # evidence JPEG saved alongside
+
+
+def test_send_telegram_text_with_inline_photo() -> None:
+    import httpx
+
+    from pycentauri.detect.pipeline import send_telegram
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    payload = {"event": {"text": "✅ print finished", "photo": _jpeg()}}
+    asyncio.run(send_telegram("TOK", "42", payload, transport=httpx.MockTransport(handler)))
+    assert "sendPhoto" in str(seen[0].url)
+    body = seen[0].read()
+    assert b"print finished" in body and b"42" in body
+
+
+async def test_controller_sends_telegram_on_status_changes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        detect_backend.Detector,
+        "from_model",
+        staticmethod(lambda path, force_cpu=False: FakeDetector()),
+    )
+    cfg = DetectConfig(
+        model_path=tmp_path / "m_edgetpu.tflite",
+        grace_s=0.0,
+        min_frame_interval_s=0.0,
+        window_size=4,
+        window_needed=3,
+        action="notify",
+        evidence_dir=tmp_path / "ev",
+    )
+    camera = FakeCamera([_jpeg()] * 30)
+    tg: list[dict[str, Any]] = []
+
+    async def telegram_poster(payload: dict[str, Any]) -> None:
+        tg.append(payload)
+
+    from pycentauri.detect.pipeline import COMPLETED, PAUSED
+
+    controller = DetectionController(
+        cfg,
+        camera=camera,
+        get_printer=lambda: FakePrinter(
+            [0] + [PRINTING] * 10 + [PAUSED] + [PRINTING] * 10 + [COMPLETED, COMPLETED]
+        ),
+        telegram_poster=telegram_poster,
+    )
+    await controller.start()
+    await _wait_for(lambda: controller._last_code == COMPLETED)
+    await asyncio.sleep(0.2)  # let the status-post tasks run
+    await controller.stop()
+
+    status_msgs = [p["event"]["text"] for p in tg if p["type"] == "print_status"]
+    assert status_msgs == ["⏸️ print paused", "✅ print finished"]  # no dup for repeated 9
+    detections = [p for p in tg if p["type"] == "spaghetti_detected"]
+    # one alert per printing segment — pause/resume re-arms by design
+    assert len(detections) == 2
+    assert all(d["event"]["evidence"] for d in detections)
