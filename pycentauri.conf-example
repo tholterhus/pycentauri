@@ -16,6 +16,8 @@ DETECT=0
 DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
 DETECT_ACTION=notify
 DETECT_THRESHOLD=0.65
+# Seconds between analyzed frames (default 1; raise to reduce CPU/TPU load).
+DETECT_INTERVAL=1
 # Optional Telegram push: alerts on detection AND print-state changes
 # (paused / filament switch / aborted / finished / error), each with a
 # camera frame. Bot via @BotFather; empty values disable it.

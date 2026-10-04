@@ -432,6 +432,14 @@ Notes:
   documented in
   [`docs/CORAL_SPAGHETTI_DETECTION.md`](docs/CORAL_SPAGHETTI_DETECTION.md)
   and [`scripts/train/README.md`](scripts/train/README.md).
+- **Network load & cadence**: detection analyses one frame per second
+  by default — raise it via `--detect-interval` / `DETECT_INTERVAL`
+  (service config) if you want it lazier. Note what does and does not
+  cost network: the camera stream itself is the only real traffic (the
+  printer sends one MJPEG flow, a few Mbit/s, to the server; every UI
+  viewer pulls its own copy from the server), while the detection adds
+  nothing — it just picks frames from that shared stream. A Telegram
+  alert costs one ~25 KB image.
 - **Default action is notify only**: evidence frames land in
   `data/evidence/` (and optionally a webhook). `--detect-action pause|stop`
   additionally require `--enable-control`.
