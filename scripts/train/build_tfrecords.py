@@ -125,7 +125,9 @@ def write_record(
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dataset-dir", required=True, help="unified dataset dir (train/ val/ classes.txt)")
+    ap.add_argument(
+        "--dataset-dir", required=True, help="unified dataset dir (train/ val/ classes.txt)"
+    )
     ap.add_argument("--classes-file", required=True, help="classes.txt (one class per line)")
     ap.add_argument("--train-out", default="train.record")
     ap.add_argument("--val-out", default="val.record")
