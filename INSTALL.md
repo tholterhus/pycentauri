@@ -141,7 +141,9 @@ and raises an alert when the print has failed into a stringy mess
 ("spaghetti"). The heavy lifting is done by a *model* — a small trained
 neural-network file — executed either on a Google Coral USB Accelerator
 (a stick that speeds up neural networks, ~5–15 ms per look) or, more
-slowly, on the plain CPU (~200 ms per look; a Coral is optional).
+slowly, on the plain CPU (~200 ms per look; a Coral is optional). Either
+way the analysis is fully local — camera frames never leave your network;
+the only optional outbound traffic is the Telegram alert to your own bot.
 
 You need: a working pycentauri installation (see above), and — only for the
 fast Coral variant — a Coral USB Accelerator plugged into this machine.
