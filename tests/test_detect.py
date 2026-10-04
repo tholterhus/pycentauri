@@ -881,7 +881,11 @@ async def test_controller_sends_telegram_on_status_changes(
     await controller.stop()
 
     status_msgs = [p["event"]["text"] for p in tg if p["type"] == "print_status"]
-    assert status_msgs == ["⏸️ print paused", "✅ print finished"]  # no dup for repeated 9
+    assert [m.split(" — ")[0] for m in status_msgs] == [  # no dup for repeated 9
+        "⏸️ print paused",
+        "✅ print finished",
+    ]
+    assert all(" — job.gcode" in m for m in status_msgs)  # print context attached
     detections = [p for p in tg if p["type"] == "spaghetti_detected"]
     # one alert per printing segment — pause/resume re-arms by design
     assert len(detections) == 2

@@ -266,9 +266,7 @@ def main() -> int:
     ]
     print("\n".join(report))
     (out / "report.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
-    print(
-        f"→ {out}\nNächster Schritt: dataset-zip nach Colab (scripts/train/colab_spaghetti.py)."
-    )
+    print(f"→ {out}\nNächster Schritt: dataset-zip nach Colab (scripts/train/colab_spaghetti.py).")
     return 0
 
 

@@ -291,6 +291,8 @@ class DetectionController:
         self._last_code: int | None = None  # previous print_status
         self._layer: int | None = None
         self._total_layers: int | None = None
+        self._print_ctx: str = ""  # human context appended to alerts
+        self._last_codes: str = ""  # raw status codes, logged for debugging
         self._last_collect_layer: int | None = None
         self._last_frame: bytes | None = None  # latest camera JPEG
         self._status_posts: set[asyncio.Task[None]] = set()
@@ -449,7 +451,29 @@ class DetectionController:
         pi = st.print_info
         self._layer = pi.current_layer if pi else None
         self._total_layers = pi.total_layer if pi else None
+        self._last_codes = (
+            f"CurrentStatus={st.current_status} PrintInfo.Status={pi.status if pi else None}"
+        )
+        if pi is not None and pi.filename:
+            self._print_ctx = f" — {pi.filename}"
+            if pi.current_layer and pi.total_layer:
+                self._print_ctx += f", layer {pi.current_layer}/{pi.total_layer}"
+            elif pi.progress is not None:
+                self._print_ctx += f", {pi.progress}%"
         code = st.print_status
+        # Best-effort pause reason: the SDCP protocol has no reason code
+        # (6 = "paused", period). CC2 MQTT at least exposes the runout
+        # sensor; log the raw codes so firmware quirks can be mapped later.
+        cc2 = st.raw.get("_cc2", {}) if isinstance(st.raw, dict) else {}
+        if (
+            code == PAUSED
+            and isinstance(cc2, dict)
+            and cc2.get("filament_detect_enable")
+            and not cc2.get("filament_detected", 1)
+        ):
+            self._pause_reason = " (filament runout)"
+        else:
+            self._pause_reason = ""
         prev = self._last_code
         self._last_code = code
         was_active = self._active
@@ -474,6 +498,11 @@ class DetectionController:
         task.add_done_callback(self._status_posts.discard)
 
     async def _send_status_alert(self, text: str) -> None:
+        if text.startswith("⏸️"):
+            text += getattr(self, "_pause_reason", "")
+        if self._print_ctx:
+            text += self._print_ctx
+        log.info("detection: status alert %r (raw: %s)", text, self._last_codes)
         payload = {
             "type": "print_status",
             "event": {
