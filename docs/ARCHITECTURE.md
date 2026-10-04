@@ -3,6 +3,11 @@
 `pycentauri` is six surfaces over one async client. This doc maps the
 modules, the request flows, and the lifetime of every connection.
 
+> **Audience:** contributors poking at the internals. The module table
+> below still says what every piece does in plain words — if a term is
+> unexplained, it is a wire/protocol name from
+> [`PROTOCOL.md`](PROTOCOL.md).
+
 ```
                                         ┌─────────────────────────────────┐
    ┌── library users (import) ──┐       │        printer at LAN IP        │
@@ -40,8 +45,8 @@ modules, the request flows, and the lifetime of every connection.
 | `cli` | Typer subcommands; auto-discovery + mainboard pre-seed; `--access-code` plumbing | Indirect |
 | `server` | FastAPI app, `PrinterManager` (long-lived connection), `RtspController`, `/stream` proxy, web UI mount | Yes (one connection) |
 | `rtsp` | MediaMTX config render + subprocess management | No (manages subprocess that does) |
-| `detect.backend` | LiteRT interpreter factory (Edge TPU delegate when `/dev/apex/0` + `_edgetpu` model, CPU fallback with uncompiled sibling), SSD output postprocessing | No (model file + JPEG only) |
-| `detect.pipeline` | `DetectionController` — status watcher (print_status 13; CC2 27/28/29 held but not inferred), K-of-M debounce, evidence/webhook/opt-in pause-stop | Through injected printer `watch()` + the shared broadcaster |
+| `detect.backend` | Runs the trained model on camera images. With a Coral stick, its AI chip does the work (the model file must have been compiled for it); without, the same analysis runs on the CPU (an uncompiled model file is loaded automatically). Also decodes the model's raw output into plain detections: what was seen, where, and how sure. | No (model file + JPEG only) |
+| `detect.pipeline` | The brain deciding what counts as a failure. Watches the printer's state and only analyzes while a print really runs (a paused filament switch is waited out, not analyzed). Debounces: several of the last camera looks must agree before an alert fires, so one stray frame can't trigger it. Saves evidence snapshots, sends Telegram/webhook alerts, and pauses/stops the printer only if explicitly armed in the dashboard. | Through injected printer `watch()` + the shared broadcaster |
 | `mcp.server` | FastMCP tools | Indirect (one connection per call) |
 | `web/` | Static HTML/CSS/JS dashboard | Through the server's REST/SSE |
 
