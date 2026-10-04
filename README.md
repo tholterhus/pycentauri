@@ -275,6 +275,22 @@ webcam, job progress with layer/ETA, printer state, thermals, kinematics
 (with live head speed on CC2), pause/resume/stop, speed-mode selector,
 fan and heater sliders that hydrate from live values, a Canvas panel
 with per-tray color swatches and an auto-refill toggle (CC2), and RTSP
+
+### Where you'll want the dashboard
+
+- **Phone** — the dashboard is an installable PWA: open `/ui/`, use the
+  browser's "Add to Home Screen", and it runs fullscreen like a native app.
+- **Browser tab** — just `http://<server>:8787/ui/` on any machine.
+- **OrcaSlicer** — in the printer profile's *Print Host upload* settings
+  (Host type *Elegoo Link*), put `http://<server>:8787/ui/` into the
+  **Device UI** field. The printer tab in OrcaSlicer then embeds the
+  dashboard instead of the vendor cloud page.
+
+All three share the same server, so each viewer counts once for the
+camera: the webcam stream starts when the first client opens and sleeps
+again when the last one leaves — the printer is never asked to run its
+camera (or hold an extra connection) when nobody is looking. Detection
+subscribes to the same stream without opening a second camera slot.
 bridge controls. Control panels only render when the server was started
 with `--enable-control`.
 
