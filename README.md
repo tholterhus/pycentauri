@@ -642,6 +642,13 @@ test after protocol-layer changes.
 - **Original project: [`bjan/pycentauri`](https://github.com/bjan/pycentauri)**
   — this repository started as a fork of its v0.9.0 (see the fork notice
   above and [`docs/FORK.md`](docs/FORK.md)).
+- **AI-generated code**: everything added in this fork since the v0.9.0
+  base — including the failed-print detection, the trained model and the
+  dashboard — was written 100 % by AI (GLM-Flash 5.3, driven through
+  ZCode). No humans were actively involved in the coding process (or
+  were harmed); a human decided *what* to build, the machine wrote *how*.
+  Upstream's v0.9.0 base, by contrast, is bjan's human work — credit
+  where it belongs.
 - Protocol references: Elegoo's
   [`elegoo-link`](https://github.com/ELEGOO-3D/elegoo-link) SDK
   (Apache-2.0) and

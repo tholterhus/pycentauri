@@ -9,6 +9,11 @@ outline for any future upstream contribution.
 
 ## Relationship to upstream
 
+> **Provenance note:** all fork work described in this document was
+> written 100 % by AI (GLM-Flash 5.3) — no humans were actively involved
+> in the coding (or were harmed). Humans steered the requirements and
+> accepted the results; upstream's v0.9.0 base is bjan's human work.
+
 * `origin` = tholterhus/pycentauri (this repository, public)
 * `upstream` = bjan/pycentauri (public, main at v0.9.0 when this was
   written)
