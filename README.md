@@ -430,6 +430,8 @@ pip install 'pycentauri[detect,server]'
 #    (see INSTALL.md, "Failed-print detection (Coral) — step by step")
 #    No Coral? Skip this — detection then runs on the CPU, ~200 ms per
 #    look instead of ~5-15 ms. Everything else behaves identically.
+#    The CPU path works on x86-64, ARM-64 (Raspberry Pi) and macOS;
+#    only the Coral itself needs Linux x86-64.
 
 # 4. verify and run
 centauri detect check

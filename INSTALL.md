@@ -251,6 +251,15 @@ ships with Bookworm): LiteRT publishes `aarch64` wheels, `libedgetpu1-std`
 installs from the same Google repository, and the CPU fallback needs
 nothing extra at all.
 
+### Which CPUs does the CPU fallback support?
+
+All architectures LiteRT runs on — that covers **x86-64 and ARM-64 Linux**
+(including Raspberry Pi 4/5) and **macOS on Apple Silicon (M-series) as
+well as Intel**. The fallback is pure software, so no special
+instructions or accelerator are needed anywhere. The Coral stick,
+by contrast, requires Linux on x86-64 plus the Edge-TPU runtime —
+on macOS the detection simply always uses the CPU path.
+
 ## Network and firewall
 
 The Linux host needs outbound access to the printer. The exact ports depend on
