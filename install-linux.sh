@@ -94,21 +94,22 @@ if [[ ! -e "$CONFIG_FILE" ]]; then
   install -d -m 0750 "$(dirname "$CONFIG_FILE")"
   cat > "$CONFIG_FILE" <<EOF
 # pycentauri service settings; keep this file readable only by root and the service account.
-PYCENTAURI_HOST=$PYCENTAURI_HOST
-PYCENTAURI_ACCESS_CODE=$PYCENTAURI_ACCESS_CODE
-PYCENTAURI_PORT=$PYCENTAURI_PORT
-PYCENTAURI_BIND=$PYCENTAURI_BIND
-PYCENTAURI_RTSP=$PYCENTAURI_RTSP
-PYCENTAURI_ENABLE_CONTROL=$PYCENTAURI_ENABLE_CONTROL
-PYCENTAURI_MEDIAMTX_PATH=$MEDIAMTX_PATH
-PYCENTAURI_LOG_LEVEL=${PYCENTAURI_LOG_LEVEL:-warn}
-PYCENTAURI_DETECT=$PYCENTAURI_DETECT
-PYCENTAURI_DETECT_MODEL=$PYCENTAURI_DETECT_MODEL
-PYCENTAURI_DETECT_ACTION=$PYCENTAURI_DETECT_ACTION
-PYCENTAURI_DETECT_THRESHOLD=$PYCENTAURI_DETECT_THRESHOLD
+# ACCESS_CODE: CC2 only (printer touchscreen); leave empty for the CC1.
+HOST=$PYCENTAURI_HOST
+ACCESS_CODE=$PYCENTAURI_ACCESS_CODE
+PORT=$PYCENTAURI_PORT
+BIND=$PYCENTAURI_BIND
+RTSP=$PYCENTAURI_RTSP
+ENABLE_CONTROL=$PYCENTAURI_ENABLE_CONTROL
+MEDIAMTX_PATH=$MEDIAMTX_PATH
+LOG_LEVEL=${PYCENTAURI_LOG_LEVEL:-warn}
+DETECT=$PYCENTAURI_DETECT
+DETECT_MODEL=$PYCENTAURI_DETECT_MODEL
+DETECT_ACTION=$PYCENTAURI_DETECT_ACTION
+DETECT_THRESHOLD=$PYCENTAURI_DETECT_THRESHOLD
 DETECT_INTERVAL=$PYCENTAURI_DETECT_INTERVAL
-PYCENTAURI_TELEGRAM_TOKEN=$PYCENTAURI_TELEGRAM_TOKEN
-PYCENTAURI_TELEGRAM_CHAT_ID=$PYCENTAURI_TELEGRAM_CHAT_ID
+TELEGRAM_TOKEN=$PYCENTAURI_TELEGRAM_TOKEN
+TELEGRAM_CHAT_ID=$PYCENTAURI_TELEGRAM_CHAT_ID
 EOF
 else
   echo "Keeping existing $CONFIG_FILE; edit it explicitly to change service settings."
@@ -146,7 +147,7 @@ if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then
   command -v curl >/dev/null || { echo 'curl is required for the systemd health check.' >&2; exit 1; }
   rtsp_args=(); [[ "$PYCENTAURI_RTSP" == 1 ]] && rtsp_args+=(--rtsp)
   control_args=(); [[ "$PYCENTAURI_ENABLE_CONTROL" == 1 ]] && control_args+=(--enable-control)
-  detect_args=(); [[ "$PYCENTAURI_DETECT" == 1 ]] && detect_args+=(--detect --detect-model "$PYCENTAURI_DETECT_MODEL" --detect-action "$PYCENTAURI_DETECT_ACTION" --detect-threshold "$PYCENTAURI_DETECT_THRESHOLD" --detect-interval "$PYCENTAURI_DETECT_INTERVAL" --telegram-token "\${PYCENTAURI_TELEGRAM_TOKEN}" --telegram-chat-id "\${PYCENTAURI_TELEGRAM_CHAT_ID}")
+  detect_args=(); [[ "$PYCENTAURI_DETECT" == 1 ]] && detect_args+=(--detect --detect-model "$PYCENTAURI_DETECT_MODEL" --detect-action "$PYCENTAURI_DETECT_ACTION" --detect-threshold "$PYCENTAURI_DETECT_THRESHOLD" --detect-interval "$PYCENTAURI_DETECT_INTERVAL" --telegram-token "\${TELEGRAM_TOKEN}" --telegram-chat-id "\${TELEGRAM_CHAT_ID}")
   # Inside an unprivileged LXC there is no udevd; libusb needs a hand-made
   # device node plus /run/udev database entry to see the Coral. No-op with
   # a warning when the stick is absent or on a normal host. Only installed
@@ -232,7 +233,7 @@ Group=$APP_USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=-$CONFIG_FILE
 ${prep_line}
-ExecStart=$APP_DIR/venv/bin/centauri server --host \${PYCENTAURI_HOST} --bind \${PYCENTAURI_BIND} --port \${PYCENTAURI_PORT} ${control_args[*]} ${rtsp_args[*]} ${detect_args[*]}
+ExecStart=$APP_DIR/venv/bin/centauri server --host \${HOST} --bind \${BIND} --port \${PORT} --access-code \${ACCESS_CODE} ${control_args[*]} ${rtsp_args[*]} ${detect_args[*]}
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

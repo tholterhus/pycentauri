@@ -110,7 +110,7 @@ MEDIAMTX_PATH=
 LOG_LEVEL=warn
 # Failed-print ("spaghetti") detection; see the step-by-step chapter below.
 DETECT=0
-DETECT_MODEL=data/models/ssd_mobilenet_v2_coco_edgetpu.tflite
+DETECT_MODEL=auto
 DETECT_ACTION=notify
 DETECT_THRESHOLD=0.65
 # Seconds between analyzed frames (default 1; raise to reduce CPU load).
@@ -187,14 +187,20 @@ curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
 sudo apt-get update && sudo apt-get install libedgetpu1-std
 ```
 
-Then unplug and re-plug the Coral once. Your desktop user needs permission
-for the USB device (the package ships a rule granting the `plugdev` group
-access; `sudo usermod -aG plugdev $USER`, then log out and in again).
+Then unplug and re-plug the Coral once. USB access is granted via the
+`plugdev` group — add **every user that needs the stick** (you, and on a
+systemd install also the service account):
+`sudo usermod -aG plugdev $USER && sudo usermod -aG plugdev pycentauri`,
+then log out and in again (or restart the service).
 
 ### 4. Turn it on
 
-Set `DETECT=1` in `/etc/pycentauri.conf` (see the variables in the
-Configuration section above) and restart the service. The dashboard gains a
+**Important:** detection is switched on at install time — the service
+unit bakes the `--detect*` flags into `ExecStart`. Editing `DETECT=1`
+into an existing config alone does nothing. Either re-run
+`install-linux.sh` with `PYCENTAURI_DETECT=1`, or add the flags to
+`ExecStart` in the unit (then `sudo systemctl daemon-reload && sudo
+systemctl restart pycentauri`). Afterwards the dashboard gains a
 **DETECT** panel showing the backend, a live WATCHING flag while a print
 runs, and evidence snapshots.
 
@@ -271,6 +277,19 @@ runtime — on macOS the detection simply always uses the CPU path. Note
 the split: the *runtime* that executes a compiled model exists for both
 architectures, while the *compiler* that produces such a model is
 x86-64-only (see [`scripts/train/README.md`](scripts/train/README.md)).
+
+## Before you start (CC2 owners)
+
+Three things the CC2 needs that the CC1 doesn't:
+
+1. **LAN-Only mode** — enable it on the printer's touchscreen (network
+   settings). Without it the local API stays closed and pycentauri can't
+   connect at all.
+2. **Static address** — give the printer a fixed DHCP lease in your
+   router ("address reservation"). If its IP drifts, the service loses
+   the printer and you'll blame the software.
+3. **Access code** — shown on the printer's touchscreen (network
+   settings). It belongs in `ACCESS_CODE=` in `/etc/pycentauri.conf`.
 
 ## Network and firewall
 
@@ -388,5 +407,5 @@ checking the printer and deciding whether pausing it is appropriate.
 - **RTSP fails:** verify `ffmpeg`, MediaMTX, executable permissions, and the
   configured path; RTSP is intentionally off by default.
 
-For development and test commands, see the [README](../README.md). For wire
-protocol details, see [PROTOCOL.md](PROTOCOL.md).
+For development and test commands, see the [README](README.md). For wire
+protocol details, see [docs/PROTOCOL.md](docs/PROTOCOL.md).

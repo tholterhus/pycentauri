@@ -479,8 +479,9 @@ Notes:
   frame. This covers detections **and** print-state changes (paused,
   filament switch, aborted, finished, error). Setup: create a bot via
   @BotFather, message it once, read the chat id from
-  `https://api.telegram.org/bot<token>/getUpdates`. Empty values
-  disable it.
+  `https://api.telegram.org/bot<token>/getUpdates` — in the returned
+  JSON look for `"chat":{"id":123456789,...}`; that number is your chat
+  id). Empty values disable it.
 - Standalone without the HTTP server: `centauri detect watch --host …`.
   Model debugging against arbitrary JPEGs: `centauri detect test img.jpg`.
 - Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs and a
