@@ -29,8 +29,12 @@ outline for any future upstream contribution.
     (`allow_empty_mainboard`) while any client is connected, then lets
     it sleep again — no permanent second connection to the printer.
     Viewers are reference-counted across all usage surfaces (PWA on the
-    phone, plain browser tab, OrcaSlicer's embedded Device UI), so the
-    camera only runs while at least one of them is actually open
+    phone, plain browser tab, OrcaSlicer's embedded Device UI). One
+    extra "viewer" is the failed-print detection itself: while a print
+    runs it subscribes to the same stream, so the camera also stays on
+    for the whole print even when no dashboard is open — that is the
+    point of the monitoring. Between prints, with no UI client, it
+    sleeps.
   * **PWA assets**: the dashboard can be installed as an app on phone
     and desktop (icons, manifest)
   * Configurable log verbosity (`LOG_LEVEL`), an example service config
