@@ -87,7 +87,6 @@ ignore = ["E501"]
 # FastAPI's idiomatic DI uses `Depends()` in default values; that's B008.
 "src/pycentauri/server.py" = ["B008"]
 # Human-operated helper scripts carry German UI strings (umlauts, dashes).
-"scripts/roboflow-harvest.py" = ["RUF001", "RUF002", "RUF003"]
 "scripts/prepare-dataset.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.mypy]

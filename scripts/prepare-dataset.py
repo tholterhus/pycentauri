@@ -5,7 +5,7 @@ Unifies three sources into one Pascal-VOC dataset with a train/val split:
 
 1. Roboflow downloads — data/train/roboflow/<project>-v<ver>/ in YOLO
    format (images/ + labels/ + data.yaml), produced by
-   scripts/roboflow-harvest.py download.
+   the Roboflow Universe web UI (the API route is Cloudflare-blocked).
 2. Own labeled frames — a Label Studio **Pascal VOC export** directory
    (Annotations/*.xml + JPEGImages/*.jpg), produced from
    data/collect/ frames.
