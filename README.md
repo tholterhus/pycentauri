@@ -292,8 +292,21 @@ All three share the same server, so each viewer counts once for the
 camera. One extra "viewer" is the failed-print detection: while a print
 runs it subscribes to the same stream (no second camera slot), so the
 camera stays on for the whole print even when no dashboard is open —
-that is the monitoring working. With no print and no UI client, the
-camera sleeps.
+that is the monitoring working.
+
+**When exactly is the camera on?** The stream runs while at least one
+of these holds, and sleeps the moment none does:
+
+| Camera is on when… | Because |
+|---|---|
+| any UI client is open (PWA, browser tab, OrcaSlicer Device UI) | someone is watching |
+| a print runs **and** detection is enabled (`DETECT=1`) | the detector is watching |
+| a print runs **and** frame collection is on | training frames are being saved |
+
+With detection (and collection) disabled, the camera — and its network
+traffic — is therefore only live while you have a dashboard open; idle
+printer overnight = silent network. See the network-load note in the
+detection section for the bandwidth numbers.
 
 ### Endpoints
 

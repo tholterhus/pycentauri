@@ -33,8 +33,10 @@ outline for any future upstream contribution.
     extra "viewer" is the failed-print detection itself: while a print
     runs it subscribes to the same stream, so the camera also stays on
     for the whole print even when no dashboard is open — that is the
-    point of the monitoring. Between prints, with no UI client, it
-    sleeps.
+    point of the monitoring. In short: the camera runs while a UI client
+    is open, or a print runs with detection/collection enabled, and
+    sleeps the moment none of those holds (disabled detection = silent
+    network whenever no dashboard is open).
   * **PWA assets**: the dashboard can be installed as an app on phone
     and desktop (icons, manifest)
   * Configurable log verbosity (`LOG_LEVEL`), an example service config
