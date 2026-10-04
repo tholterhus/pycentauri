@@ -28,8 +28,9 @@ outline for any future upstream contribution.
     and automatic loading of the uncompiled model sibling, plus the
     collection + arming pipeline
   * Dashboard DETECT panel: backend badge, WATCHING flag, K-of-M window,
-    evidence thumbnails, training-frame collection toggle with dataset
-    progress and readiness hint, runtime response switch
+    evidence thumbnails, runtime response switch (training-frame
+    collection runs headless via `POST /api/detect/collect` and persists
+    across restarts)
   * CLI: `centauri detect check | test | watch`
   * HTTP: `GET /api/detect`, `POST /api/detect/collect`,
     `POST /api/detect/action`, evidence serving

@@ -7,7 +7,8 @@ the Edge TPU, deployed as a model pair in `data/models/`.
 
 > This document is the handoff: any fresh session (or the human alone)
 > can resume from any checkbox. Collect-mode frames accumulate in
-> `data/collect/` while printing — the DETECT panel shows the count.
+> `data/collect/` while printing — the count is visible via
+> `GET /api/detect` (field `collect`).
 
 ## Status checklist
 
@@ -80,8 +81,8 @@ Class set (from the verified community model design — see
     every save. Worst-case disk usage ≈ 50 MB.
 * Without the caps a 12 h print would produce ~8,600 frames ≈ 215 MB.
 * Both limits live in `DetectConfig` (`src/pycentauri/detect/pipeline.py`);
-  collection toggles in the dashboard and resets to off on service
-  restart.
+  collection is toggled via `POST /api/detect/collect` and **persists
+  across service restarts** (dotfile `data/collect/.collecting`).
 Frames showing a healthy print get **no boxes** (negative examples —
 do not skip them; they are what keeps false alarms down).
 

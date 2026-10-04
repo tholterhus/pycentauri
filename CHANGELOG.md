@@ -6,6 +6,8 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-05
+
 ### Changed
 - **Breaking:** the service config (`/etc/pycentauri.conf`) and code
   env-var reads drop the `PYCENTAURI_` prefix (`HOST`, `PORT`, `DETECT`,

@@ -402,13 +402,14 @@ Notes:
 - **Ship models in pairs**: an Edge-TPU-compiled `*_edgetpu.tflite` cannot
   execute on the CPU — the CPU fallback automatically loads the uncompiled
   sibling (`<name>.tflite`).
-- **Optional Telegram push**: `--detect-telegram-token <token>` +
-  `--detect-telegram-chat-id <id>` send the evidence photo with a caption
-  to a chat on every alert (bot via @BotFather; find the chat id by
-  messaging the bot once and opening
-  `https://api.telegram.org/bot<token>/getUpdates`). In the systemd
-  service set `DETECT_TELEGRAM_TOKEN` / `..._CHAT_ID` in
-  `/etc/pycentauri.conf` — empty values disable it.
+- **Optional Telegram push**: with `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID`
+  (in `/etc/pycentauri.conf`, or `--telegram-token` / `--telegram-chat-id`
+  on the CLI) every alert goes to your chat — a one-liner with the camera
+  frame. This covers detections **and** print-state changes (paused,
+  filament switch, aborted, finished, error). Setup: create a bot via
+  @BotFather, message it once, read the chat id from
+  `https://api.telegram.org/bot<token>/getUpdates`. Empty values
+  disable it.
 - Standalone without the HTTP server: `centauri detect watch --host …`.
   Model debugging against arbitrary JPEGs: `centauri detect test img.jpg`.
 - Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs and a
