@@ -9,7 +9,7 @@ outline for any future upstream contribution.
 
 ## Relationship to upstream
 
-* `origin` = tholterhus/pycentauri (this repository, private)
+* `origin` = tholterhus/pycentauri (this repository, public)
 * `upstream` = bjan/pycentauri (public, main at v0.9.0 when this was
   written)
 * Histories share the v0.9.0 base. The fork tree adds ~4,171 lines of
@@ -37,7 +37,7 @@ outline for any future upstream contribution.
 * **Deployment hardening**: `pycentauri-usb-prepare` (device node +
   udev-database entry for udev-less containers, no-op elsewhere),
   `scripts/fetch-smoke-model.sh`, installer knobs
-  (`DETECT*`), runtime cache-busting strings
+  (`DETECT*`, `TELEGRAM*`), runtime cache-busting strings
 
 ## Deliberate behavior changes
 

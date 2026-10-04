@@ -1,5 +1,22 @@
 # pycentauri
 
+> **Fork notice** — this is a fork of
+> [`bjan/pycentauri`](https://github.com/bjan/pycentauri) (v0.9.0 base),
+> evolved independently since. The original project is not mine. Main
+> additions here:
+>
+> 1. **Failed-print ("spaghetti") detection** on a Google Coral Edge TPU
+>    (CPU fallback): automatic monitoring of every print, evidence
+>    snapshots, optional Telegram push, pause/stop response — with a
+>    trained model shipped as
+>    [release assets](https://github.com/tholterhus/pycentauri/releases/tag/v0.13.0)
+> 2. **System installer + hardening**: systemd unit, Coral USB setup for
+>    udev-less containers, PWA dashboard
+> 3. **Training pipeline** for the detection model (dataset assembly,
+>    Mac/Colab scripts, Edge-TPU compilation)
+>
+> Full divergence map: [`docs/FORK.md`](docs/FORK.md).
+
 Local-network toolkit for [Elegoo Centauri Carbon](https://www.elegoo.com/)
 3D printers — the **original Centauri Carbon (CC1)** and the **Centauri
 Carbon 2 (CC2)**. One async client, six surfaces: Python library, CLI,
@@ -577,6 +594,9 @@ test after protocol-layer changes.
 
 ## Credits & license
 
+- **Original project: [`bjan/pycentauri`](https://github.com/bjan/pycentauri)**
+  — this repository started as a fork of its v0.9.0 (see the fork notice
+  above and [`docs/FORK.md`](docs/FORK.md)).
 - Protocol references: Elegoo's
   [`elegoo-link`](https://github.com/ELEGOO-3D/elegoo-link) SDK
   (Apache-2.0) and
