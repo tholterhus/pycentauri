@@ -73,6 +73,9 @@ class FakeInterpreter:
         self.scores = np.zeros((1, n), dtype=np.float32)
         self.count = np.array([0], dtype=np.float32)
 
+    def allocate_tensors(self) -> None:
+        pass
+
     def get_input_details(self) -> list[dict[str, Any]]:
         return self._input_details
 

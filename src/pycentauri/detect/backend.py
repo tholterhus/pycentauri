@@ -224,6 +224,7 @@ class Detector:
         self.model_path = model_path
         self.backend_name = backend_name
         self.last_inference_s: float | None = None
+        interpreter.allocate_tensors()  # idempotent — shapes vor dem lesen festschreiben
 
         detail = interpreter.get_input_details()[0]
         self._input_index = int(detail["index"])
@@ -240,6 +241,37 @@ class Detector:
                 f"model {model_path.name} does not expose SSD detection outputs; "
                 "expected a TFLite_Detection_PostProcess detector"
             )
+        self._resolve_class_score_order()
+
+    def _resolve_class_score_order(self) -> None:
+        """Die beiden [1, N]-Outputs (klassen/scores) sind je nach export in
+        unterschiedlicher reihenfolge — disambiguierung per probe-inferenz:
+        klassen-ids sind integral, scores fraktional."""
+        c_idx, s_idx = self._outputs["classes"], self._outputs["scores"]
+        if c_idx is None or s_idx is None:
+            return
+        rng = np.random.default_rng(42)
+        integral = {c_idx: True, s_idx: True}
+        try:
+            for _ in range(3):
+                probe = rng.integers(
+                    0, 256, size=(self.input_size[1], self.input_size[0], 3), dtype=np.uint8
+                )
+                self._interpreter.set_tensor(
+                    self._input_index, _quantize(probe, self._dtype, self._quantization)
+                )
+                self._interpreter.invoke()
+                for idx in (c_idx, s_idx):
+                    vals = np.asarray(self._interpreter.get_tensor(idx)).flatten()
+                    if np.any(vals != np.rint(vals)):
+                        integral[idx] = False
+        except Exception:
+            return  # probe fehlgeschlagen → wire-order fallback bleibt
+        if integral[c_idx] and not integral[s_idx]:
+            return  # wire-order stimmt
+        if integral[s_idx] and not integral[c_idx]:
+            self._outputs["classes"], self._outputs["scores"] = s_idx, c_idx
+            log.info("detection: swapped classes/scores outputs (probe)")
 
     @classmethod
     def from_model(cls, model_path: Path, *, force_cpu: bool = False) -> Detector:
