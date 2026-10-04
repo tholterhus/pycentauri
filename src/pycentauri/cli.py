@@ -39,7 +39,7 @@ print_cmd = typer.Typer(name="print", help="Start, pause, resume, or stop a prin
 app.add_typer(print_cmd, name="print")
 detect_cmd = typer.Typer(
     name="detect",
-    help="Failed-print (spaghetti) detection on a Coral USB Edge TPU (CPU fallback).",
+    help="Failed-print (spaghetti) detection — Coral stick optional, runs on CPU too.",
 )
 app.add_typer(detect_cmd, name="detect")
 
@@ -778,7 +778,7 @@ def cmd_server(
         Path,
         typer.Option(
             "--detect-model",
-            help="TFLite model path (Edge TPU-compiled or plain; CPU fallback is automatic).",
+            help="TFLite model path (Edge TPU-compiled or plain; the matching CPU variant is picked automatically).",
         ),
     ] = DEFAULT_DETECT_MODEL,
     detect_action: str = typer.Option(
@@ -1006,7 +1006,7 @@ def cmd_detect_check(
     if edge_tpu_available():
         typer.echo("edge tpu     : present (/dev/apex/0)")
     else:
-        typer.echo("edge tpu     : not found (/dev/apex/0 absent) — CPU fallback")
+        typer.echo("edge tpu     : not found (/dev/apex/0 absent) — running on the CPU")
     path = _pick_model(model)
     typer.echo(f"model        : {path}")
     try:

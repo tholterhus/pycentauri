@@ -218,7 +218,7 @@ first ~90 seconds.
 |---|---|---|
 | `edge tpu: not found` although the Coral is plugged in | runtime not installed, or container without device passthrough | install `libedgetpu1-std`; in Proxmox LXCs pass the USB device through (`dev0: /dev/bus/usb/…`) |
 | `backend: cpu` although a Coral is present | the model file is not Edge-TPU-compiled | a `*_edgetpu.tflite` must be loaded; the CPU twin (`*.tflite`) is fetched automatically |
-| `inference failed` mentioning `edgetpu-custom-op` | an Edge-TPU model was forced onto the CPU | ship both variants; the fallback loads the uncompiled sibling automatically |
+| `inference failed` mentioning `edgetpu-custom-op` | an Edge-TPU model was forced onto the CPU | ship both variants; the CPU variant is loaded automatically |
 | webcam snapshot returns HTTP 500/502 | the printer's camera stream is disabled | open the dashboard webcam once (or `/stream`) — the server then enables it |
 | Coral worked, then stopped after a failed run | the stick re-enumerates itself after resets; the stale device node blocks it | re-plug the Coral, or restart the service (`ExecStartPre` re-syncs the node) |
 
@@ -248,8 +248,8 @@ as root before starting the server (the systemd unit does this via
 
 Works on Raspberry Pi 4/5 with the 64-bit Raspberry Pi OS (Python 3.10+
 ships with Bookworm): LiteRT publishes `aarch64` wheels, `libedgetpu1-std`
-installs from the same Google repository, and the CPU fallback needs
-nothing extra at all.
+installs from the same Google repository, and CPU-only detection
+needs nothing extra at all.
 
 **The Coral USB Accelerator also works on the Pi** (ARM-64 is officially
 supported for the stick): install the arm64 build of the Edge-TPU runtime,
@@ -258,11 +258,11 @@ x86 — expect slightly slower inference than a desktop x86 CPU-to-Coral
 setup, but still far below CPU-only latency. Use a decent USB cable and
 avoid underpowered hubs, the stick is picky about power.
 
-### Which CPUs does the CPU fallback support?
+Does detection without a Coral work on my CPU?
 
 All architectures LiteRT runs on — that covers **x86-64 and ARM-64 Linux**
 (including Raspberry Pi 4/5) and **macOS on Apple Silicon (M-series) as
-well as Intel**. The fallback is pure software, so no special
+well as Intel**. It is pure software, so no special
 instructions or accelerator are needed anywhere. The Coral stick requires
 Linux (x86-64 **or** ARM-64, e.g. the Raspberry Pi) plus the Edge-TPU
 runtime — on macOS the detection simply always uses the CPU path. Note

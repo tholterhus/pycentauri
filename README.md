@@ -6,7 +6,7 @@
 > additions here:
 >
 > 1. **Failed-print ("spaghetti") detection** on a Google Coral Edge TPU
->    (CPU fallback): automatic monitoring of every print, evidence
+>    (Coral optional, runs great on plain CPU): automatic monitoring of every print, evidence
 >    snapshots, optional Telegram push, pause/stop response — with a
 >    trained model shipped as
 >    [release assets](https://github.com/tholterhus/pycentauri/releases/tag/v0.13.0)
@@ -408,9 +408,12 @@ The bridge picks the correct camera port for CC1 vs CC2 automatically.
 
 While a print is running, pycentauri watches the printer's own webcam
 through an object-detection model and raises an alert when the print has
-failed into a stringy mess ("spaghetti"). On a Google Coral USB Accelerator
-each look costs ~5–15 ms; without a Coral the same model runs on the CPU
-(~200 ms at 1 frame/s — a Coral is optional). The detector taps the same
+failed into a stringy mess ("spaghetti"). There are two equally
+supported ways to run it: **without a Coral** (the default for most
+people) the analysis runs on your computer's CPU at ~200 ms per look;
+**with a Google Coral USB Accelerator** its AI chip does the same in
+~5–15 ms — the stick is purely an accelerator, never a requirement.
+The detector taps the same
 shared camera stream as the dashboard (the printer never sees a second
 camera connection), skips the first `--detect-grace` seconds of a print,
 and fires at most one alert per print when ≥ 4 of the last 6 frames show a
@@ -428,8 +431,9 @@ pip install 'pycentauri[detect,server]'
 
 # 3. optional: install the Edge TPU runtime for a Coral
 #    (see INSTALL.md, "Failed-print detection (Coral) — step by step")
-#    No Coral? Skip this — detection then runs on the CPU, ~200 ms per
-#    look instead of ~5-15 ms. Everything else behaves identically.
+#    No Coral? Skip this entirely — plain CPU is the normal path
+#    (~200 ms per look instead of ~5-15 ms). Everything else behaves
+#    identically, just slower.
 #    The CPU path works on x86-64, ARM-64 (Raspberry Pi) and macOS.
 #    The Coral runs on Linux x86-64 AND ARM-64 (e.g. Raspberry Pi);
 #    only the model *compiler* is x86-64-only (see scripts/train/README.md).
@@ -463,8 +467,8 @@ Notes:
   across service restarts**; `DETECT_ACTION` in the config is only the
   initial default.
 - **Ship models in pairs**: an Edge-TPU-compiled `*_edgetpu.tflite` cannot
-  execute on the CPU — the CPU fallback automatically loads the uncompiled
-  sibling (`<name>.tflite`).
+  execute on the CPU — on a machine without a Coral the software
+  automatically loads the uncompiled CPU variant (`<name>.tflite`) instead.
 - **Optional Telegram push**: with `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID`
   (in `/etc/pycentauri.conf`, or `--telegram-token` / `--telegram-chat-id`
   on the CLI) every alert goes to your chat — a one-liner with the camera

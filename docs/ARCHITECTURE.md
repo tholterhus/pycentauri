@@ -178,7 +178,7 @@ manually with the CLI against real hardware (`centauri status`,
 | MCP server | `pycentauri[mcp]` | — |
 | HTTP server + UI | `pycentauri[server]` | — |
 | RTSP bridge | (no Python extra) | `mediamtx`, `ffmpeg` |
-| Spaghetti detection | `pycentauri[detect]` | Coral USB + `libedgetpu1-std` (optional — CPU fallback without) |
+| Spaghetti detection | `pycentauri[detect]` | Coral USB + `libedgetpu1-std` (optional accelerator — plain CPU works without) |
 
 The RTSP bridge intentionally has no Python extra — the only deps are
 the system binaries. The CLI subcommand is therefore always present;
