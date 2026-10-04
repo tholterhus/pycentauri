@@ -154,10 +154,11 @@ sudo -u pycentauri /opt/pycentauri/venv/bin/pip install '/opt/pycentauri[detect,
 
 The `detect` extra adds the inference runtime (LiteRT), `numpy` and `pillow`. Note the local path (`/opt/pycentauri[...]`): it upgrades your checked-out copy in place — a bare `pip install pycentauri` would fetch the upstream project from PyPI instead.
 
-### 2. Get a model
+### 2. Get a model — nothing to do, it's bundled
 
-The repository ships no model file. Run the download helper inside the
-application directory:
+The trained spaghetti model ships with the package (Coral + CPU variant
+plus labels) and `DETECT_MODEL=auto` finds it — the default in the
+generated config. Optionally verify they are there:
 
 ```sh
 cd /opt/pycentauri && sudo -u pycentauri ./scripts/fetch-smoke-model.sh
@@ -167,12 +168,11 @@ This fetches the *smoke model* (a COCO SSD MobileNet V2 in both the Edge-TPU
 and the CPU variant, plus its labels). It knows everyday objects — not
 spaghetti — and exists purely to prove the pipeline works end to end.
 
-The **real spaghetti model** ships ready-made: download
-`spaghetti_edgetpu.tflite`, `spaghetti.tflite` and `spaghetti.txt` from the
+If you ever want a *different* trained model: the v1 model also ships as
+assets of the
 [v0.13.0 release](https://github.com/tholterhus/pycentauri/releases/tag/v0.13.0)
-into `/opt/pycentauri/data/models/`, then set
-`DETECT_MODEL=data/models/spaghetti_edgetpu.tflite` in the config. How that
-model was trained — and how to retrain your own — is documented in
+(copy into `/opt/pycentauri/data/models/` — a model there wins over the
+bundled one), and retraining your own is documented in
 [`scripts/train/README.md`](scripts/train/README.md).
 
 ### 3. Coral runtime (optional — skip for CPU-only)

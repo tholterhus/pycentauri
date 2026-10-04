@@ -450,12 +450,12 @@ centauri server --host printer.example --enable-control \
 
 Notes:
 
-- **The smoke model detects everyday objects, not spaghetti.** It proves
-  the pipeline end to end; a real spaghetti model is trained separately —
-  the full journey (data collection, training, Edge TPU compilation) is
-  documented in
-  [`docs/CORAL_SPAGHETTI_DETECTION.md`](docs/CORAL_SPAGHETTI_DETECTION.md)
-  and [`scripts/train/README.md`](scripts/train/README.md).
+- **A trained model is bundled** — `DETECT_MODEL=auto` (the default)
+  finds it, whether you installed via pip or cloned the repo. Deployed
+  your own model into `data/models/`? That one wins. The optional smoke
+  model (`scripts/fetch-smoke-model.sh`) detects everyday objects, not
+  spaghetti, and exists purely to test the pipeline. How the bundled
+  model was made: [`scripts/train/README.md`](scripts/train/README.md).
 - **Network load & cadence**: detection analyses one frame per second
   by default — raise it via `--detect-interval` / `DETECT_INTERVAL`
   (service config) if you want it lazier. Note what does and does not
