@@ -251,6 +251,13 @@ ships with Bookworm): LiteRT publishes `aarch64` wheels, `libedgetpu1-std`
 installs from the same Google repository, and the CPU fallback needs
 nothing extra at all.
 
+**The Coral USB Accelerator also works on the Pi** (ARM-64 is officially
+supported for the stick): install the arm64 build of the Edge-TPU runtime,
+plug the stick into a powered port, and pycentauri picks it up like on
+x86 — expect slightly slower inference than a desktop x86 CPU-to-Coral
+setup, but still far below CPU-only latency. Use a decent USB cable and
+avoid underpowered hubs, the stick is picky about power.
+
 ### Which CPUs does the CPU fallback support?
 
 All architectures LiteRT runs on — that covers **x86-64 and ARM-64 Linux**
