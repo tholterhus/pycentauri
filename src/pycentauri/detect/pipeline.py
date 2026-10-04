@@ -530,8 +530,11 @@ class DetectionController:
                 "photo": self._last_frame,
             },
         }
+        poster = self._telegram_poster
+        if poster is None:  # raced away — nothing to send
+            return
         try:
-            await self._telegram_poster(payload)
+            await poster(payload)
         except Exception as err:
             log.error("detection: telegram delivery failed: %r", err)
 
