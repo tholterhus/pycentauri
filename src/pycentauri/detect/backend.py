@@ -258,7 +258,7 @@ class Detector:
                     0, 256, size=(self.input_size[1], self.input_size[0], 3), dtype=np.uint8
                 )
                 self._interpreter.set_tensor(
-                    self._input_index, _quantize(probe, self._dtype, self._quantization)
+                    self._input_index, _quantize(probe, self._dtype, self._quantization)[np.newaxis]
                 )
                 self._interpreter.invoke()
                 for idx in (c_idx, s_idx):
