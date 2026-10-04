@@ -11,10 +11,11 @@ the Edge TPU, deployed as a model pair in `data/models/`.
 
 ## Status checklist
 
-Status 2026-10-04: dataset + Mac training complete, int8 model exported
-and probe-verified. Open: Edge-TPU compilation (Colab, see
-`scripts/train/colab_edgetpu_compile.md`), deployment + acceptance run,
-own-frame labeling for the 4-class v2 model.
+Status 2026-10-04 (evening): **v1 model compiled and deployed** — the
+service runs `spaghetti_edgetpu.tflite` on the Coral (backend edgetpu,
+~23 ms probe, 0/4 false hits on healthy frames at 0.65). Open: one
+notify-mode print as acceptance run, then arming; own-frame labeling
+for the 4-class v2 model.
 
 - [x] Collect mode live in dashboard (`POST /api/detect/collect`)
 - [x] `scripts/fetch-smoke-model.sh` (pipeline smoke test)
@@ -33,12 +34,16 @@ own-frame labeling for the 4-class v2 model.
       5,836 train / 1,459 val)
 - [x] Training run — done **on the Mac** (`mac_train_v5.sh`, TF 2.15.1),
       not Colab; int8 TFLite exported (`mac_export_v4.sh`)
-- [ ] `edgetpu_compiler` → `spaghetti_edgetpu.tflite`
-      (compile-only Colab: `scripts/train/colab_edgetpu_compile.md`)
-- [ ] Deploy model pair + labels to `data/models/`, validate with
-      `centauri detect test` over labeled samples (int8 + float32 +
-      labels are in place; the Edge-TPU variant is missing)
+- [x] `edgetpu_compiler` → `spaghetti_edgetpu.tflite` — **compiled
+      locally on spielwiese** via the self-contained 16.0 bundle from
+      github.com/mbrooksx/edgetpu-compilers (the Google apt repo 403s
+      even from Colab; 99/102 ops on TPU). See
+      `scripts/train/colab_edgetpu_compile.md` for the fallback.
+- [x] Deploy model pair + labels to `data/models/`, validate — service
+      switched to `spaghetti_edgetpu.tflite` (unit sed), `detect check`:
+      backend edgetpu, 23 ms; 4 healthy frames × 0.65: 0 detections
 - [ ] Tune threshold/window; arm via dashboard (Pause first, Stop later)
+      — acceptance run: one full print in notify mode, zero false alerts
 - [x] Release as v0.13.0 (CHANGELOG, docs, tag) — model artifacts
       attached to the release; deploy/acceptance checkboxes stay open
 
