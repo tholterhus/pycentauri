@@ -305,6 +305,15 @@ class DetectionController:
             self._collecting = marker.is_file()
         except OSError:
             self._collecting = False
+        # The armed response persists across restarts (dotfile in
+        # evidence_dir); the config's DETECT_ACTION is only the default.
+        action_marker = cfg.evidence_dir / ".action"
+        try:
+            saved = action_marker.read_text(encoding="utf-8").strip()
+        except OSError:
+            saved = ""
+        if saved in ACTIONS:
+            cfg.action = saved
         self._last_event: DetectionEvent | None = None
         self._error: str | None = None
 
@@ -399,12 +408,22 @@ class DetectionController:
             self._begin_session()
 
     def set_action(self, action: str) -> None:
-        """Arm the response at runtime (the dashboard's notify/pause/stop)."""
+        """Arm the response at runtime (the dashboard's notify/pause/stop).
+
+        The choice persists across restarts; the config's DETECT_ACTION is
+        only the initial default.
+        """
         if action not in ACTIONS:
             raise ValueError(f"action must be one of {ACTIONS}, got {action!r}")
         if action in ("pause", "stop") and not self._control_allowed:
             raise PermissionError("arming pause/stop requires --enable-control")
         self.cfg.action = action
+        marker = self.cfg.evidence_dir / ".action"
+        try:
+            self.cfg.evidence_dir.mkdir(parents=True, exist_ok=True)
+            marker.write_text(f"{action}\n", encoding="utf-8")
+        except OSError as err:
+            log.debug("detection: cannot persist armed action: %r", err)
 
     # --- model --------------------------------------------------------------
 

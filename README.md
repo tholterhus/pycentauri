@@ -455,8 +455,10 @@ Notes:
   nothing — it just picks frames from that shared stream. A Telegram
   alert costs one ~25 KB image.
 - **Default action is notify only**: evidence frames land in
-  `data/evidence/` (and optionally a webhook). `--detect-action pause|stop`
-  additionally require `--enable-control`.
+  `data/evidence/` (and optionally a webhook). Arming `pause|stop`
+  additionally requires `--enable-control`. The armed action **persists
+  across service restarts**; `DETECT_ACTION` in the config is only the
+  initial default.
 - **Ship models in pairs**: an Edge-TPU-compiled `*_edgetpu.tflite` cannot
   execute on the CPU — the CPU fallback automatically loads the uncompiled
   sibling (`<name>.tflite`).

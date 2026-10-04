@@ -931,3 +931,20 @@ def test_collect_toggle_persists_across_restart(tmp_path: Path) -> None:
     assert restored._collecting  # "rebooted" controller keeps the toggle
     restored.set_collecting(False)
     assert not (tmp_path / "col" / ".collecting").exists()
+
+
+def test_armed_action_persists_across_restart(tmp_path: Path) -> None:
+    cfg = DetectConfig(
+        model_path=tmp_path / "m.tflite",
+        evidence_dir=tmp_path / "ev",
+    )
+    c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    assert c.state()["action"] == "notify"  # config default
+    c._control_allowed = True
+    c.set_action("pause")
+    assert (tmp_path / "ev" / ".action").is_file()
+    restored = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    assert restored.state()["action"] == "pause"  # survives the "reboot"
+    restored.set_action("notify")  # disarming persists too
+    again = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    assert again.state()["action"] == "notify"
