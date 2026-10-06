@@ -936,3 +936,18 @@ body {
 }
 
 .detect-note { color: #8a8f98; font-size: 12px; line-height: 1.4; margin: 6px 0 10px; }
+
+/* green heartbeat LED next to the panel title: visible + blinking while
+   the detector analyzes frames, invisible when idle */
+.detect-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+  margin-left: 6px;
+  animation: detect-blink 1.2s ease-in-out infinite;
+}
+@keyframes detect-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+}

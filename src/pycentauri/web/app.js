@@ -680,6 +680,7 @@ function renderDetect(state) {
   $("detect-window").textContent =
     `${w.positives ?? 0}/${w.size ?? "—"} frames positive · needs ${w.needed ?? "—"}`;
 
+  $("detect-led").hidden = !state.processing;
   const look = $("detect-look");
   look.textContent = state.last_look_s == null
     ? "no looks yet"

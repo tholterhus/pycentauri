@@ -386,7 +386,7 @@ class DetectionController:
             else:
                 marker.unlink(missing_ok=True)
         except OSError as err:
-            log.debug("detection: cannot persist collect toggle: %r", err)
+            log.warning("detection: cannot persist collect toggle: %r", err)
 
     def _collect_count(self) -> int:
         try:
@@ -427,7 +427,7 @@ class DetectionController:
             self.cfg.evidence_dir.mkdir(parents=True, exist_ok=True)
             marker.write_text(f"{action}\n", encoding="utf-8")
         except OSError as err:
-            log.debug("detection: cannot persist armed action: %r", err)
+            log.warning("detection: cannot persist armed action: %r", err)
 
     # --- model --------------------------------------------------------------
 

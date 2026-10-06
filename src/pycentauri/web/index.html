@@ -7,7 +7,7 @@
   <title>pycentauri – Centauri Carbon Dashboard</title>
   <link rel="manifest" href="manifest.webmanifest?v=0.13.2">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=0.13.2">
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
   <link rel="icon" href="icons/icon.svg?v=0.13.2">
 </head>
 <body>
@@ -200,6 +200,7 @@
       <div class="panel detect-panel" id="detect-panel" hidden>
         <header class="panel-header">
           <span class="panel-tag">Detect</span>
+          <span class="detect-led" id="detect-led" hidden title="blinks while the detector analyzes frames"></span>
           <span class="detect-badge" id="detect-badge">-</span>
         </header>
         <div class="detect-live">
@@ -304,6 +305,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
