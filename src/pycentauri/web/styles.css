@@ -656,6 +656,7 @@ body {
   color: var(--fg-dim);
 }
 .files-del:hover { color: var(--danger); border-color: var(--danger); }
+.files-print:hover { color: var(--ok); border-color: var(--ok); }
 .files-empty {
   padding: 8px;
   font-size: 11px;

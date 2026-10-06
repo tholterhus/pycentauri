@@ -6,6 +6,14 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-10-06
+
+### Added
+- Reprint from the dashboard: every entry in the Files and Print history
+  panels gets a ▶ button that starts that file again (`POST /print/start`).
+  It asks for confirmation, is only offered while the printer is idle
+  (IDLE / completed / stopped), and requires `--enable-control`.
+
 ## [0.13.2] - 2026-10-05
 
 ### Added

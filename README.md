@@ -36,7 +36,7 @@ to and speaks the right protocol:
 | Live head speed | — | ✓ (`gcode_move.speed` ÷ 60 = the screen's mm/s readout) |
 | Fan channels | 3 | 5 |
 | Canvas multi-filament | — | ✓ (status + auto-refill) |
-| File management | list, upload, delete, history | list, upload, delete, disk info, history |
+| File management | list, upload, delete, history | list, upload, delete, reprint, disk info, history |
 | Filament-switch detection | — | ✓ (position-based) |
 
 > **Status:** alpha, but used daily against real printers. Protocols were

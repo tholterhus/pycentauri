@@ -947,6 +947,7 @@ function renderFiles(data) {
     meta.textContent = bits.join(" · ");
     row.append(name, meta);
     if (filesControlEnabled) {
+      row.appendChild(reprintButton(f.filename, storage));
       const del = document.createElement("button");
       del.className = "btn files-del";
       del.type = "button";
@@ -985,6 +986,49 @@ async function loadFiles() {
       $("files-disk").textContent = `${freeGb.toFixed(1)} GB free`;
     }
   } catch (_) { /* ignore */ }
+}
+
+// Printer is idle enough to start a new job: no active print (0 = IDLE), or
+// a finished/aborted one still lingering in the status (8 = STOPPED, 9 =
+// COMPLETED). Null = no status received yet (fresh page, printer silent).
+function printerIdle() {
+  return lastPrintStatus == null || [0, 8, 9].includes(lastPrintStatus);
+}
+
+function reprintButton(name, storage) {
+  const btn = document.createElement("button");
+  btn.className = "btn files-del files-print";
+  btn.type = "button";
+  btn.textContent = "▶";
+  btn.title = "Print again";
+  btn.addEventListener("click", () => reprintFile(name, storage));
+  return btn;
+}
+
+async function reprintFile(name, storage) {
+  if (!printerIdle()) {
+    setFilesMsg("printer is busy — reprint is only possible while idle", "warn");
+    return;
+  }
+  if (!confirm(`Print "${name}" again?`)) return;
+  setFilesMsg(`starting ${name}…`);
+  try {
+    const r = await fetch("/print/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: name, storage }),
+    });
+    if (r.status === 504) {
+      // Same as the control actions: the command reached the printer but
+      // confirmation didn't arrive in time — almost always it still starts.
+      setFilesMsg(`⧗ start sent for ${name} — no confirmation yet; watch the status`, "warn");
+      return;
+    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+    setFilesMsg(`✓ started ${name}`, "ok");
+  } catch (e) {
+    setFilesMsg(`start failed — ${e.message}`, "err");
+  }
 }
 
 async function deleteFile(name, storage) {
@@ -1060,6 +1104,7 @@ function renderHistory(data) {
     when.className = "files-size";
     when.textContent = fmtDate(t.end_time || t.begin_time);
     row.appendChild(when);
+    if (filesControlEnabled) row.appendChild(reprintButton(t.task_name || "", "local"));
     listEl.appendChild(row);
   }
 }
