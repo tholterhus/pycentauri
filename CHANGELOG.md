@@ -19,6 +19,11 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   the redundant "last look"/"analyzing frames" note is removed (it also
   wrapped the window readout onto several lines on phones).
 
+### Fixed
+- The Detect header LED was always visible: its `display` rule overrode
+  the `hidden` attribute. It now blinks only while the detector actually
+  processes frames (i.e. during a print).
+
 ## [0.13.2] - 2026-10-05
 
 ### Added
