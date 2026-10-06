@@ -682,9 +682,8 @@ function renderDetect(state) {
 
   $("detect-led").hidden = !state.processing;
   const look = $("detect-look");
-  look.textContent = state.last_look_s == null
-    ? "no looks yet"
-    : `last look ${state.last_look_s}s ago`;
+  look.textContent = state.processing ? "analyzing frames every second" : "";
+  look.hidden = !state.processing;
   $("detect-model").textContent = (state.model || "—").split("/").pop();
   $("detect-model").title = state.model || "";
   $("detect-threshold").textContent = state.threshold ?? "—";
@@ -1001,8 +1000,16 @@ function reprintButton(name, storage) {
   btn.type = "button";
   btn.textContent = "▶";
   btn.title = "Print again";
+  btn.hidden = !printerIdle();
   btn.addEventListener("click", () => reprintFile(name, storage));
   return btn;
+}
+
+// Show/hide every ▶ button as the printer's state changes, so a busy
+// printer simply offers no reprint instead of rejecting one.
+function updateReprintVisibility() {
+  const idle = printerIdle();
+  for (const btn of document.querySelectorAll(".files-print")) btn.hidden = !idle;
 }
 
 async function reprintFile(name, storage) {
@@ -1371,6 +1378,7 @@ function schedulePoll() {
 function noteStatusForPoll(pstatus) {
   const prev = lastPrintStatus;
   lastPrintStatus = pstatus;
+  updateReprintVisibility();
   const wasActive = prev != null && !IDLE_STATUSES.has(prev);
   const nowActive = pstatus != null && !IDLE_STATUSES.has(pstatus);
   if (wasActive !== nowActive) schedulePoll(); // retune immediately
