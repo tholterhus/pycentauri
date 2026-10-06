@@ -680,6 +680,10 @@ function renderDetect(state) {
   $("detect-window").textContent =
     `${w.positives ?? 0}/${w.size ?? "—"} frames positive · needs ${w.needed ?? "—"}`;
 
+  const look = $("detect-look");
+  look.textContent = state.last_look_s == null
+    ? "no looks yet"
+    : `last look ${state.last_look_s}s ago`;
   $("detect-model").textContent = (state.model || "—").split("/").pop();
   $("detect-model").title = state.model || "";
   $("detect-threshold").textContent = state.threshold ?? "—";

@@ -316,6 +316,7 @@ class DetectionController:
             cfg.action = saved
         self._last_event: DetectionEvent | None = None
         self._error: str | None = None
+        self._last_look: float = 0.0  # monotonic ts of the last model run
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -343,6 +344,9 @@ class DetectionController:
             "model": str(self.cfg.model_path),
             "action": self.cfg.action,
             "threshold": self.cfg.threshold,
+            "last_look_s": round(max(0.0, time.time() - self._last_look), 1)
+            if self._last_look
+            else None,
             "window": {
                 "positives": sum(self._window),
                 "size": self.cfg.window_size,
@@ -591,6 +595,7 @@ class DetectionController:
                 if now - last_infer < self.cfg.min_frame_interval_s:
                     continue
                 last_infer = now
+                self._last_look = time.time()
                 await self._evaluate(jpeg)
 
     def _collect_due(self, now: float, last_collect: float, collect_saved: int) -> bool:
