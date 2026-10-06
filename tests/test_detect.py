@@ -503,7 +503,7 @@ async def test_controller_notify_only_without_control(
 
 async def test_controller_surfaces_model_load_error(tmp_path: Path) -> None:
     """Model load failure: server keeps running, but no camera is held."""
-    cfg = DetectConfig(model_path=tmp_path / "missing_edgetpu.tflite")
+    cfg = DetectConfig(model_path=tmp_path / "missing_edgetpu.tflite", evidence_dir=tmp_path / "ev")
     camera = FakeCamera([_jpeg()] * 4)
     controller = DetectionController(
         cfg, camera=camera, get_printer=lambda: FakePrinter([PRINTING] * 5 + [9])
@@ -593,7 +593,7 @@ async def test_collect_per_print_cap_and_fifo(tmp_path: Path) -> None:
 
 
 def test_set_action_runtime_gating(tmp_path: Path) -> None:
-    cfg = DetectConfig(model_path=tmp_path / "m.tflite")
+    cfg = DetectConfig(model_path=tmp_path / "m.tflite", evidence_dir=tmp_path / "ev")
     controller = DetectionController(
         cfg, camera=FakeCamera([]), get_printer=lambda: FakePrinter([0]), control_allowed=False
     )
@@ -606,7 +606,7 @@ def test_set_action_runtime_gating(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         controller.set_action("destroy")
     controller2 = DetectionController(
-        DetectConfig(model_path=tmp_path / "m.tflite"),
+        DetectConfig(model_path=tmp_path / "m.tflite", evidence_dir=tmp_path / "ev"),
         camera=FakeCamera([]),
         get_printer=lambda: FakePrinter([0]),
         control_allowed=True,
@@ -699,7 +699,9 @@ async def test_detect_post_endpoints(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         "127.0.0.1",
         mainboard_id=MAINBOARD,
         detect_config=DetectConfig(
-            model_path=tmp_path / "m.tflite", collect_dir=tmp_path / "collect"
+            model_path=tmp_path / "m.tflite",
+            collect_dir=tmp_path / "collect",
+            evidence_dir=tmp_path / "ev",
         ),
     )
     transport = httpx.ASGITransport(app=app)
@@ -719,7 +721,9 @@ async def test_detect_post_endpoints(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         mainboard_id=MAINBOARD,
         enable_control=True,
         detect_config=DetectConfig(
-            model_path=tmp_path / "m.tflite", collect_dir=tmp_path / "collect"
+            model_path=tmp_path / "m.tflite",
+            collect_dir=tmp_path / "collect",
+            evidence_dir=tmp_path / "ev",
         ),
     )
     transport2 = httpx.ASGITransport(app=app2)
