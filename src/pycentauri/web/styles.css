@@ -936,7 +936,6 @@ body {
   color: var(--warn);
 }
 
-.detect-note { color: #8a8f98; font-size: 12px; line-height: 1.4; margin: 6px 0 10px; }
 
 /* green heartbeat LED next to the panel title: visible + blinking while
    the detector analyzes frames, invisible when idle */

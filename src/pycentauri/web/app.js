@@ -681,9 +681,6 @@ function renderDetect(state) {
     `${w.positives ?? 0}/${w.size ?? "—"} frames positive · needs ${w.needed ?? "—"}`;
 
   $("detect-led").hidden = !state.processing;
-  const look = $("detect-look");
-  look.textContent = state.processing ? "analyzing frames every second" : "";
-  look.hidden = !state.processing;
   $("detect-model").textContent = (state.model || "—").split("/").pop();
   $("detect-model").title = state.model || "";
   $("detect-threshold").textContent = state.threshold ?? "—";

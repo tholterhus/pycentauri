@@ -11,8 +11,13 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Reprint from the dashboard: every entry in the Files and Print history
   panels gets a ▶ button that starts that file again (`POST /print/start`).
-  It asks for confirmation, is only offered while the printer is idle
-  (IDLE / completed / stopped), and requires `--enable-control`.
+  It asks for confirmation, is hidden while the printer is busy (shown
+  only when idle), and requires `--enable-control`.
+
+### Changed
+- Detect panel cleanup: the header LED alone signals analysis activity;
+  the redundant "last look"/"analyzing frames" note is removed (it also
+  wrapped the window readout onto several lines on phones).
 
 ## [0.13.2] - 2026-10-05
 
