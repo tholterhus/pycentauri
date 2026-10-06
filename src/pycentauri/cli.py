@@ -775,12 +775,13 @@ def cmd_server(
         help="Enable failed-print (spaghetti) detection while a print is running.",
     ),
     detect_model: Annotated[
-        Path,
+        Path | None,
         typer.Option(
             "--detect-model",
-            help="TFLite model path (Edge TPU-compiled or plain; the matching CPU variant is picked automatically).",
+            help="TFLite model path (Edge TPU-compiled or plain; the matching CPU variant is picked automatically). "
+            "Default: 'auto' — the bundled trained model, or anything in data/models/.",
         ),
-    ] = DEFAULT_DETECT_MODEL,
+    ] = None,
     detect_action: str = typer.Option(
         "notify",
         "--detect-action",
@@ -838,10 +839,13 @@ def cmd_server(
             detect_model = discover_model(Path("data/models"))
         if detect_model is None:
             _echo_err(
-                "no model found — bundled models missing? Get one from the release "
-                "assets (README 'Trained model') or run scripts/fetch-smoke-model.sh"
+                "no bundled model found — get one from the release assets "
+                "(README 'Trained model') or run scripts/fetch-smoke-model.sh"
             )
-        elif not detect_model.is_file():
+            # placeholder path: the session retries the model load per print
+            # (self-healing) until a model shows up there
+            detect_model = DEFAULT_DETECT_MODEL
+        if not detect_model.is_file():
             _echo_err(f"warning: model not found yet: {detect_model} (will report in /api/detect)")
         detect_cfg = DetectConfig(
             model_path=detect_model,
