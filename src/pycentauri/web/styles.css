@@ -949,6 +949,7 @@ body {
   vertical-align: middle;
   animation: detect-blink 1.2s ease-in-out infinite;
 }
+.detect-led[hidden] { display: none; }
 @keyframes detect-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.15; }

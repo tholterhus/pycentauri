@@ -672,7 +672,7 @@ function renderDetect(state) {
   } else {
     badge.textContent = state.backend || "—";
     badge.classList.add(state.backend === "edgetpu" ? "on" : "warn");
-    st.textContent = state.processing ? "WATCHING" : "IDLE · WAITS FOR A PRINT";
+    st.textContent = state.processing ? "WATCHING" : "IDLE";
     setDetectMsg("");
   }
 
