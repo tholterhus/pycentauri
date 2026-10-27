@@ -61,3 +61,39 @@ def test_parse_response_tolerates_missing_data_block() -> None:
     p = _parse_response(raw, "10.0.0.5")
     assert p is not None
     assert p.mainboard_id == "bb"
+
+
+def test_parse_response_cc2_result_shape() -> None:
+    """CC2 answers the :52700 JSON-RPC probe with a result dict holding sn."""
+    raw = json.dumps(
+        {
+            "id": 0,
+            "result": {
+                "host_name": "Centauri Carbon 2",
+                "machine_model": "Centauri Carbon 2",
+                "sn": "CC2ABCD1234567890",
+                "token_status": 0,
+                "lan_status": 1,
+            },
+        }
+    ).encode("utf-8")
+
+    p = _parse_response(raw, "192.0.2.20")
+    assert p is not None
+    assert p.protocol == "cc2"
+    assert p.is_cc2
+    assert p.mainboard_id is None
+    assert p.serial_number == "CC2ABCD1234567890"
+    assert p.name == "Centauri Carbon 2"
+    assert p.machine_name == "Centauri Carbon 2"
+    assert p.firmware_version is None
+    assert p.lan_status == 1
+
+
+def test_parse_response_result_without_sn_falls_back_to_cc1() -> None:
+    """A result dict without sn is not a CC2 answer — parsed as CC1 shape."""
+    raw = json.dumps({"id": 0, "result": {"host_name": "weird"}}).encode("utf-8")
+    p = _parse_response(raw, "192.0.2.30")
+    assert p is not None
+    assert p.protocol == "cc1"
+    assert p.serial_number is None
