@@ -156,21 +156,29 @@ class Printer:
 
         Returns immediately if ``mainboard_id=`` was passed to
         :meth:`connect`. Otherwise waits for the first ``Attributes`` push
-        from the printer. The printer only pushes Attributes spontaneously
-        in idle/active states — when paused or errored it stays silent until
-        asked, so callers that run in those states should pass ``mainboard_id``
-        explicitly (e.g. from a prior :func:`pycentauri.discover`).
+        from the printer. The firmware pushes Attributes only *sporadically*:
+        it stays silent while paused or errored, and even idle printers can
+        skip the window (measured on V1.4.4x — sometimes nothing within 5 s,
+        minutes after a job). On timeout one short UDP discovery round is
+        attempted as a fallback, since discovery returns the MainboardID
+        directly; only when that fails too does this raise.
         """
         if self._mainboard_id:
             return self._mainboard_id
         try:
             await asyncio.wait_for(self._mainboard_event.wait(), timeout=timeout)
         except asyncio.TimeoutError as err:
+            discovered = await self._discover_mainboard()
+            if discovered is not None:
+                self._mainboard_id = discovered
+                self._mainboard_event.set()
+                return discovered
             raise PrinterError(
                 "printer did not push Attributes within "
-                f"{timeout}s. Pass mainboard_id=... to Printer.connect() "
-                "(discover() provides one) — the firmware does not push "
-                "Attributes while paused or errored."
+                f"{timeout}s and discovery did not answer either. Pass "
+                "mainboard_id=... to Printer.connect() (discover() provides "
+                "one) — the firmware pushes Attributes only sporadically: "
+                "silent while paused or errored, intermittent while idle."
             ) from err
         assert self._mainboard_id is not None
         return self._mainboard_id
@@ -263,19 +271,27 @@ class Printer:
         )
 
     async def canvas_status(self) -> CanvasStatus:
-        """Return the Canvas multi-filament system state.
+        """Return the Canvas multi-filament system state (CC1: SDCP Cmd 324).
 
-        Raises :class:`PrinterError` on printers without Canvas support.
-        The SDK lists ``Cmd 324`` (GET_CANVAS_STATUS) for CC1 SDCP but it
-        is unprobed against real CC firmware — and unknown Cmds can crash
-        the CC1's ``app`` daemon, so pycentauri won't send it blind.
-        Canvas support currently requires a CC2 (MQTT method 2005).
+        Long believed unprobeable on the CC1 (unknown Cmds can crash the
+        app daemon), Cmd 324 has since been verified **read-only safe**:
+        12/12 successful probes on stock V1.4.46/V1.4.49 with the daemon
+        alive after each, then weeks of routine use including mid-print
+        (upstream bjan/pycentauri#2 — see docs/PROTOCOL.md field notes).
+        Auto-refill toggling stays CC2-only: slot selection consumes
+        ~38 g of filament per load, a write path not shipped blind.
         """
-        raise PrinterError(
-            "Canvas is not implemented for the CC1 (SDCP Cmd 324 is unprobed "
-            "and unknown Cmds can crash the firmware). Canvas support "
-            "currently requires a Centauri Carbon 2 (MQTT method 2005)."
-        )
+        mid = await self.wait_for_mainboard()
+        resp = await self._request(sdcp.Cmd.GET_CANVAS_STATUS, {}, mid)
+        inner = resp.inner or {}
+        payload = inner.get("Data")
+        if not isinstance(payload, dict) or "canvas_list" not in payload:
+            raise PrinterError(
+                "canvas status: the response carries no canvas data — does "
+                "this printer actually have a Canvas attached? (A Canvas-less "
+                "CC1 answers Cmd 324 with an Ack-only payload.)"
+            )
+        return CanvasStatus.from_payload(payload)
 
     async def set_auto_refill(self, enabled: bool) -> sdcp.ParsedMessage:
         """Toggle Canvas auto-refill. CC2 only — see :meth:`canvas_status`."""
@@ -602,6 +618,25 @@ class Printer:
                 f"{action!r} requires enable_control=True; "
                 "Printer.connect(..., enable_control=True) to allow write actions"
             )
+
+    async def _discover_mainboard(self) -> str | None:
+        """One short UDP discovery round aimed at this printer.
+
+        Fallback for the Attributes push being silent (start_print() on an
+        idle printer, upstream bjan/pycentauri#3). Returns ``None`` on any
+        failure so the caller raises its own, more specific error; never
+        masks it.
+        """
+        from pycentauri.discovery import discover
+
+        try:
+            found = await discover(timeout=1.5, retries=2)
+        except Exception:  # the fallback must not mask the real error
+            return None
+        for entry in found:
+            if entry.host == self.host and entry.mainboard_id:
+                return entry.mainboard_id
+        return None
 
     async def _send_raw(self, text: str) -> None:
         if self._ws is None:

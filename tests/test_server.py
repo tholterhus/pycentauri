@@ -329,7 +329,7 @@ async def test_rtsp_unavailable_when_binaries_missing(
 
 
 async def test_canvas_unsupported_maps_to_501(monkeypatch: pytest.MonkeyPatch) -> None:
-    """CC1 has no Canvas: GET /canvas must be 501 (so the UI stops asking),
+    """A Canvas-less printer (Cmd 324 answers Ack-only) must 501 on /canvas,
     reserving 504 for transient timeouts on a real CC2."""
     server = _FakePrinter()
     await server.start()
@@ -339,7 +339,7 @@ async def test_canvas_unsupported_maps_to_501(monkeypatch: pytest.MonkeyPatch) -
     async with app.router.lifespan_context(app), await _asgi_client(app) as client:
         r = await client.get("/canvas")
         assert r.status_code == 501
-        assert "CC1" in r.json()["detail"]
+        assert "canvas" in r.json()["detail"].lower()
     await server.stop()
 
 

@@ -261,6 +261,151 @@ async def test_preseeded_mainboard_skips_attributes_wait(monkeypatch: pytest.Mon
         await server.stop()
 
 
+async def test_wait_for_mainboard_falls_back_to_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Idle printers push Attributes only sporadically (upstream bjan/pycentauri#3).
+
+    When the push window lapses, the client runs one short UDP discovery
+    round — discovery returns the MainboardID directly — instead of failing
+    the command.
+    """
+
+    class _SilentPrinter(_FakePrinter):
+        async def _handler(self, ws) -> None:  # type: ignore[no-untyped-def,override]
+            # Do NOT push Attributes, ever — the discovery fallback must save us.
+            async for _raw in ws:
+                pass
+
+    server = _SilentPrinter()
+    await server.start()
+    try:
+        monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+        async def _fake_discover(**kwargs: Any) -> list[Any]:
+            from pycentauri.discovery import DiscoveredPrinter
+
+            assert kwargs.get("timeout") == 1.5
+            return [
+                DiscoveredPrinter(
+                    host="127.0.0.1",
+                    mainboard_id=MAINBOARD,
+                    name=None,
+                    machine_name=None,
+                    firmware_version=None,
+                    raw={},
+                )
+            ]
+
+        monkeypatch.setattr("pycentauri.discovery.discover", _fake_discover)
+        async with await Printer.connect("127.0.0.1", enable_control=True) as printer:
+            mid = await asyncio.wait_for(printer.wait_for_mainboard(timeout=0.2), timeout=5)
+            assert mid == MAINBOARD
+            # the learned id sticks; the next wait returns immediately
+            assert await asyncio.wait_for(printer.wait_for_mainboard(), timeout=1) == MAINBOARD
+    finally:
+        await server.stop()
+
+
+async def test_wait_for_mainboard_error_mentions_idle_when_discovery_silent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No Attributes push AND no discovery answer → error names the idle case."""
+
+    class _SilentPrinter(_FakePrinter):
+        async def _handler(self, ws) -> None:  # type: ignore[no-untyped-def,override]
+            async for _raw in ws:
+                pass
+
+    server = _SilentPrinter()
+    await server.start()
+    try:
+        monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+
+        async def _empty_discover(**kwargs: Any) -> list[Any]:
+            return []
+
+        monkeypatch.setattr("pycentauri.discovery.discover", _empty_discover)
+        async with await Printer.connect("127.0.0.1") as printer:
+            with pytest.raises(PrinterError, match="idle"):
+                await asyncio.wait_for(printer.wait_for_mainboard(timeout=0.2), timeout=5)
+    finally:
+        await server.stop()
+
+
+async def test_canvas_status_cc1_parses_cmd324(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CC1 canvas_status() sends Cmd 324 and parses the Data payload (upstream #2)."""
+
+    class _CanvasPrinter(_FakePrinter):
+        async def _handler(self, ws) -> None:  # type: ignore[no-untyped-def,override]
+            await ws.send(
+                json.dumps(
+                    {
+                        "Id": MAINBOARD,
+                        "Topic": f"sdcp/attributes/{MAINBOARD}",
+                        "Data": {"MainboardID": MAINBOARD},
+                    }
+                )
+            )
+            async for raw in ws:
+                try:
+                    msg = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                self.received.append(msg)
+                data = msg.get("Data") or {}
+                payload: dict[str, Any] = {}
+                if data.get("Cmd") == int(Cmd.GET_CANVAS_STATUS):
+                    payload = {
+                        "auto_refill": 1,
+                        "active_canvas_id": 0,
+                        "active_tray_id": 1,
+                        "canvas_list": [
+                            {
+                                "canvas_id": 0,
+                                "connected": 1,
+                                "tray_list": [
+                                    {
+                                        "tray_id": 0,
+                                        "brand": "ELEGOO",
+                                        "filament_type": "PETG",
+                                        "filament_name": "PETG-CF",
+                                        "filament_color": "#000000",
+                                        "status": 1,
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                await ws.send(
+                    json.dumps(
+                        {
+                            "Id": MAINBOARD,
+                            "Topic": f"sdcp/response/{MAINBOARD}",
+                            "Data": {
+                                "Cmd": data.get("Cmd"),
+                                "RequestID": data.get("RequestID"),
+                                "MainboardID": MAINBOARD,
+                                "Data": payload,
+                            },
+                        }
+                    )
+                )
+
+    server = _CanvasPrinter()
+    await server.start()
+    try:
+        monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+        async with await Printer.connect("127.0.0.1") as printer:
+            cs = await asyncio.wait_for(printer.canvas_status(), timeout=5)
+        assert any(m["Data"]["Cmd"] == int(Cmd.GET_CANVAS_STATUS) for m in server.received)
+        assert cs.auto_refill is True
+        assert cs.active_tray_id == 1
+        assert cs.canvas_list[0].tray_list[0].filament_type == "PETG"
+    finally:
+        await server.stop()
+
+
 async def test_control_enabled_sends_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     async with _fake_printer() as server:
         monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
