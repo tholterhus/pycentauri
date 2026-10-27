@@ -107,14 +107,16 @@ The printer's responses arrive on three topics:
 |---|---|
 | `sdcp/response/<mainboard>` | Direct response to a request, correlated by `RequestID`. The body has `Data.Data.Ack` — `0` = success, anything else = failure. |
 | `sdcp/status/<mainboard>` | Push: real-time status (after Cmd 512 subscribe). |
-| `sdcp/attributes/<mainboard>` | Push: machine info (auto on connect *while idle/printing*; not while paused or errored). |
+| `sdcp/attributes/<mainboard>` | Push: machine info (auto on connect *while idle/printing*; not while paused or errored — and even while idle the pushes are **intermittent**: measured on V1.4.4x, sometimes nothing arrives within 5 s, minutes after a job ended). |
 
 ## On-connect dance
 
 1. Open WS to `ws://<host>:3030/websocket`.
 2. The printer pushes one `Attributes` frame **only if it's idle or
    printing**. In paused / stopped / errored states it stays silent
-   until polled. Don't depend on this push.
+   until polled — and while idle the push is *intermittent* (upstream
+   issue #3: at 8.5 min post-job a frame took 2.06 s; the very next
+   wait got nothing for 5.01 s). Don't depend on this push.
 3. Send `Cmd 512` with `{"TimePeriod": <ms>}` to subscribe to status
    pushes at the requested rate.
 4. The printer starts pushing `Status` frames at that rate — **on some
@@ -123,7 +125,9 @@ The printer's responses arrive on three topics:
 
 `pycentauri.client.Printer` accepts `mainboard_id=` so it can skip the
 implicit Attributes wait — important because the alternative is
-deadlocking whenever the printer is paused.
+deadlocking whenever the printer is paused. Without a pre-seeded id,
+`wait_for_mainboard()` falls back to one short UDP discovery round on
+timeout (discovery returns the MainboardID directly) before giving up.
 
 ## Cmd codes (CC-firmware)
 
@@ -136,11 +140,11 @@ actually accepts. We have probed and confirmed which work.
 |---|---|---|---|
 | 0   | `GET_PRINTER_STATUS`    | `{}` | `Ack=0` (the real status arrives separately on the status topic) |
 | 1   | `GET_PRINTER_ATTRIBUTES`| `{}` | `Ack=0` (attributes arrive on attributes topic) |
-| 128 | `START_PRINT`           | `{Filename, StartLayer, Calibration_switch, PrintPlatformType, Tlp_Switch, slot_map}` | `Ack=0` |
+| 128 | `START_PRINT`           | `{Filename, StartLayer, Calibration_switch, PrintPlatformType, Tlp_Switch, slot_map, path_prefix}` | `Ack=0` — field-by-field notes below |
 | 129 | `PAUSE_PRINT`           | `{}` | `Ack=0` |
 | 130 | `STOP_PRINT`            | `{}` | `Ack=0` |
 | 131 | `RESUME_PRINT`          | `{}` | `Ack=0` |
-| 324 | `GET_CANVAS_STATUS`     | `{}` | **unprobed** — enabled in the SDK's dispatch table but never exercised against real CC1 firmware. pycentauri implements Canvas on CC2 only (methods 2004/2005). |
+| 324 | `GET_CANVAS_STATUS`     | `{}` | `Data` = Canvas state (see field notes below) — verified **read-only safe** on stock CC1 V1.4.46/V1.4.49 incl. mid-print; `pycentauri` implements it on both models (CC2 via MQTT method 2005) |
 | 403 | `CHANGE_PRINT_PARAMS` (speed) | `{"PrintSpeedPct": <int>}` | `Ack=0`; `Status.PrintInfo.PrintSpeedPct` updates on next push |
 | 403 | `CHANGE_PRINT_PARAMS` (fans)  | `{"TargetFanSpeed": {"ModelFan": <0..100>, "BoxFan": <0..100>, "AuxiliaryFan": <0..100>}}` | `Ack=0`; fans physically respond within ~1s |
 | 403 | `CHANGE_PRINT_PARAMS` (temps) | `{"TempTargetNozzle": <°C>, "TempTargetHotbed": <°C>, "TempTargetBox": <°C>}` | `Ack=0`; heaters engage and `TempTarget*` updates on next push |
@@ -173,6 +177,77 @@ fan without disturbing the others. Verified live on V0.3.0-o
 (fan/temp/speed 2026-06-03; light 2026-07-14).
 `pycentauri.Printer.set_print_speed/set_fan_speed/set_temperatures/set_light`
 wrap each variant with safety-bound input validation.
+
+### START_PRINT (Cmd 128) field notes
+
+The SDK documents only `Filename` and `StartLayer`; the remaining fields
+come from the SDK source and were cross-checked in the field (data from
+upstream bjan/pycentauri issue #2, measured on stock V1.4.46/V1.4.49):
+
+| Field | Meaning |
+|---|---|
+| `Calibration_switch` | Gate for auto bed levelling before the print: `1` (the default `auto_leveling=True`) runs the probe cycle. **Warning:** the levelling homes the nozzle against the plate — with items already on the bed this is the physical failure mode of a remote start, and a botched probe can persist a corrupted mesh. Use `auto_leveling=False` for beds you know are level. |
+| `slot_map` | CANVAS slot mapping. `[]` is a **pure no-op** (a firmware guard skips the T-mapping block — confirmed by static analysis of the decrypted V1.4.49 rootfs) and is exactly what Elegoo's own client sends without a CANVAS attached. With a CANVAS, entries are `{t, canvas_id, tray_id}` — all 0-based ints, max 32 entries; the firmware computes `channel_id = canvas_id * 4 + tray_id`. Filament resolution uses a persisted `t_id → channel` map (`/user-resource/filament_info`); a `M6211 T<n>` miss raises an error — there is **no silent fallback to another slot**. |
+| `PrintPlatformType` | Always `0` in every observed payload; no other value known. |
+| `Tlp_Switch` | Timelapse on/off (`1`/`0`); `0` behaves as a clean no-op. |
+| `path_prefix` | `/local` (internal storage) or `/usb` — redundant with the `Filename` prefix but always sent. |
+
+**Reliable job-state signals:** `PrintInfo.Status` and `PrintInfo.Filename`
+are *sticky* after a job ends (they keep the last job's values), while
+`PrintInfo.TaskId` is a clean discriminator — `""` when idle, a real UUID
+while a job runs. `Data.CurrentStatus` is a **list**, not an int:
+`[0]` idle, `[1]` busy, `[10]` undocumented — and it, not `sub_status`,
+is the reliable busy signal.
+
+### GET_CANVAS_STATUS (Cmd 324) field notes
+
+Long believed unprobeable on CC1 (unknown-Cmd crash mode), Cmd 324 was
+safety-probed in the field and is **stable read-only**: 12/12 successful
+calls on V1.4.49 with the daemon alive after each (checked via Cmd 0),
+then weeks of routine use including *mid-print* (upstream issue #2,
+V1.4.46 and V1.4.49). `pycentauri` therefore offers `canvas_status()` on
+the CC1 as well — read-only; write paths (slot selection consumes
+~38 g of filament per load) stay CC2-only.
+
+Observed `Data` payload (V1.4.46 and V1.4.49, 4-slot CANVAS):
+
+```jsonc
+{
+  "auto_refill": 1,             // 0 or 1 — the CANVAS auto-refill toggle
+  "active_canvas_id": 0,
+  "active_tray_id": 1,          // 0-based (UI slot 2); -1 = no slot, resets to -1 on power cycle
+  "canvas_list": [
+    {
+      "canvas_id": 0,
+      "connected": 1,
+      "tray_list": [
+        {
+          "tray_id": 0,
+          "brand": "ELEGOO",
+          "filament_type": "PETG",
+          "filament_name": "PETG-CF",
+          "filament_code": "0x00000",   // 0x00000 on all non-RFID trays: carries no material identity
+          "filament_color": "#000000",
+          "min_nozzle_temp": 240,
+          "max_nozzle_temp": 270,
+          "status": 1
+        }
+      ]
+    }
+  ]
+}
+```
+
+Notes:
+
+* `status`: `0` = not loaded, `1` = loaded, `2` = active — but `2` is the
+  CANVAS's *belief*, not proof of feed (prints have failed at layer 0
+  with `status: 2` and nothing extruding).
+* Empty slots return mojibake strings with `min/max_nozzle_temp == 0` —
+  **treat zero temps as the emptiness signal**.
+* `active_tray_id` is a firmware pointer, not a measurement; the GUI sets
+  it with no filament-presence check.
+* No `remain` field exists.
 
 ### Unknown-Cmd crash mode (the real hazard)
 
@@ -302,8 +377,8 @@ expected on the Carbon but kept for forward-compatibility.
 | 17 | RESONANCE_TESTING | |
 | 18 | PRINT_START | not "resumed" — see comment for code 12 |
 | 19 | AUTO_LEVELING_COMPLETED | |
-| 20 | PREHEATING_COMPLETED | the routine `CODE·20` users see between prints |
-| 21 | HOMING_COMPLETED | |
+| 20 | PREHEATING_COMPLETED | the routine `CODE·20` users see between prints. **Observed (V1.4.49):** real bed levelling reports `Status == 20` — *not* the mapped 15 — and the code covers generic sub-operations generally (levelling *and* CANVAS load); a "wait while == 20" loop can hang on a stuck CANVAS load |
+| 21 | HOMING_COMPLETED | **Observed (V1.4.49):** a CANVAS filament-load phase reports 21 |
 | 22 | RESONANCE_TESTING_COMPLETED | |
 | 23 | AUTO_FEEDING | resin/LCD |
 | 24 | UNLOADING | resin/LCD |

@@ -116,9 +116,13 @@ DETECT_THRESHOLD=0.65
 # Seconds between analyzed frames (default 1; raise to reduce CPU load).
 DETECT_INTERVAL=1
 # Optional Telegram push (detection AND print-state changes, with a
-# camera photo). Bot via @BotFather; empty = off.
+# camera photo). Bot via @BotFather; empty = off. Telegram is strictly
+# one-way: pycentauri never receives anything from Telegram.
 TELEGRAM_TOKEN=
 TELEGRAM_CHAT_ID=
+# Optional bot password (BotFather): attached to every Telegram request
+# as the secret-token header. Without a bot password, leave empty.
+TELEGRAM_PASSWORD=
 ```
 
 Use restrictive permissions, for example `root:pycentauri` and mode `0640`.
@@ -301,7 +305,7 @@ the model:
 - CC1: TCP `3030` for control and normally TCP `3031` for the camera; UDP
   discovery uses LAN broadcast.
 - CC2: TCP `1883` for MQTT plus the printer's HTTP/camera endpoints (normally
-  camera TCP `8080`). CC2 discovery is direct-address only.
+  camera TCP `8080`). Discovery answers UDP broadcasts on port `52700`.
 - pycentauri's HTTP server: TCP `8787` by default, or the configured port.
 - Optional RTSP output: TCP `8554` by default, when enabled.
 

@@ -17,7 +17,8 @@ outline for any future upstream contribution.
 
 * `origin` = tholterhus/pycentauri (this repository, public)
 * `upstream` = bjan/pycentauri (public, main at v0.9.0 when this was
-  written)
+  written — and **still at v0.9.0 as of 2026-10-27**: no commits and no
+  releases since, so the 0.14.0 sync check found nothing to merge)
 * Histories share the v0.9.0 base. The fork tree adds ~4,171 lines of
   fork work; upstream holds only ~165 lines that this fork lacks, and
   all of those are superseded v0.9-era code or deliberately generalized
@@ -68,6 +69,23 @@ outline for any future upstream contribution.
   udev-database entry for udev-less containers, no-op elsewhere),
   `scripts/fetch-smoke-model.sh`, installer knobs
   (`DETECT*`, `TELEGRAM*`), runtime cache-busting strings
+* **Upstream findings folded in (0.14.0)** — nothing to merge (upstream
+  stood still after v0.9.0), but its issues/PRs carried usable material:
+  * Telegram bot password (`TELEGRAM_PASSWORD`): attached to every
+    outgoing Telegram request as the `X-Telegram-Bot-Api-Secret-Token`
+    header. Telegram remains strictly one-way — the fork deliberately
+    has no receiving surface at all.
+  * CC2 discovery (upstream PR #1's approach): the CC2 answers a
+    JSON-RPC probe broadcast on UDP :52700 with its serial number;
+    `centauri discover` shows it and warns on cloud-mode CC2s.
+  * CC1 `canvas_status()` via Cmd 324 (upstream issue #2 proved it
+    read-only safe on stock V1.4.4x, including mid-print).
+  * start_print hardening (upstream issue #3): `wait_for_mainboard()`
+    falls back to a short UDP discovery when the Attributes push never
+    arrives (idle printers push only intermittently).
+  * `docs/PROTOCOL.md` enriched with issue #2's field notes (Cmd 128
+    payload keys, slot_map shape, TaskId/CurrentStatus signals, Cmd 324
+    probe payloads, status codes 20/21).
 
 ## Deliberate behavior changes
 

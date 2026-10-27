@@ -31,11 +31,11 @@ to and speaks the right protocol:
 |---|---|---|
 | Transport | SDCP v3 over WebSocket (`:3030`) | JSON-RPC over MQTT (`:1883`) |
 | Auth | none | access code (printer screen) |
-| Discovery | UDP broadcast | direct IP + HTTP bootstrap |
+| Discovery | UDP broadcast (`M99999` :3000) | UDP broadcast (JSON-RPC :52700) |
 | Webcam | MJPEG `:3031` | MJPEG `:8080` |
 | Live head speed | — | ✓ (`gcode_move.speed` ÷ 60 = the screen's mm/s readout) |
 | Fan channels | 3 | 5 |
-| Canvas multi-filament | — | ✓ (status + auto-refill) |
+| Canvas multi-filament | ✓ (status, read-only) | ✓ (status + auto-refill) |
 | File management | list, upload, delete, history | list, upload, delete, reprint, disk info, history |
 | Filament-switch detection | — | ✓ (position-based) |
 
@@ -93,12 +93,12 @@ below use `ACCESS_CODE` as a stand-in — substitute your own.
 > all CC2 firmware.
 
 Every CLI command accepts `--host` (env: `HOST`). With no host
-given, commands try UDP discovery, which only finds CC1s.
+given, commands try UDP discovery, which finds CC1s and CC2s.
 
 ## CLI
 
 ```sh
-# Discovery (CC1 only — CC2 doesn't answer broadcasts)
+# Discovery (CC1 via M99999 :3000, CC2 via JSON-RPC :52700)
 centauri discover
 
 # Status, attributes, live watch, snapshot
@@ -135,7 +135,8 @@ centauri delete old.gcode --host printer.example --enable-control
 centauri light on   --host printer-cc2.example --access-code ACCESS_CODE --enable-control
 centauri light off  --host printer-cc2.example --access-code ACCESS_CODE --enable-control
 
-# Canvas multi-filament (CC2 only)
+# Canvas multi-filament (status: CC1 + CC2; auto-refill: CC2 only)
+centauri canvas       --host printer.example
 centauri canvas       --host printer-cc2.example --access-code ACCESS_CODE
 centauri refill --on  --host printer-cc2.example --access-code ACCESS_CODE --enable-control
 ```
@@ -232,9 +233,11 @@ Both classes expose the same API: `status()`, `attributes()`, `watch()`
 `set_fan_speed()`, `set_temperatures()`, `set_light()`, `list_files()`,
 `delete_files()`, `disk_info()`, `print_history()`, `canvas_status()`,
 `set_auto_refill()`. Write methods require `enable_control=True` at
-connect time and raise `ControlDisabledError` otherwise. File
-management and Canvas methods raise `PrinterError` on CC1 (not
-available over SDCP).
+connect time and raise `ControlDisabledError` otherwise. On a CC1,
+`canvas_status()` is read-only (Cmd 324, verified safe — see
+`docs/PROTOCOL.md`) and raises `PrinterError` when no Canvas is attached;
+`set_auto_refill()` stays CC2-only, and CC1 file management covers
+list/delete/history (`disk_info` is CC2).
 
 `upload_file(local_path, *, remote_name=None, progress=None)` pushes a
 file to the printer's internal storage over chunked HTTP (independent of
@@ -324,8 +327,8 @@ detection section for the bandwidth numbers.
 | `GET` | `/snapshot` | Single JPEG frame |
 | `GET` | `/stream` | MJPEG proxy (drop into an `<img>` tag) |
 | `GET` | `/events/status` | Server-Sent Events stream of status pushes |
-| `GET` | `/discover` | UDP LAN scan (finds CC1s) |
-| `GET` | `/canvas` | Canvas state (CC2; `501` on CC1) |
+| `GET` | `/discover` | UDP LAN scan (finds CC1s and CC2s) |
+| `GET` | `/canvas` | Canvas state (CC1 via Cmd 324, CC2 via MQTT; `501` when no Canvas answers) |
 | `GET` | `/docs`, `/redoc` | OpenAPI documentation |
 | `POST` | `/print/start` | `{"filename": "cube.gcode", "storage": "local"}` † |
 | `POST` | `/print/pause` · `/print/resume` · `/print/stop` | † |
@@ -377,7 +380,7 @@ because no tool takes a host parameter.
 | `get_attributes` | always | Model, firmware, mainboard ID |
 | `get_snapshot` | always | Webcam frame as MCP image — the model *sees* the print |
 | `discover_printers` | always | UDP LAN scan |
-| `get_canvas_status` | always | Canvas trays, colors, auto-refill (CC2) |
+| `get_canvas_status` | always | Canvas trays, colors, auto-refill (CC1 read-only + CC2) |
 | `start_print` | `--enable-control` | Start a file already on the printer |
 | `pause_print` / `resume_print` / `stop_print` | `--enable-control` | Job control |
 | `set_print_speed` | `--enable-control` | `silent`/`balanced`/`sport`/`ludicrous` |
@@ -417,7 +420,8 @@ supported ways to run it: **without a Coral** (the default for most
 people) the analysis runs on your computer's CPU at ~200 ms per look —
 **your camera frames never leave your network**; the only thing that
 ever travels outside is the optional Telegram message (to *your own*
-bot), and the optional update check is off by default.
+bot — strictly one-way, nothing is ever received), and the optional
+update check is off by default.
 **with a Google Coral USB Accelerator** its AI chip does the same in
 ~5–15 ms — the stick is purely an accelerator, never a requirement.
 The detector taps the same
@@ -484,7 +488,15 @@ Notes:
   @BotFather, message it once, read the chat id from
   `https://api.telegram.org/bot<token>/getUpdates` — in the returned
   JSON look for `"chat":{"id":123456789,...}`; that number is your chat
-  id). Empty values disable it.
+  id). Empty values disable it. Telegram is strictly **one-way**:
+  pycentauri never receives anything from Telegram — no polling, no
+  webhook, no listening of any kind.
+- **Optional bot password**: if you secure your bot with a password in
+  @BotFather, put it in `TELEGRAM_PASSWORD` (or `--telegram-password`);
+  pycentauri attaches it to every outgoing Telegram request as the
+  `X-Telegram-Bot-Api-Secret-Token` header — the documented place for a
+  bot secret. Without a bot password nothing needs to be configured:
+  token + chat id are enough to post.
 - Standalone without the HTTP server: `centauri detect watch --host …`.
   Model debugging against arbitrary JPEGs: `centauri detect test img.jpg`.
 - Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs and a

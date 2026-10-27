@@ -6,6 +6,37 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-27
+
+### Added
+- Optional bot password: `TELEGRAM_PASSWORD` (or `--telegram-password` on
+  `server` / `detect watch`) is attached to every outgoing Telegram request
+  as the `X-Telegram-Bot-Api-Secret-Token` header — the documented place
+  for a bot secret. Telegram stays strictly **one-way**: nothing is ever
+  received (no polling, no webhook). Without a bot password, token +
+  chat id remain enough.
+- CC2 discovery: UDP discovery (and `centauri discover`) now also finds
+  the Centauri Carbon 2 via its JSON-RPC probe on UDP port 52700
+  (approach from upstream PR #1). The output shows the serial number and
+  warns when a CC2 sits in cloud mode (`lan_status == 0`).
+- Canvas status on the CC1: `canvas_status()` / `centauri canvas` /
+  `GET /canvas` now work read-only on the CC1 via SDCP Cmd 324 — verified
+  safe on stock V1.4.46/V1.4.49 including mid-print (upstream issue #2).
+  Auto-refill stays CC2-only.
+- start_print hardening: when the printer does not push Attributes within
+  the wait window (idle printers do so only intermittently — upstream
+  issue #3), `wait_for_mainboard()` falls back to one short UDP discovery
+  round before failing; the error message names the idle case.
+
+### Changed
+- `docs/PROTOCOL.md` documents the five `START_PRINT` payload keys
+  (`Calibration_switch`, `slot_map` shape with the `channel_id` formula,
+  `PrintPlatformType`, `Tlp_Switch`, `path_prefix`), the reliable
+  job-state signals (`PrintInfo.TaskId`, `CurrentStatus` as a list) and
+  the full Cmd 324 field notes with the probe payloads — all from
+  upstream issue #2; status codes 20/21 carry the observed
+  levelling/CANVAS-load semantics.
+
 ## [0.13.3] - 2026-10-06
 
 ### Added
