@@ -14,7 +14,7 @@ Routes (start with ``centauri server``):
 * ``GET /snapshot`` / ``GET /stream`` — webcam JPEG / MJPEG proxy
 * ``GET /events/status`` — Server-Sent Events stream of status pushes
 * ``GET /discover`` — UDP LAN scan (finds CC1s)
-* ``GET /canvas`` — Canvas multi-filament state (CC2)
+* ``GET /canvas`` — Canvas multi-filament state (CC1 + CC2)
 * ``GET /files`` / ``GET /disk`` / ``GET /history`` — file list, disk usage
   (CC2), and print history (both models)
 * ``GET|POST /api/rtsp*`` — RTSP bridge state/control (with ``--rtsp``)
@@ -452,7 +452,9 @@ def create_app(
                     else None
                 ),
                 telegram_poster=telegram_notifier_for(
-                    detect_config.telegram_token, detect_config.telegram_chat_id
+                    detect_config.telegram_token,
+                    detect_config.telegram_chat_id,
+                    detect_config.telegram_password,
                 ),
             )
         app.state.detect = controller
@@ -605,10 +607,13 @@ def create_app(
         return [
             {
                 "host": p.host,
+                "protocol": p.protocol,
                 "mainboard_id": p.mainboard_id,
+                "serial_number": p.serial_number,
                 "name": p.name,
                 "machine_name": p.machine_name,
                 "firmware_version": p.firmware_version,
+                "lan_status": p.lan_status,
             }
             for p in found
         ]
@@ -640,7 +645,7 @@ def create_app(
     async def canvas_status(
         manager: PrinterManager = Depends(get_manager),
     ) -> dict[str, Any]:
-        """Canvas multi-filament system status (CC2 only)."""
+        """Canvas multi-filament system status (CC1 via Cmd 324, CC2 via MQTT)."""
         try:
             cs = await manager.printer.canvas_status()
         except RequestTimeoutError as err:

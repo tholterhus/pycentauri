@@ -156,10 +156,13 @@ def cmd_discover(
             payload = [
                 {
                     "host": p.host,
+                    "protocol": p.protocol,
                     "mainboard_id": p.mainboard_id,
+                    "serial_number": p.serial_number,
                     "name": p.name,
                     "machine_name": p.machine_name,
                     "firmware_version": p.firmware_version,
+                    "lan_status": p.lan_status,
                 }
                 for p in found
             ]
@@ -171,8 +174,14 @@ def cmd_discover(
             for p in found:
                 typer.echo(
                     f"{p.host:<15s}  {p.machine_name or '?':<18s}  "
-                    f"fw={p.firmware_version or '?':<8s}  id={p.mainboard_id or '?'}"
+                    f"fw={p.firmware_version or '?':<8s}  "
+                    + (f"sn={p.serial_number}" if p.is_cc2 else f"id={p.mainboard_id or '?'}")
                 )
+                if p.is_cc2 and p.lan_status == 0:
+                    typer.echo(
+                        f"  warning: {p.host} is in cloud mode — enable 'LAN Only' "
+                        "on the printer to use it with pycentauri"
+                    )
 
     _run(run())
 
@@ -796,6 +805,11 @@ def cmd_server(
     telegram_chat_id: str | None = typer.Option(
         None, "--telegram-chat-id", help="Telegram chat id receiving the alerts."
     ),
+    telegram_password: str | None = typer.Option(
+        None,
+        "--telegram-password",
+        help="Bot password (BotFather): attached to every Telegram request as the secret-token header. Nothing is received.",
+    ),
     detect_threshold: float = typer.Option(
         0.5, "--detect-threshold", help="Minimum detection score, 0..1."
     ),
@@ -822,6 +836,16 @@ def cmd_server(
         _echo_err("Server support not installed. Install with: pip install 'pycentauri[server]'")
         _echo_err(f"(missing dependency: {err})")
         raise typer.Exit(code=1) from err
+
+    if (telegram_token or telegram_chat_id or telegram_password) and not detect:
+        _echo_err(
+            "--telegram-* options require --detect (alerts and the channel gate "
+            "are wired through the detection pipeline)."
+        )
+        raise typer.Exit(code=2)
+    if telegram_password and not (telegram_token and telegram_chat_id):
+        _echo_err("--telegram-password requires --telegram-token and --telegram-chat-id.")
+        raise typer.Exit(code=2)
 
     detect_cfg = None
     if detect:
@@ -856,6 +880,7 @@ def cmd_server(
             webhook_url=detect_webhook,
             telegram_token=telegram_token,
             telegram_chat_id=telegram_chat_id,
+            telegram_password=telegram_password,
             evidence_dir=detect_evidence_dir,
             force_cpu=detect_cpu,
         )
@@ -1113,6 +1138,13 @@ def cmd_detect_watch(
     telegram_chat_id: Annotated[
         str | None, typer.Option("--telegram-chat-id", help="Telegram chat id receiving alerts.")
     ] = None,
+    telegram_password: Annotated[
+        str | None,
+        typer.Option(
+            "--telegram-password",
+            help="Bot password (BotFather): attached to every Telegram request as the secret-token header. Nothing is received.",
+        ),
+    ] = None,
     evidence_dir: Annotated[
         Path, typer.Option("--evidence-dir", help="Where to save triggering frames.")
     ] = Path("data/evidence"),
@@ -1131,6 +1163,9 @@ def cmd_detect_watch(
         raise typer.Exit(code=2)
     if action in ("pause", "stop") and not enable_control:
         _echo_err(f"--action {action} requires --enable-control.")
+        raise typer.Exit(code=2)
+    if telegram_password and not (telegram_token and telegram_chat_id):
+        _echo_err("--telegram-password requires --telegram-token and --telegram-chat-id.")
         raise typer.Exit(code=2)
     model_path = _pick_model(model)
 
@@ -1214,7 +1249,10 @@ def cmd_detect_watch(
 
                         with contextlib.suppress(Exception):
                             await send_telegram(
-                                telegram_token, telegram_chat_id, {"event": event.as_dict()}
+                                telegram_token,
+                                telegram_chat_id,
+                                {"event": event.as_dict()},
+                                password=telegram_password,
                             )
                     if action in ("pause", "stop"):
                         result = await getattr(printer, action)()
