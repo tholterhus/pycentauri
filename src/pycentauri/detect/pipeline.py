@@ -107,6 +107,10 @@ class DetectConfig:
     # Optional Telegram push (photo + caption); both must be set.
     telegram_token: str | None = None
     telegram_chat_id: str | None = None
+    # Optional bot password (BotFather): attached to every outgoing Telegram
+    # request as the X-Telegram-Bot-Api-Secret-Token header. Nothing is ever
+    # received from Telegram — alerts are strictly one-way.
+    telegram_password: str | None = None
     evidence_dir: Path = Path("data/evidence")
     force_cpu: bool = False
     # Training-data collection: while a print runs, frames are written to
@@ -179,13 +183,17 @@ async def post_webhook(url: str, payload: dict[str, Any]) -> None:
         await client.post(url, json=payload)
 
 
-def telegram_notifier_for(token: str | None, chat_id: str | None) -> WebhookPoster | None:
+def telegram_notifier_for(
+    token: str | None,
+    chat_id: str | None,
+    password: str | None = None,
+) -> WebhookPoster | None:
     """Bind :func:`send_telegram` to credentials; ``None`` when either is unset."""
     if not token or not chat_id:
         return None
 
     async def _post(payload: dict[str, Any]) -> None:
-        await send_telegram(token, chat_id, payload)
+        await send_telegram(token, chat_id, payload, password=password)
 
     return _post
 
@@ -195,12 +203,16 @@ async def send_telegram(
     chat_id: str,
     payload: dict[str, Any],
     *,
+    password: str | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> None:
     """Send an alert to a Telegram chat: evidence photo + caption.
 
     Falls back to a text message when the evidence JPEG is missing.
-    Raises on failure — callers decide policy (the controller logs).
+    ``password`` (the BotFather bot password, optional) is attached to
+    every request as the ``X-Telegram-Bot-Api-Secret-Token`` header —
+    the documented place for a bot secret. Raises on failure — callers
+    decide policy (the controller logs).
     """
     event = payload.get("event", {})
     caption = event.get("text") or (
@@ -213,17 +225,20 @@ async def send_telegram(
         path = Path(evidence) if evidence else None
         if path and path.is_file():
             photo = path.read_bytes()
+    headers = {"X-Telegram-Bot-Api-Secret-Token": password} if password else None
     async with httpx.AsyncClient(timeout=10.0, transport=transport) as client:
         if photo:
             resp = await client.post(
                 f"https://api.telegram.org/bot{token}/sendPhoto",
                 data={"chat_id": chat_id, "caption": caption},
                 files={"photo": ("frame.jpg", photo, "image/jpeg")},
+                headers=headers,
             )
         else:
             resp = await client.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
                 json={"chat_id": chat_id, "text": caption},
+                headers=headers,
             )
         ok = resp.status_code == 200 and resp.json().get("ok") is True
         if not ok:

@@ -788,6 +788,28 @@ def test_send_telegram_photo_fallback_and_failure(tmp_path: Path) -> None:
         asyncio.run(send_telegram("TOK", "42", no_photo, transport=httpx.MockTransport(bad)))
 
 
+def test_send_telegram_applies_bot_password_header() -> None:
+    import httpx
+
+    from pycentauri.detect.pipeline import send_telegram
+
+    payload = {"event": {"label": "spaghetti", "score": 0.5, "when": "t", "backend": "cpu"}}
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    asyncio.run(
+        send_telegram("TOK", "42", payload, password="pw", transport=httpx.MockTransport(handler))
+    )
+    assert seen[0].headers.get("X-Telegram-Bot-Api-Secret-Token") == "pw"
+
+    seen.clear()
+    asyncio.run(send_telegram("TOK", "42", payload, transport=httpx.MockTransport(handler)))
+    assert "X-Telegram-Bot-Api-Secret-Token" not in seen[0].headers
+
+
 async def test_controller_sends_telegram_on_fire(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

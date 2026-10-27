@@ -29,6 +29,7 @@ PYCENTAURI_DETECT_THRESHOLD=${PYCENTAURI_DETECT_THRESHOLD:-0.65}
 PYCENTAURI_DETECT_INTERVAL=${PYCENTAURI_DETECT_INTERVAL:-1}
 PYCENTAURI_TELEGRAM_TOKEN=${PYCENTAURI_TELEGRAM_TOKEN:-}
 PYCENTAURI_TELEGRAM_CHAT_ID=${PYCENTAURI_TELEGRAM_CHAT_ID:-}
+PYCENTAURI_TELEGRAM_PASSWORD=${PYCENTAURI_TELEGRAM_PASSWORD:-}
 
 [[ $EUID -eq 0 ]] || { echo 'Run this installer as root.' >&2; exit 1; }
 [[ -n "$PYCENTAURI_HOST" ]] || { echo 'Set PYCENTAURI_HOST to the printer IP or DNS name.' >&2; exit 1; }
@@ -110,6 +111,7 @@ DETECT_THRESHOLD=$PYCENTAURI_DETECT_THRESHOLD
 DETECT_INTERVAL=$PYCENTAURI_DETECT_INTERVAL
 TELEGRAM_TOKEN=$PYCENTAURI_TELEGRAM_TOKEN
 TELEGRAM_CHAT_ID=$PYCENTAURI_TELEGRAM_CHAT_ID
+TELEGRAM_PASSWORD=$PYCENTAURI_TELEGRAM_PASSWORD
 EOF
 else
   echo "Keeping existing $CONFIG_FILE; edit it explicitly to change service settings."
@@ -138,6 +140,9 @@ DETECT_INTERVAL=1
 # Optional Telegram push on detection (bot token from BotFather + chat id).
 TELEGRAM_TOKEN=
 TELEGRAM_CHAT_ID=
+# Optional bot password (BotFather): attached to every Telegram request as
+# the secret-token header. Nothing is ever received from Telegram.
+TELEGRAM_PASSWORD=
 EOF
   chown root:"$APP_USER" "$APP_DIR/pycentauri.conf-example"
   chmod 0644 "$APP_DIR/pycentauri.conf-example"
@@ -147,7 +152,7 @@ if command -v systemctl >/dev/null && [[ -d /run/systemd/system ]]; then
   command -v curl >/dev/null || { echo 'curl is required for the systemd health check.' >&2; exit 1; }
   rtsp_args=(); [[ "$PYCENTAURI_RTSP" == 1 ]] && rtsp_args+=(--rtsp)
   control_args=(); [[ "$PYCENTAURI_ENABLE_CONTROL" == 1 ]] && control_args+=(--enable-control)
-  detect_args=(); [[ "$PYCENTAURI_DETECT" == 1 ]] && detect_args+=(--detect --detect-model "$PYCENTAURI_DETECT_MODEL" --detect-action "$PYCENTAURI_DETECT_ACTION" --detect-threshold "$PYCENTAURI_DETECT_THRESHOLD" --detect-interval "$PYCENTAURI_DETECT_INTERVAL" --telegram-token "\${TELEGRAM_TOKEN}" --telegram-chat-id "\${TELEGRAM_CHAT_ID}")
+  detect_args=(); [[ "$PYCENTAURI_DETECT" == 1 ]] && detect_args+=(--detect --detect-model "$PYCENTAURI_DETECT_MODEL" --detect-action "$PYCENTAURI_DETECT_ACTION" --detect-threshold "$PYCENTAURI_DETECT_THRESHOLD" --detect-interval "$PYCENTAURI_DETECT_INTERVAL" --telegram-token "\${TELEGRAM_TOKEN}" --telegram-chat-id "\${TELEGRAM_CHAT_ID}" --telegram-password "\${TELEGRAM_PASSWORD}")
   # Inside an unprivileged LXC there is no udevd; libusb needs a hand-made
   # device node plus /run/udev database entry to see the Coral. No-op with
   # a warning when the stick is absent or on a normal host. Only installed

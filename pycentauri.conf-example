@@ -24,3 +24,6 @@ DETECT_INTERVAL=1
 # camera frame. Bot via @BotFather; empty values disable it.
 TELEGRAM_TOKEN=
 TELEGRAM_CHAT_ID=
+# Optional bot password (BotFather): attached to every Telegram request as
+# the secret-token header. Nothing is ever received from Telegram.
+TELEGRAM_PASSWORD=
