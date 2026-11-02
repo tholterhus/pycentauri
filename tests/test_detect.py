@@ -31,6 +31,8 @@ from pycentauri.detect.backend import (
 )
 from pycentauri.detect.pipeline import (
     PRINTING,
+    STOPPED,
+    STOPPING,
     DetectConfig,
     DetectionController,
     DetectionEvent,
@@ -916,6 +918,53 @@ async def test_controller_sends_telegram_on_status_changes(
     # one alert per printing segment — pause/resume re-arms by design
     assert len(detections) == 2
     assert all(d["event"]["evidence"] for d in detections)
+
+
+async def test_controller_abort_alert_sent_once(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        detect_backend.Detector,
+        "from_model",
+        staticmethod(lambda path, force_cpu=False: FakeDetector()),
+    )
+    cfg = DetectConfig(
+        model_path=tmp_path / "m_edgetpu.tflite",
+        grace_s=0.0,
+        min_frame_interval_s=0.0,
+        window_size=4,
+        window_needed=3,
+        action="notify",
+        evidence_dir=tmp_path / "ev",
+    )
+    tg: list[dict[str, Any]] = []
+
+    async def telegram_poster(payload: dict[str, Any]) -> None:
+        tg.append(payload)
+
+    # Two aborted prints: the abort walk 13→7→8 must post ONE message each.
+    controller = DetectionController(
+        cfg,
+        camera=FakeCamera([]),
+        get_printer=lambda: FakePrinter(
+            [0]
+            + [PRINTING] * 2
+            + [STOPPING, STOPPED]
+            + [PRINTING] * 2
+            + [STOPPING, STOPPED, STOPPED]
+        ),
+        telegram_poster=telegram_poster,
+    )
+    await controller.start()
+    await _wait_for(lambda: controller._last_code == STOPPED)
+    await asyncio.sleep(0.2)  # let the status-post tasks run
+    await controller.stop()
+
+    status_msgs = [p["event"]["text"] for p in tg if p["type"] == "print_status"]
+    assert [m.split(" — ")[0] for m in status_msgs] == [
+        "🛑 print aborted",
+        "🛑 print aborted",
+    ]
 
 
 def test_collect_due_layer_aware(tmp_path: Path) -> None:

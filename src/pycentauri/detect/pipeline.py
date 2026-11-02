@@ -56,6 +56,8 @@ ERROR = 14
 
 #: Status-code → Telegram one-liner; sent (with the latest camera frame)
 #: whenever the printer's code CHANGES while a telegram poster is wired.
+#: Consecutive transitions that map to the SAME text are collapsed into one
+#: message (the abort walk 13→7→8 would otherwise post "print aborted" twice).
 STATUS_ALERTS = {
     PAUSED: "⏸️ print paused",
     27: "🔁 filament switch",
@@ -304,6 +306,7 @@ class DetectionController:
         self._active = False  # printing-ish (13 or filament switch) — subscribed
         self._fired = False  # one alert per print
         self._last_code: int | None = None  # previous print_status
+        self._last_alert_text: str | None = None  # dedupes consecutive same-text alerts
         self._layer: int | None = None
         self._total_layers: int | None = None
         self._print_ctx: str = ""  # human context appended to alerts
@@ -522,13 +525,16 @@ class DetectionController:
         elif not self._active and was_active:
             # Session loop observes the flag and unsubscribes itself.
             self._fired = False
+        text = STATUS_ALERTS.get(code) if code is not None else None
         if (
             self._telegram_poster is not None
             and prev is not None
             and code != prev
-            and code in STATUS_ALERTS
+            and text is not None
+            and text != self._last_alert_text
         ):
-            self._post_status_alert(STATUS_ALERTS[code])
+            self._last_alert_text = text
+            self._post_status_alert(text)
 
     def _post_status_alert(self, text: str) -> None:
         task = asyncio.create_task(self._send_status_alert(text))
@@ -559,6 +565,7 @@ class DetectionController:
 
     def _begin_session(self) -> None:
         self._fired = False
+        self._last_alert_text = None  # a fresh print alerts on its own events
         self._window.clear()
         if self._session_task is None or self._session_task.done():
             self._session_task = asyncio.create_task(
