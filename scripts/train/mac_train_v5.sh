@@ -87,6 +87,9 @@ open("/tmp/official-deps.txt", "w").write("\n".join(keep))
 print("official-deps installiert:", keep)
 PY3
 ./venv/bin/pip install --quiet -r /tmp/official-deps.txt || echo "official-deps: teilausfall — training.log zeigt es"
+# die official-deps ziehen gern ein neueres protobuf nach (7.x) — TF 2.15 und
+# der gencode von grpcio-tools 1.62 brauchen 4.x. Zuruueck vor protoc:
+./venv/bin/pip install --quiet --no-deps --force-reinstall "protobuf==4.25.8"
 # deshalb grpc_tools.protoc statt des brew-protoc
 ./venv/bin/python -m grpc_tools.protoc -Imodels/research --python_out=models/research models/research/object_detection/protos/*.proto
 # OD-API: setup.py liegt in object_detection/packages/tf2/ (liefert auch lxml)
@@ -95,6 +98,11 @@ PY3
 export PYTHONPATH="$PWD/models/research:${PYTHONPATH:-}"
 ./venv/bin/python -c "import object_detection, lvis, tf_slim, pycocotools, matplotlib" || { echo "trainings-imports fehlen — fix: ./venv/bin/pip install lvis tf-slim pycocotools matplotlib lxml"; ./venv/bin/pip show object-detection | grep Location || true; exit 1; }
 echo "alle trainings-imports OK"
+
+# protobuf-runtime ERZWINGEN (unbedingt, auch bei re-run mit kaputtem venv):
+./venv/bin/pip install --quiet --no-deps --force-reinstall "protobuf==4.25.8" \
+    && ./venv/bin/python -c "import google.protobuf as p; assert p.__version__.startswith('4.25'), p.__version__" \
+    || { echo "protobuf-pin fehlgeschlagen — ./venv/bin/pip install --no-deps --force-reinstall protobuf==4.25.8"; exit 1; }
 
 if [ ! -d dataset ]; then
     mkdir dataset && unzip -q unified.zip -d dataset
