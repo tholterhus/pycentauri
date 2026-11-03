@@ -957,6 +957,10 @@ body {
 
 /* detect-hint + files-upload (GUI-Klarstellung, 3.11.) */
 .files-head { display: none; }
+.upload-disable.disabled, .upload-disable:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
 .upload-name {
   font-size: 11px;
   color: var(--dim, #9aa0a6);

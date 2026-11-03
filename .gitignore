@@ -70,3 +70,5 @@ data/collect/
 
 # Training: roboflow downloads + assembled datasets
 data/train/
+data/
+COMMUNICATION.md

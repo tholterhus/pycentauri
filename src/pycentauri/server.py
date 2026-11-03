@@ -1018,10 +1018,17 @@ def create_app(
 
     @app.post("/files/upload", tags=["control"])
     async def upload_file_route(
+        request: Request,
         file: UploadFile = File(..., description="The file to upload (e.g. a .gcode)."),
         start: bool = Form(False),
         manager: PrinterManager = Depends(require_control),
     ) -> dict[str, Any]:
+        controller = getattr(request.app.state, "detect", None)
+        if controller is not None and controller.printer_busy:
+            raise HTTPException(
+                status_code=409,
+                detail="printer busy — upload is disabled while a print is running",
+            )
         # Spool the browser upload to a temp file, then chunk it to the
         # printer over HTTP. Path(...).name strips any directory components
         # from the client-supplied filename (no traversal).

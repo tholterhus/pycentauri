@@ -1014,6 +1014,11 @@ function reprintButton(name, storage) {
 function updateReprintVisibility() {
   const idle = printerIdle();
   for (const btn of document.querySelectorAll(".files-print")) btn.hidden = !idle;
+  // Upload while a print is running makes no sense (start would collide).
+  for (const el of document.querySelectorAll(".upload-disable")) {
+    el.disabled = !idle;
+    el.classList.toggle("disabled", !idle);
+  }
 }
 
 async function reprintFile(name, storage) {

@@ -316,6 +316,7 @@ class DetectionController:
         self._status_posts: set[asyncio.Task[None]] = set()
         self._window: deque[bool] = deque(maxlen=cfg.window_size)
         self._backend: Any = None  # detect.backend.Detector, loaded lazily
+        self._last_print_status: int | None = None
         self._backend_alert_sent = False  # one alert per edgetpu→cpu episode
         # Training-frame collection toggle — restored across restarts via a
         # dotfile in collect_dir (the FIFO only touches *.jpg / *.json).
@@ -551,6 +552,16 @@ class DetectionController:
         except Exception as err:
             log.error("detection: telegram delivery failed: %r", err)
 
+    @property
+    def printer_busy(self) -> bool:
+        """True while a job occupies the printer (incl. paused — resumable).
+
+        Same definition as the UI's busy-state: every print_status except
+        IDLE/STOPPED/COMPLETED/ERROR (0/8/9/14). Unknown status (no push
+        yet) counts as not busy.
+        """
+        return self._last_print_status is not None and self._last_print_status not in (0, 8, 9, 14)
+
     # --- status watch -------------------------------------------------------
 
     async def _status_loop(self) -> None:
@@ -586,6 +597,7 @@ class DetectionController:
             elif pi.progress is not None:
                 self._print_ctx += f", {pi.progress}%"
         code = st.print_status
+        self._last_print_status = code
         # Best-effort pause reason: the SDCP protocol has no reason code
         # (6 = "paused", period). CC2 MQTT at least exposes the runout
         # sensor; log the raw codes so firmware quirks can be mapped later.

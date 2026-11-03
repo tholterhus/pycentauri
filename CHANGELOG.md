@@ -4,26 +4,47 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-### Changed
-- Web-UI: upload widget moved into the Files panel (next to the file
-  list it belongs to; the loose widget in Controls is gone) and the
-  Canvas panel is hidden when the tray list is empty (CC1).
-
-### Fixed
-- Detection status alerts: consecutive transitions that map to the same
-  alert text are collapsed into one message — the abort walk
-  `PRINTING(13) → STOPPING(7) → STOPPED(8)` used to post "print aborted"
-  twice (same for the Canvas filament-switch codes 27/28/29). The dedupe
-  resets per print session, so distinct events still alert individually.
+## [0.15.0] - 2026-11-03
 
 ### Added
-- Retraining tooling (v2 dataset rebuild): `scripts/train/rebuild_unified_v2.sh`
-  merges Roboflow browser exports (YOLOv8) with the collected v2 increment
-  into a fresh `unified` dataset; `scripts/train/tools/replay.py` re-scores
-  frames for acceptance checks. Mac training scripts and the Roboflow
-  harvest helper are restored from history.
+- Telegram alerts for Edge-TPU state changes: the server warns when the
+  Coral drops out mid-run (edgetpu → cpu; the runtime SIGABRTs the whole
+  process and the restart lands silently on CPU) and confirms when it is
+  back (cpu → edgetpu). The last backend name persists in
+  `data/evidence/.backend`, so the regression is detected across
+  restarts. Startup on CPU (no Coral / `--detect-cpu`) stays silent.
+- Retraining round-trip tooling: `scripts/train/rebuild_unified_v2.sh`
+  (Roboflow exports + auto-labeled inbox → unified dataset),
+  `data/train/inbox/<class>/` drop-zone with `scripts/train/inbox_label.py`
+  (detector-proposed boxes), and `scripts/train/tools/replay.py` for
+  acceptance scoring. Mac training scripts restored from history with
+  four documented OD-API drift fixes (zeros-placeholder input, missing
+  training-KW, protobuf pin, config regex).
+- `--detect-collect-max-per-print` (500) / `--detect-collect-max-files`
+  (4000): the old 200-frame cap cut off the failure phase of long prints.
+
+### Changed
+- Web-UI: the upload widget moved into the Files panel next to the file
+  list (the loose widget in Controls is gone) and is disabled while a
+  print is running — the server rejects uploads with 409 based on the
+  detection controller's printer-busy state. Canvas panel hides when the
+  tray list is empty (CC1).
+- Training on the Mac pins peak learning rate 0.08 (was 0.8) and aligns
+  the LR schedule with the real step count — round 2 diverged
+  (regularization_loss 144k) at the 0.8 warmup peak.
+
+### Fixed
+- Detection status alerts: consecutive transitions mapping to the same
+  text are collapsed — the abort walk `PRINTING(13) → STOPPING(7) →
+  STOPPED(8)` posted "print aborted" twice (same for filament-switch
+  codes 27/28/29). Distinct events still alert individually.
+- Model deploy hard gate: a candidate model must load on CPU and react
+  to different inputs (input-sensitivity probe) before it replaces the
+  live model — two collapsed v2 training rounds were both caught here.
+- Edge-TPU compiler bundle install (wrapper + `_bin` layout, output dir
+  pre-created) — the previous find-cp collision compiled nothing.
+- The backend-state file no longer gates its own alert (foreign-owned
+  state file silently suppressed the return-alert).
 
 ## [0.14.0] - 2026-10-27
 
