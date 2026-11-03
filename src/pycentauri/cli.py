@@ -825,6 +825,17 @@ def cmd_server(
         Path,
         typer.Option("--detect-evidence-dir", help="Where to save triggering frames."),
     ] = DEFAULT_EVIDENCE_DIR,
+    detect_collect_max_per_print: int = typer.Option(
+        500,
+        "--detect-collect-max-per-print",
+        help="Collect-frames pro Druck (200 war zu knapp: bei langen Drucken "
+        "stoppte die Sammlung vor der Fehlerphase).",
+    ),
+    detect_collect_max_files: int = typer.Option(
+        4000,
+        "--detect-collect-max-files",
+        help="Globaler FIFO für Collect-Frames.",
+    ),
     detect_cpu: bool = typer.Option(
         False, "--detect-cpu", help="Force CPU inference even when a Coral is present."
     ),
@@ -882,6 +893,8 @@ def cmd_server(
             telegram_chat_id=telegram_chat_id,
             telegram_password=telegram_password,
             evidence_dir=detect_evidence_dir,
+            collect_max_per_print=detect_collect_max_per_print,
+            collect_max_files=detect_collect_max_files,
             force_cpu=detect_cpu,
         )
 

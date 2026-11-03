@@ -20,6 +20,7 @@ RB=data/train/roboflow
 WORK=data/train/rebuild
 OUT=data/train/unified-rebuilt
 V2=data/train/spaghetti-v2
+RB_INBOX=data/train/inbox
 
 mkdir -p "$RB" "$WORK"
 
@@ -72,7 +73,7 @@ rm -rf "$OUT"
     --out "$OUT" 2>&1 | tail -20
 
 echo
-echo "=== 3/4 v2-Increment dazumergen (Positives 1./2.11. + Negatives)"
+echo "=== 3/4 v2-Increment + Inbox dazumergen (Positives 1./2.11. + Negatives + neue Frames)"
 merged=0; skipped=0
 for split in train val; do
     mkdir -p "$OUT/$split/images" "$OUT/$split/annotations"
@@ -87,6 +88,34 @@ for split in train val; do
     done
 done
 echo "== $merged v2-Dateien gemergt, $skipped übersprungen (Namenskollision)"
+
+# Inbox: neue Frames (pro Klasse ein Ordner) automatisch labeln und mergen.
+# JPGs ohne XML (Detektor konnte nicht boxen) werden gemeldet und bleiben
+# für das Grid-Tool liegen.
+"$PY" scripts/train/inbox_label.py
+inbox_merged=0; inbox_open=0
+for cls_dir in "$RB_INBOX"/*/; do
+    cls=$(basename "$cls_dir")
+    [ "$cls" = "_manuell" ] && continue
+    for jpg in "$cls_dir"*.jpg; do
+        [ -e "$jpg" ] || continue
+        xml="${jpg%.jpg}.xml"
+        base=$(basename "$jpg")
+        if [ ! -e "$xml" ]; then
+            echo "  OFFEN (keine Box): $jpg"
+            inbox_open=$((inbox_open+1)); continue
+        fi
+        split=train
+        if [ $(( (inbox_merged + 1) % 7 )) -eq 0 ]; then split=val; fi
+        if [ -e "$OUT/$split/images/$base" ]; then
+            skipped=$((skipped+1)); continue
+        fi
+        cp "$jpg" "$OUT/$split/images/$base"
+        cp "$xml" "$OUT/$split/annotations/"
+        inbox_merged=$((inbox_merged+1))
+    done
+done 2>/dev/null || true
+echo "== $inbox_merged Inbox-Frames gemergt, $inbox_open brauchen noch eine Box"
 
 echo
 echo "=== 4/4 ZIP bauen + Report"
