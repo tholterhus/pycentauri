@@ -316,6 +316,7 @@ class DetectionController:
         self._status_posts: set[asyncio.Task[None]] = set()
         self._window: deque[bool] = deque(maxlen=cfg.window_size)
         self._backend: Any = None  # detect.backend.Detector, loaded lazily
+        self._backend_lock = asyncio.Lock()  # start() und _session_loop racen um den ersten Load
         self._last_print_status: int | None = None
         self._backend_alert_sent = False  # one alert per edgetpu→cpu episode
         # Training-frame collection toggle — restored across restarts via a
@@ -454,6 +455,15 @@ class DetectionController:
     async def _ensure_backend(self) -> None:
         if self._backend is not None:
             return
+        # start() und _session_loop rufen gleichzeitig — OHNE Lock opened
+        # der Verlierer-Race ein zweites Interpreter-Handle bzw. faellt auf
+        # CPU und flapped das backend-state file (Alarm-Paar pro Restart).
+        async with self._backend_lock:
+            if self._backend is not None:  # der andere Call hat gewonnen
+                return
+            await self._load_backend()
+
+    async def _load_backend(self) -> None:
         try:
             from pycentauri.detect.backend import Detector
 

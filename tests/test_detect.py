@@ -1105,3 +1105,24 @@ def test_armed_action_persists_across_restart(tmp_path: Path) -> None:
     restored.set_action("notify")  # disarming persists too
     again = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
     assert again.state()["action"] == "notify"
+
+
+async def test_ensure_backend_loads_once_under_concurrency(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """start() und _session_loop racen — der Coral darf nur EINMAL opened werden."""
+    calls = []
+
+    class NamedDetector:
+        backend_name = "edgetpu"
+
+    def fake_from_model(path: Any, force_cpu: bool = False) -> Any:
+        calls.append(1)
+        return NamedDetector()
+
+    monkeypatch.setattr(detect_backend.Detector, "from_model", staticmethod(fake_from_model))
+    cfg = DetectConfig(model_path=tmp_path / "m.tflite", evidence_dir=tmp_path / "ev")
+    (tmp_path / "ev").mkdir()
+    c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    await asyncio.gather(c._ensure_backend(), c._ensure_backend())
+    assert len(calls) == 1
