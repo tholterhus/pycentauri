@@ -104,6 +104,26 @@ echo "alle trainings-imports OK"
     && ./venv/bin/python -c "import google.protobuf as p; assert p.__version__.startswith('4.25'), p.__version__" \
     || { echo "protobuf-pin fehlgeschlagen — ./venv/bin/pip install --no-deps --force-reinstall protobuf==4.25.8"; exit 1; }
 
+# TF 2.15 hat control_flow_ops.case/cond/while_loop/Assert/no_op entfernt —
+# tf_slim 1.1.0 ruft sie aber noch. Shim auf die oeffentlichen tf.*-APIs:
+./venv/bin/python - << 'PY3'
+import pathlib
+pkg = pathlib.Path("./venv/lib/python3.11/site-packages/tf_slim")
+patched = []
+for f in pkg.rglob("*.py"):
+    src = f.read_text()
+    if "control_flow_ops." not in src or "/tests/" in str(f) or f.name.endswith("_test.py"):
+        continue
+    for name in ("case", "cond", "while_loop", "Assert", "no_op"):
+        src = src.replace(f"control_flow_ops.{name}(", f"tf.{name}(")
+    if "import tensorflow as tf" not in src:
+        src = src.replace("from tensorflow.python.ops import control_flow_ops",
+                          "import tensorflow as tf\nfrom tensorflow.python.ops import control_flow_ops", 1)
+    f.write_text(src)
+    patched.append(f.name)
+print(f"tf_slim shim gepatcht: {patched or 'bereits erledigt'}")
+PY3
+
 if [ ! -d dataset ]; then
     mkdir dataset && unzip -q unified.zip -d dataset
 fi
