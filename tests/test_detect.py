@@ -812,6 +812,55 @@ def test_send_telegram_applies_bot_password_header() -> None:
     assert "X-Telegram-Bot-Api-Secret-Token" not in seen[0].headers
 
 
+async def test_controller_alerts_on_edge_tpu_regression(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """edgetpu → cpu (auch über Service-Restart) alertet genau einmal pro Episode."""
+    tg: list[dict[str, Any]] = []
+
+    async def telegram_poster(payload: dict[str, Any]) -> None:
+        tg.append(payload)
+
+    class NamedDetector:
+        def __init__(self, name: str) -> None:
+            self.backend_name = name
+
+    def make_controller(names: list[str]) -> DetectionController:
+        seq = iter(names)
+
+        def fake_from_model(path: Any, force_cpu: bool = False) -> Any:
+            return NamedDetector(next(seq))
+
+        monkeypatch.setattr(detect_backend.Detector, "from_model", staticmethod(fake_from_model))
+        cfg = DetectConfig(model_path=tmp_path / "m.tflite", evidence_dir=tmp_path / "ev")
+        return DetectionController(
+            cfg, camera=FakeCamera([]), get_printer=lambda: None, telegram_poster=telegram_poster
+        )
+
+    (tmp_path / "ev").mkdir()
+    c = make_controller(["edgetpu", "cpu"])
+    await c._ensure_backend()  # erster Load: kein vorheriger Stand → kein Alert
+    await asyncio.sleep(0.05)
+    assert tg == []
+
+    c._backend = None  # Reload-Simulation (im Betrieb: Prozess-Restart)
+    await c._ensure_backend()  # edgetpu → cpu: JETZT alerten
+    await asyncio.sleep(0.05)
+    assert len(tg) == 1
+    assert tg[0]["type"] == "backend_status"
+    assert "Coral" in tg[0]["event"]["text"]
+
+    # Neustart-Simulation: neuer Controller, gleiches evidence_dir (Dotfile: cpu)
+    c2 = make_controller(["edgetpu", "cpu"])
+    await c2._ensure_backend()  # cpu → edgetpu: Re-Arm, kein Alert (nur Abbau wird gemeldet)
+    await asyncio.sleep(0.05)
+    assert len(tg) == 1
+    c2._backend = None
+    await c2._ensure_backend()  # zweite Episode → wieder Alert
+    await asyncio.sleep(0.05)
+    assert len(tg) == 2
+
+
 async def test_controller_sends_telegram_on_fire(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

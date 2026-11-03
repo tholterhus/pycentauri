@@ -316,6 +316,7 @@ class DetectionController:
         self._status_posts: set[asyncio.Task[None]] = set()
         self._window: deque[bool] = deque(maxlen=cfg.window_size)
         self._backend: Any = None  # detect.backend.Detector, loaded lazily
+        self._backend_alert_sent = False  # one alert per edgetpu→cpu episode
         # Training-frame collection toggle — restored across restarts via a
         # dotfile in collect_dir (the FIFO only touches *.jpg / *.json).
         marker = cfg.collect_dir / ".collecting"
@@ -461,11 +462,77 @@ class DetectionController:
                 lambda: Detector.from_model(self.cfg.model_path, force_cpu=self.cfg.force_cpu),
             )
             self._error = None
+            self._check_backend_regression()
         except Exception as err:
             # Not fatal for the server: status watching continues, sessions
             # no-op, and /api/detect surfaces the reason.
             self._error = f"model load failed: {err}"
             log.error("detection: %s", self._error)
+
+    def _backend_state_file(self) -> Path:
+        return self.cfg.evidence_dir / ".backend"
+
+    def _check_backend_regression(self) -> None:
+        """Warn (once per episode) when the Edge TPU degrades to CPU.
+
+        The Coral's runtime SIGABRTs the whole process on USB errors and a
+        restart then silently lands on CPU — persist the last backend name
+        so the regression is detected across restarts. Startup on CPU (no
+        Coral attached, ``--detect-cpu``) does NOT alert: only the
+        transition edgetpu → anything-else does. Re-arms when edgetpu is
+        back.
+        """
+        try:
+            name = getattr(self._backend, "backend_name", None)
+            state_file = self._backend_state_file()
+            previous = None
+            if state_file.is_file():
+                previous = state_file.read_text(encoding="utf-8").strip() or None
+            state_file.write_text(name or "", encoding="utf-8")
+            if (
+                previous == "edgetpu"
+                and name != "edgetpu"
+                and not self.cfg.force_cpu
+                and not self._backend_alert_sent
+            ):
+                self._backend_alert_sent = True
+                log.warning(
+                    "detection: Edge TPU nicht mehr erreichbar (vorher %s, jetzt %s) — CPU-Fallback",
+                    previous,
+                    name,
+                )
+                self._post_backend_alert(name)
+            if name == "edgetpu":
+                self._backend_alert_sent = False  # episode over — re-arm
+        except OSError as err:
+            log.debug("detection: backend-state datei unbenutzbar: %r", err)
+
+    def _post_backend_alert(self, name: str) -> None:
+        if self._telegram_poster is None:
+            return
+        payload = {
+            "type": "backend_status",
+            "event": {
+                "text": (
+                    "⚠️ Edge TPU (Coral) nicht mehr erreichbar — Erkennung läuft "
+                    f"auf {name} weiter. Coral am Server ab-/anstecken, dann "
+                    "Dienst neu starten."
+                ),
+                "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            },
+        }
+        task = asyncio.create_task(self._send_backend_alert(payload))
+        self._status_posts.add(task)
+        task.add_done_callback(self._status_posts.discard)
+
+    async def _send_backend_alert(self, payload: dict[str, Any]) -> None:
+        poster = self._telegram_poster
+        if poster is None:
+            return
+        try:
+            await poster(payload)
+        except Exception as err:
+            log.error("detection: telegram delivery failed: %r", err)
 
     # --- status watch -------------------------------------------------------
 
