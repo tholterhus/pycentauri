@@ -18,6 +18,54 @@ trap 'rm -rf "$WORK"' EXIT
 $PY -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$SRC" "$WORK" || { logger -t model-deploy "ZIP kaputt"; exit 1; }
 ls "$WORK"/spaghetti_int8.tflite >/dev/null 2>&1 || { logger -t model-deploy "ZIP ohne spaghetti_int8.tflite — Inhalt: $(ls "$WORK" | tr '\n' ' ')"; exit 1; }
 
+# HARD-GATE: input-sensitivity probe. Ein kollabiertes (input-blindes) Modell
+# darf NIE live gehen — Runde 1+2 des v2-Retrains wären beide hier hängen
+# geblieben (konstante Scores für Foto/Schwarz/Noise). Reihenfolge:
+#  1) int8-Kandidat muss mit dem CPU-Interpreter ladbar sein (XNNPACK-Fail
+#     =Abort), 2) Scores für 3 differente Inputs muessen streuen.
+GATE_LOG=$("$PY" - "$WORK" <<'PY9'
+import io, sys, numpy as np
+from pathlib import Path
+from ai_edge_litert.interpreter import Interpreter
+
+work = Path(sys.argv[1])
+model = work / "spaghetti_int8.tflite"
+try:
+    i = Interpreter(model_path=str(model), num_threads=2)
+    i.allocate_tensors()
+except Exception as err:
+    print(f"int8 load failed: {str(err)[:120]}")
+    sys.exit(3)
+inp = i.get_input_details()[0]
+shape = [1] + list(inp["shape"][1:])
+outs = i.get_output_details()
+scores_idx = [k for k, d in enumerate(outs) if len(d["shape"]) == 2 and d["shape"][-1] == 1]
+rng = np.random.default_rng(7)
+probes = {
+    "noise": rng.random(shape[1:], dtype=np.float32),
+    "black": np.zeros(shape[1:], dtype=np.float32),
+    "midgray": np.full(shape[1:], 0.5, dtype=np.float32),
+}
+scores = {}
+for k, img in probes.items():
+    i.set_tensor(inp["index"], img)
+    i.invoke()
+    vals = [float(np.max(i.get_tensor(outs[j]["index"]))) for j in scores_idx]
+    scores[k] = max([v for v in vals if 0.0 <= v <= 1.0] or [0.0])
+spread = max(scores.values()) - min(scores.values())
+print(f"scores={scores} spread={spread:.4f}")
+if spread < 0.05:
+    print("INPUT-BLIND (kollabiert)")
+    sys.exit(4)
+PY9
+)
+GATE_RC=$?
+logger -t model-deploy "HARD-GATE (rc=$GATE_RC): $GATE_LOG"
+if [ "$GATE_RC" -ne 0 ]; then
+    logger -t model-deploy "Deploy ABGEBROCHEN — Kandidat ist input-blind oder unladbar. ZIP bleibt liegen."
+    exit 1
+fi
+
 # Edge-TPU-Compiler (self-contained x86-64 Bundle, laeuft ohne Installation).
 # WICHTIG: der Wrapper im Bundle loest sein _bin-Verzeichnis relativ zu $0
 # auf — daher das ganze Verzeichnis nach /opt/edgetpu-compiler und Direktpfad
