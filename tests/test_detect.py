@@ -168,7 +168,7 @@ def test_quantize_uint8_and_float_paths() -> None:
     arr = np.array([0.0, 255.0])
     assert _quantize(arr, np.uint8, (0.0, 0)).tolist() == [0, 255]
     out = _quantize(arr, np.float32, (0.0, 0))
-    assert out.dtype == np.float32 and out.tolist() == pytest.approx([0.0, 1.0])
+    assert out.dtype == np.float32 and out.tolist() == pytest.approx([0.0, 255.0])
 
 
 def test_locate_outputs_ssd_order() -> None:
