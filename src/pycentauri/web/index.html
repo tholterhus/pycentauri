@@ -61,8 +61,8 @@
         <header class="panel-header"><span class="panel-tag">Controls</span></header>
         <div class="btn-grid">
           <button id="btn-pause" class="btn warn" type="button">Pause</button>
-          <button id="btn-resume" class="btn ok" type="button">Weiter</button>
-          <button id="btn-stop" class="btn danger" type="button">Stopp</button>
+          <button id="btn-resume" class="btn ok" type="button">Resume</button>
+          <button id="btn-stop" class="btn danger" type="button">Stop</button>
         </div>
         <div class="ctrl-msg" id="ctrl-msg" aria-live="polite"></div>
       </div>
@@ -212,7 +212,6 @@
             <button class="btn detect-action-btn" data-action="pause" type="button">Pause</button>
             <button class="btn detect-action-btn" data-action="stop" type="button">Stopp</button>
           </div>
-          <div class="detect-hint" id="detect-hint"></div>
         </div>
         <div class="detect-event" id="detect-event" hidden>
           <div class="detect-event-head">
@@ -263,29 +262,29 @@
 
       <div class="panel files-panel" id="files-panel" hidden>
         <header class="panel-header">
-          <span class="panel-tag">Dateien</span>
+          <span class="panel-tag">Files</span>
           <span class="files-disk" id="files-disk"></span>
         </header>
         <div class="upload-row">
-          <label class="btn upload-label" for="upload-file">Datei wählen</label>
+          <label class="btn upload-label" for="upload-file">Choose file</label>
           <input type="file" id="upload-file" class="upload-input" hidden>
           <span id="upload-name" class="upload-name"></span>
-          <label class="upload-chk"><input type="checkbox" id="upload-start"> sofort starten</label>
-          <button id="btn-upload" class="btn" type="button">Hochladen</button>
+          <label class="upload-chk"><input type="checkbox" id="upload-start"> start</label>
+          <button id="btn-upload" class="btn" type="button">Upload</button>
         </div>
         <div class="files-list" id="files-list"></div>
         <div class="files-meta">
           <select class="files-storage" id="files-storage" title="Speicher">
-            <option value="local">Lokal</option>
+            <option value="local">Local</option>
             <option value="u-disk">USB</option>
           </select>
-          <button class="btn files-refresh" id="files-refresh" type="button">↻ Laden</button>
+          <button class="btn files-refresh" id="files-refresh" type="button">Refresh</button>
         </div>
         <div class="ctrl-msg" id="files-msg" aria-live="polite"></div>
       </div>
 
       <div class="panel history-panel" id="history-panel" hidden>
-        <header class="panel-header"><span class="panel-tag">Druckverlauf</span></header>
+        <header class="panel-header"><span class="panel-tag">Print history</span></header>
         <div class="files-list" id="history-list"></div>
         <div class="files-meta">
           <button class="btn files-refresh" id="history-refresh" type="button">Refresh</button>

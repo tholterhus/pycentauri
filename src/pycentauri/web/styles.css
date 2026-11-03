@@ -956,12 +956,6 @@ body {
 }
 
 /* detect-hint + files-upload (GUI-Klarstellung, 3.11.) */
-.detect-hint {
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--dim, #9aa0a6);
-  margin-top: 6px;
-}
 .files-head { display: none; }
 .upload-name {
   font-size: 11px;

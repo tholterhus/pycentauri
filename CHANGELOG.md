@@ -7,12 +7,9 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
-- Web-UI: Upload + Dateiliste zusammen im Dateien-Panel (das lose
-  Upload-Widget in Controls ist weg), deutsche Bedientexte, Canvas-Panel
-  wird bei leerer Tray-Liste (CC1) ausgeblendet.
-- Detection: bewaffnete Reaktion (pause/stop) ist jetzt one-shot — nach
-  der Ausführung kehrt sie zu notify zurück (bleibt sonst unverständig
-  scharf).
+- Web-UI: upload widget moved into the Files panel (next to the file
+  list it belongs to; the loose widget in Controls is gone) and the
+  Canvas panel is hidden when the tray list is empty (CC1).
 
 ### Fixed
 - Detection status alerts: consecutive transitions that map to the same

@@ -827,20 +827,6 @@ class DetectionController:
                 await self._action_runner(self.cfg.action)
             except Exception as err:
                 log.error("detection: %s action failed: %r", self.cfg.action, err)
-            finally:
-                # One-shot: die Reaktion (pause/stop) feuert EINMAL und kehrt
-                # dann zu notify zurück — ein bewaffneter Stop bleibt sonst
-                # unverständig scharf (GUI-Verwirrung, 3.11.).
-                executed = self.cfg.action
-                if executed in ("pause", "stop"):
-                    try:
-                        self.set_action("notify")
-                        log.info(
-                            "detection: %s ausgeführt — Reaktion zurück auf notify (one-shot)",
-                            executed,
-                        )
-                    except Exception as err:
-                        log.error("detection: one-shot reset fehlgeschlagen: %r", err)
 
     async def _save_evidence(self, event: DetectionEvent, jpeg: bytes) -> Path:
         """Write evidence off the event loop (see :func:`save_evidence`)."""
