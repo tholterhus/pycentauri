@@ -1049,7 +1049,7 @@ async def test_controller_abort_alert_sent_once(
     ]
 
 
-def test_collect_due_layer_aware(tmp_path: Path) -> None:
+def test_collect_due_budget_aware(tmp_path: Path) -> None:
     from pycentauri.detect.pipeline import DetectionController
 
     cfg = DetectConfig(
@@ -1061,21 +1061,35 @@ def test_collect_due_layer_aware(tmp_path: Path) -> None:
     )
     c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
 
-    # no layer info / dense phase: time interval, min-gap floor does not apply
-    assert c._collect_due(100.0, 95.0, 0)
+    # Dense phase (layer <= 3): 5 s interval up to the dense share
+    # (budget // 4 = 50), then the 20 s floor instead of burning the
+    # whole budget in the first minutes.
     c._layer, c._total_layers = 2, 2000
     assert c._collect_due(100.0, 95.0, 0)
+    assert c._collect_due(100.0, 95.0, 49)
+    assert not c._collect_due(100.0, 95.0, 50)  # dense share exhausted
+    assert c._collect_due(120.0, 95.0, 50)  # 20 s floor re-arms
 
-    # adaptive phase (2000 layers / 200 budget -> every 10 layers)
+    # Adaptive phase: remaining budget spread over remaining layers as a
+    # float gap — 1996 layers / 150 remaining budget -> gap ~13.3 layers.
     c._layer = 4
     c._last_collect_layer = None
-    assert not c._collect_due(100.0, 95.0, 0)  # no reference layer yet
+    assert not c._collect_due(100.0, 95.0, 50)  # no reference layer yet
     c._last_collect_layer = 3
-    assert not c._collect_due(100.0, 95.0, 0)  # 4-3 < 10
-    c._layer = 13
-    assert c._collect_due(100.0, 75.0, 0)  # 13-3 >= 10, 25 s gap ok
-    assert not c._collect_due(100.0, 90.0, 0)  # min-gap floor (5 s < 20 s)
-    assert not c._collect_due(100.0, 0.0, 200)  # budget exhausted
+    assert not c._collect_due(100.0, 95.0, 50)  # 4-3 < 13.3
+    c._layer = 17
+    assert c._collect_due(100.0, 75.0, 50)  # 17-3 = 14 >= 13.3, 25 s gap ok
+    assert not c._collect_due(100.0, 90.0, 50)  # min-gap floor (5 s < 20 s)
+
+    # Tail coverage: near the end the float gap keeps collecting instead
+    # of running dry — 150 layers left, 100 budget -> every 1.5 layers.
+    c._layer, c._total_layers = 450, 600
+    c._last_collect_layer = 448
+    assert c._collect_due(100.0, 75.0, 100)  # 450-448 = 2 >= 1.5
+    assert not c._collect_due(100.0, 90.0, 100)  # min-gap floor
+
+    # Budget exhausted: nothing, ever.
+    assert not c._collect_due(100.0, 0.0, 200)
 
 
 def test_collect_toggle_persists_across_restart(tmp_path: Path) -> None:
@@ -1126,3 +1140,39 @@ async def test_ensure_backend_loads_once_under_concurrency(
     c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
     await asyncio.gather(c._ensure_backend(), c._ensure_backend())
     assert len(calls) == 1
+
+
+async def test_failure_ring_flushed_on_fire(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Ein bestätigter Alarm schreibt die letzten N Frames als Failure-Phase weg."""
+    from pycentauri.detect.pipeline import DetectionController
+
+    class FakeDet:
+        score = 0.9
+        label = "spaghetti"
+
+        def as_dict(self):
+            return {"label": self.label, "score": self.score, "box": [0.2, 0.3, 0.6, 0.7]}
+
+    cfg = DetectConfig(model_path=tmp_path / "m.tflite", evidence_dir=tmp_path / "ev")
+    (tmp_path / "ev").mkdir()
+
+    class NamedDetector:
+        backend_name = "edgetpu"
+
+    monkeypatch.setattr(detect_backend.Detector, "from_model",
+                        staticmethod(lambda path, force_cpu=False: NamedDetector()))
+    c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    await c._ensure_backend()
+    for i in range(3):
+        c._failure_ring.append((f"2026-11-04T00:0{i}:00+00:00", b"frame%d" % i))
+
+    await c._fire([FakeDet()], b"alarmjpeg")
+
+    dirs = list((tmp_path / "ev" / "failure-ring").iterdir())
+    assert len(dirs) == 1
+    jpgs = sorted(dirs[0].glob("*.jpg"))
+    assert len(jpgs) == 3
+    assert (dirs[0] / "alarm.json").is_file()
+    assert not c._failure_ring  # Ring geleert — nächster Druck startet frisch

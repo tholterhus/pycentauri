@@ -4,6 +4,24 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.3] - 2026-11-04
+
+### Fixed
+- Collect pacing is budget-aware: the dense first-layer phase is capped
+  at a quarter of the per-print budget and the REMAINING budget is spread
+  over the REMAINING layers as a float gap. Before, the 3.11. print burned
+  all 200 frames in the first 16 minutes and the detach phase 77 minutes
+  later went unrecorded; int rounding of the static gap would have left
+  the final layers uncovered on long prints in general.
+- Dataclass defaults aligned with the CLI (collect 500/4000).
+
+### Added
+- Failure ring: the detection session keeps the last 200 print frames in
+  RAM (`collect_ring_frames`) and a confirmed detection flushes the whole
+  phase to `data/evidence/failure-ring/<stamp>/` together with the alarm
+  event — the failure phase is captured deterministically, no collect cap
+  or print length can make it go unrecorded.
+
 ## [0.15.1] - 2026-11-03
 
 ### Fixed

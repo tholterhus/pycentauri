@@ -29,6 +29,7 @@ import asyncio
 import contextlib
 import dataclasses
 import json
+import re
 import logging
 import time
 from collections import deque
@@ -129,8 +130,11 @@ class DetectConfig:
     collect_min_gap_s: float = 20.0  # floor between two adaptive frames
     # Retention: max frames per print and global FIFO cap — a 10 h print
     # must not fill the disk with near-duplicate frames.
-    collect_max_per_print: int = 200
-    collect_max_files: int = 2000
+    collect_max_per_print: int = 500
+    collect_max_files: int = 4000
+    # Failure-Ring: die letzten N Frames des Drucks bleiben im RAM und
+    # werden beim Alarm als Evidenz-Phase weggeschrieben.
+    collect_ring_frames: int = 200
 
     def __post_init__(self) -> None:
         if self.action not in ACTIONS:
@@ -318,6 +322,7 @@ class DetectionController:
         self._backend: Any = None  # detect.backend.Detector, loaded lazily
         self._backend_lock = asyncio.Lock()  # start() und _session_loop racen um den ersten Load
         self._last_print_status: int | None = None
+        self._failure_ring: deque[tuple[str, bytes]] = deque(maxlen=cfg.collect_ring_frames)
         self._backend_alert_sent = False  # one alert per edgetpu→cpu episode
         # Training-frame collection toggle — restored across restarts via a
         # dotfile in collect_dir (the FIFO only touches *.jpg / *.json).
@@ -712,6 +717,7 @@ class DetectionController:
                 if jpeg is None:
                     continue
                 self._last_frame = jpeg
+                self._failure_ring.append((datetime.now(timezone.utc).isoformat(timespec="seconds"), jpeg))
                 # Collection has no grace period — priming and first layers
                 # are valuable training material too.
                 if self._collecting and self._collect_due(now, last_collect, collect_saved):
@@ -731,19 +737,34 @@ class DetectionController:
     def _collect_due(self, now: float, last_collect: float, collect_saved: int) -> bool:
         """Decide whether to save a training frame at ``now``.
 
-        First layers (and any print without layer info) collect on the
-        time interval; afterwards one frame per ``total // max_per_print``
-        layer changes, floor-limited by ``collect_min_gap_s``.
+        Budget-aware pacing so coverage reaches the END of a print (both
+        observed failures happened in the last layers):
+
+        * First layers (and prints without layer info): dense on the time
+          interval, capped at a quarter of the per-print budget — the
+          3.11. print burned all 200 frames in the first 16 minutes and
+          the detach phase 77 minutes later went unrecorded.
+        * Afterwards the REMAINING budget is spread over the REMAINING
+          layers as a float gap (int rounding would exhaust the budget
+          before the final layers), floor-limited by ``collect_min_gap_s``.
         """
-        if collect_saved >= self.cfg.collect_max_per_print:
+        budget = self.cfg.collect_max_per_print
+        if collect_saved >= budget:
             return False
         layer = self._layer or 0
         total = self._total_layers or 0
+        dense_share = max(20, budget // 4)
         if layer <= 0 or total <= 0 or layer <= self.cfg.collect_first_layers:
-            return now - last_collect >= self.cfg.collect_interval_s
-        gap_layers = max(1, total // self.cfg.collect_max_per_print)
+            if collect_saved < dense_share:
+                return now - last_collect >= self.cfg.collect_interval_s
+            # Dense-Share aus — ohne Layer-Info aufs Mindest-Intervall
+            # ausweichen statt weiter im 5-s-Takt zu feuern.
+            return now - last_collect >= self.cfg.collect_min_gap_s
+        remaining_budget = max(1, budget - collect_saved)
+        remaining_layers = max(1, total - layer)
+        gap = max(1.0, remaining_layers / remaining_budget)
         last = self._last_collect_layer
-        if last is None or layer - last < gap_layers:
+        if last is not None and layer - last < gap:
             return False
         return now - last_collect >= self.cfg.collect_min_gap_s
 
@@ -820,6 +841,7 @@ class DetectionController:
         )
         event.evidence = str(await self._save_evidence(event, jpeg))
         self._last_event = event
+        await self._flush_failure_ring(event)
         log.warning(
             "SPAGHETTI DETECTED: %s score=%.2f backend=%s evidence=%s",
             event.label,
@@ -851,6 +873,35 @@ class DetectionController:
                 await self._action_runner(self.cfg.action)
             except Exception as err:
                 log.error("detection: %s action failed: %r", self.cfg.action, err)
+
+    async def _flush_failure_ring(self, event: DetectionEvent) -> None:
+        """Preserve the last N frames before the alarm as failure evidence.
+
+        The ring holds the print's recent frames in RAM (see
+        ``collect_ring_frames``); on a confirmed detection the whole phase
+        is written out deterministically — no collect cap can make the
+        failure phase go unrecorded (3.11. lesson). The ring is cleared
+        afterwards so the next print starts fresh.
+        """
+        ring = list(self._failure_ring)
+        self._failure_ring.clear()
+        if not ring:
+            return
+
+        def _write() -> str:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            out = self.cfg.evidence_dir / "failure-ring" / stamp
+            out.mkdir(parents=True, exist_ok=True)
+            for ts, jpeg in ring:
+                name = re.sub(r"[^0-9T]", "", ts)[:15] + ".jpg"
+                (out / name).write_bytes(jpeg)
+            (out / "alarm.json").write_text(
+                json.dumps(event.as_dict(), indent=1, default=str), encoding="utf-8"
+            )
+            return str(out)
+
+        out = await asyncio.get_running_loop().run_in_executor(None, _write)
+        log.info("detection: failure-ring gepackt (%d frames) → %s", len(ring), out)
 
     async def _save_evidence(self, event: DetectionEvent, jpeg: bytes) -> Path:
         """Write evidence off the event loop (see :func:`save_evidence`)."""
