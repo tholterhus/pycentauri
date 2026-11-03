@@ -1,0 +1,20 @@
+{
+  "when": "2026-11-02T20:49:29+00:00",
+  "score": 0.5,
+  "label": "spaghetti",
+  "backend": "edgetpu",
+  "model": "spaghetti_edgetpu.tflite",
+  "evidence": "",
+  "detections": [
+    {
+      "label": "spaghetti",
+      "score": 0.5,
+      "box": [
+        0.3155,
+        0.0074,
+        0.7469,
+        0.5188
+      ]
+    }
+  ]
+}
