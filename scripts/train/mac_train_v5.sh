@@ -104,6 +104,15 @@ echo "alle trainings-imports OK"
     && ./venv/bin/python -c "import google.protobuf as p; assert p.__version__.startswith('4.25'), p.__version__" \
     || { echo "protobuf-pin fehlgeschlagen — ./venv/bin/pip install --no-deps --force-reinstall protobuf==4.25.8"; exit 1; }
 
+# OD-API-Drift-Fix: master hat seit Okt. in load_fine_tune_checkpoint ein
+# hartes assert_existing_objects_matched(), das beim Classification-Restore
+# (Backbone-only) immer failt. Auf den Okt.-Stand zurueck:
+MLV=models/research/object_detection/model_lib_v2.py
+if [ -f "$MLV" ] && grep -q "assert_existing_objects_matched" "$MLV"; then
+    sed -i.bak 's/\.expect_partial()\.assert_existing_objects_matched()/.expect_partial()/' "$MLV"
+    echo "model_lib_v2: assert_existing_objects_matched entfernt (drift-fix)"
+fi
+
 # TF 2.15 hat control_flow_ops.case/cond/while_loop/Assert/no_op entfernt —
 # tf_slim 1.1.0 ruft sie aber noch. Shim auf die oeffentlichen tf.*-APIs:
 ./venv/bin/python - << 'PY3'
@@ -188,8 +197,8 @@ echo "training gestartet (PID $TPID) — caffeinate hält den Mac wach"
 # fehler automatisch ausgegeben (statt demutzer fern-diagnose)
 sleep 90
 if ! kill -0 "$TPID" 2>/dev/null; then
-    echo "=== TRAINING FRÜH GESCHEITERT — letzte 40 zeilen: ==="
-    tail -40 training.log
+    echo "=== TRAINING FRÜH GESCHEITERT — relevante zeilen (variablen-dumps gefiltert): ==="
+    tail -400 training.log | grep -v -E "tf\.Variable|MirroredVariable|SyncOnReadVariable|numpy=|dtype=float32|^array\(|^[[:space:]]*[\[\]0-9.eE+-]+,?[[:space:]]*$|^[[:space:]]*\}|^[[:space:]]*\)" | tail -40
     exit 1
 fi
 echo "training läuft stabil — monitor: tail -f training.log"
