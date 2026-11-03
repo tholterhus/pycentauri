@@ -116,5 +116,5 @@ print(f"ZIP: {zpath} ({zpath.stat().st_size/1e6:.1f} MB)")
 print("ERWARTUNG (2026-11-03-Rebuild): ~3750 Bilder gesamt (3026 train / 723 val)")
 EOF
 echo
-echo "FERTIG. Nächster Schritt laut RETRAIN-RUNBOOK.md (~OT: /home/tim/RETRAIN-RUNBOOK.md):"
+echo "FERTIG. Nächster Schritt laut RETRAIN-RUNBOOK.md (/home/tim/RETRAIN-RUNBOOK.md):"
 echo "  unified-rebuilt.zip auf den Mac kopieren ODER in Colab hochladen."

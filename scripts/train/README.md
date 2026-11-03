@@ -100,3 +100,13 @@ is **labeled examples of each failure mode**. From scratch:
 - ≤ 1 false alarm per print-hour on healthy-print validation frames.
 - One full print in notify mode with zero false alerts before arming
   pause/stop.
+
+## v2 retrain (2026-11) — start here
+
+The v2 rebuild path lives in `/home/tim/RETRAIN-RUNBOOK.md` (on spielwiese):
+Roboflow browser exports + the v2 increment (shifted-part positives,
+false-alarm negatives) → `scripts/train/rebuild_unified_v2.sh` →
+`unified-rebuilt.zip` → `mac_train_v5.sh` (Mac) or `colab_spaghetti.py`
+(Colab). Acceptance scoring: `scripts/train/tools/replay.py <model.tflite>
+"<frame-glob>" [--cpu]` — positives (`data/spaghetti-positive/`) must score
+high, negatives (`data/false-positives/`) low.

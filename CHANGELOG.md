@@ -6,6 +6,20 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Detection status alerts: consecutive transitions that map to the same
+  alert text are collapsed into one message — the abort walk
+  `PRINTING(13) → STOPPING(7) → STOPPED(8)` used to post "print aborted"
+  twice (same for the Canvas filament-switch codes 27/28/29). The dedupe
+  resets per print session, so distinct events still alert individually.
+
+### Added
+- Retraining tooling (v2 dataset rebuild): `scripts/train/rebuild_unified_v2.sh`
+  merges Roboflow browser exports (YOLOv8) with the collected v2 increment
+  into a fresh `unified` dataset; `scripts/train/tools/replay.py` re-scores
+  frames for acceptance checks. Mac training scripts and the Roboflow
+  harvest helper are restored from history.
+
 ## [0.14.0] - 2026-10-27
 
 ### Added
