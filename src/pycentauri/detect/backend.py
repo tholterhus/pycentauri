@@ -214,7 +214,7 @@ def _quantize(arr: NDArray[Any], dtype: Any, quantization: tuple[float, float]) 
         return (arr.astype(np.float32) - 128.0).astype(np.int8)
     if dtype == np.uint8:
         return arr.astype(np.uint8)
-    return (arr / 255.0).astype(dtype)  # float models expect 0..1
+    return arr.astype(np.float32)  # OD-Exporte erwarten 0..255 (Normierung im Graphen)
 
 
 class Detector:

@@ -39,21 +39,32 @@ except Exception as err:
 inp = i.get_input_details()[0]
 shape = [1] + list(inp["shape"][1:])
 outs = i.get_output_details()
-scores_idx = [k for k, d in enumerate(outs) if len(d["shape"]) == 2 and d["shape"][-1] == 1]
+two_d = [k for k, d in enumerate(outs) if len(d["shape"]) == 2 and d["shape"][0] == 1]
 rng = np.random.default_rng(7)
 probes = {
     "noise": rng.random(shape[1:], dtype=np.float32),
     "black": np.zeros(shape[1:], dtype=np.float32),
     "midgray": np.full(shape[1:], 0.5, dtype=np.float32),
 }
-scores = {}
+# int8/uint8-Modelle brauchen ihr eigenes Input-Dtype/Range-Format
+def prep(img):
+    if inp["dtype"] == np.uint8:
+        return (img * 255.0).clip(0, 255).astype(np.uint8)
+    return img.astype(inp["dtype"])
+# Robust: von jedem [1,N]-Output die Spreizung ueber die drei Proben
+# messen — der Score-Tensor eines gesunden Modells variiert mit dem
+# Input (Klassen-IDs bleiben konstant). Konstant = input-blind.
+probe_max = {k: [] for k in probes}
 for k, img in probes.items():
-    i.set_tensor(inp["index"], img)
+    i.set_tensor(inp["index"], prep(img)[np.newaxis])
     i.invoke()
-    vals = [float(np.max(i.get_tensor(outs[j]["index"]))) for j in scores_idx]
-    scores[k] = max([v for v in vals if 0.0 <= v <= 1.0] or [0.0])
-spread = max(scores.values()) - min(scores.values())
-print(f"scores={scores} spread={spread:.4f}")
+    for j in two_d:
+        probe_max[k].append(float(np.max(i.get_tensor(outs[j]["index"]))))
+spread = 0.0
+for j in range(len(two_d)):
+    vals = [probe_max[k][j] for k in probes]
+    spread = max(spread, max(vals) - min(vals))
+print(f"probe_max={probe_max} spread={spread:.4f}")
 if spread < 0.05:
     print("INPUT-BLIND (kollabiert)")
     sys.exit(4)
@@ -63,6 +74,52 @@ GATE_RC=$?
 logger -t model-deploy "HARD-GATE (rc=$GATE_RC): $GATE_LOG"
 if [ "$GATE_RC" -ne 0 ]; then
     logger -t model-deploy "Deploy ABGEBROCHEN — Kandidat ist input-blind oder unladbar. ZIP bleibt liegen."
+    exit 1
+fi
+
+# GATE 3: Acceptance-Separation — der Kandidat muss auf den bekannten
+# Positiv-Frames hoeher scoren als auf den Negativ-Frames (min pos > max
+# neg). Runde 2b waere hier durchgefallen (konstant 0.23/0.285 ueber alles).
+SEP_LOG=$("$PY" - "$WORK" <<'PY10'
+import io, sys, numpy as np
+from pathlib import Path
+from ai_edge_litert.interpreter import Interpreter
+from PIL import Image
+
+work = Path(sys.argv[1])
+root = Path("/opt/pycentauri")
+i = Interpreter(model_path=str(work / "spaghetti_int8.tflite"), num_threads=2)
+i.allocate_tensors()
+inp = i.get_input_details()[0]
+outs = i.get_output_details()
+two_d = [k for k, d in enumerate(outs) if len(d["shape"]) == 2 and d["shape"][0] == 1]
+
+def run(jpeg):
+    img = np.array(Image.open(io.BytesIO(jpeg)).convert("RGB").resize(tuple(inp["shape"][1:3])), dtype=np.float32)
+    if inp["dtype"] == np.uint8:
+        t = img.astype(np.uint8)
+    else:
+        t = img.astype(inp["dtype"])
+    i.set_tensor(inp["index"], t[np.newaxis])
+    i.invoke()
+    return max(float(np.max(i.get_tensor(outs[j]["index"]))) for j in two_d)
+
+pos = [run(p.read_bytes()) for p in sorted((root / "data/spaghetti-positive").glob("*.jpg"))]
+pos += [run(p.read_bytes()) for p in sorted((root / "data/train/inbox/spaghetti").glob("*.jpg"))]
+neg = [run(p.read_bytes()) for p in sorted((root / "data/false-positives").glob("*.jpg"))]
+if not pos or not neg:
+    print(f"referenz-frames fehlen (pos={len(pos)} neg={len(neg)}) — Gate unmoeglich")
+    sys.exit(0)  # keine Referenz -> nicht blockieren
+print(f"acceptance: min(pos)={min(pos):.3f} max(neg)={max(neg):.3f}")
+if min(pos) <= max(neg):
+    print("KEINE SEPARATION — Kandidat ist schlechter als die Referenz verlangt")
+    sys.exit(4)
+PY10
+)
+SEP_RC=$?
+logger -t model-deploy "GATE 3 (rc=$SEP_RC): $SEP_LOG"
+if [ "$SEP_RC" -ne 0 ]; then
+    logger -t model-deploy "Deploy ABGEBROCHEN — Acceptance-Fail (keine Separation). ZIP bleibt liegen."
     exit 1
 fi
 

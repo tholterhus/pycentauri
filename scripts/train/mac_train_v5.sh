@@ -162,7 +162,8 @@ for f in pkg.rglob("*.py"):
 print(f"tf_slim shim gepatcht: {patched or 'bereits erledigt'}")
 PY3
 
-if [ ! -d dataset ]; then
+if [ ! -d dataset ] || [ unified.zip -nt dataset ]; then
+    rm -rf dataset
     mkdir dataset && unzip -q unified.zip -d dataset
 fi
 # TFRecords mit eigenem builder (keine VOC2007-annahmen des OD-API-helpers)
@@ -178,25 +179,31 @@ if true; then  # config immer neu generieren (platzhalter-ersatz)
     curl -fsSL -o m.tar.gz "http://download.tensorflow.org/models/object_detection/tf2/20200711/${MODEL}.tar.gz"
     tar -xzf m.tar.gz && rm m.tar.gz
     ./venv/bin/python - << 'PY2'
-import re
+import os, re
 cfg = open("ssd_mobilenet_v2_320x320_coco17_tpu-8/pipeline.config").read()
 MODEL_DIR = "ssd_mobilenet_v2_320x320_coco17_tpu-8"
-cfg = re.sub(r"num_classes: \d+", "num_classes: 1", cfg)
+# Light-Runden: STEPS/LR/CKPT per env ueberschreibbar (mac_finetune_v1.sh)
+n_classes = len(open("dataset/classes.txt").read().split())
+steps = int(os.environ.get("STEPS", "15000"))
+lr = float(os.environ.get("LR", "0.08"))
+warmup = round(lr / 6, 4)
+ft_ckpt = os.environ.get("CKPT", MODEL_DIR + "/checkpoint/ckpt-0")
+cfg = re.sub(r"num_classes: \d+", f"num_classes: {n_classes}", cfg)
 cfg = re.sub(r"batch_size: \d+", "batch_size: 8", cfg)
-cfg = re.sub(r"num_steps: \d+", "num_steps: 15000", cfg)
+cfg = re.sub(r"num_steps: \d+", f"num_steps: {steps}", cfg)
 cfg = re.sub(r"keep_checkpoint_max: \d+", "keep_checkpoint_max: 2", cfg)
 # Runde-2-Divergenz (3.11., regularization_loss 144k @ Step 3900): Peak-LR
 # 0.8 ist für den Fine-Tune viel zu hot — und total_steps:50000 im
 # LR-Schedule vs. num_steps:15000 lässt die LR nie abklingen. Beide fest:
-cfg = re.sub(r"learning_rate_base: [0-9.e+-]+", "learning_rate_base: 0.08", cfg)
-cfg = re.sub(r"warmup_learning_rate: [0-9.e+-]+", "warmup_learning_rate: 0.013", cfg)
-cfg = re.sub(r"total_steps: \d+", "total_steps: 15000", cfg)
+cfg = re.sub(r"learning_rate_base: [0-9.e+-]+", f"learning_rate_base: {lr}", cfg)
+cfg = re.sub(r"warmup_learning_rate: [0-9.e+-]+", f"warmup_learning_rate: {warmup}", cfg)
+cfg = re.sub(r"total_steps: \d+", f"total_steps: {steps}", cfg)
 
 # das template hat fuenf NACKTE "PATH_TO_BE_CONFIGURED"-platzhalter in
 # fester reihenfolge (feinjustiert-checkpoint, train-labelmap, train-input,
 # eval-labelmap, eval-input) — positionsabhaengig ersetzen:
 values = [
-    MODEL_DIR + "/checkpoint/ckpt-0",
+    ft_ckpt,
     "dataset/classes_label_map.pbtxt",
     "train.record",
     "dataset/classes_label_map.pbtxt",
@@ -209,8 +216,8 @@ for value, tail in zip(values, parts[1:]):
     cfg += '"' + value + '"' + tail
 open("pipeline.config", "w").write(cfg)
 ok = (cfg.count("PATH_TO_BE_CONFIGURED") == 0
-      and "num_classes: 1" in cfg
-      and "num_steps: 15000" in cfg
+      and f"num_classes: {n_classes}" in cfg
+      and f"num_steps: {steps}" in cfg
       and "batch_size: 8" in cfg)
 print("config ok:", ok)
 if not ok:
@@ -223,8 +230,8 @@ if pgrep -f "model_main_tf2" > /dev/null; then
     exit 0
 fi
 nohup caffeinate -ims ./venv/bin/python models/research/object_detection/model_main_tf2.py \
-    --model_dir=training --pipeline_config_path=pipeline.config \
-    --num_train_steps=15000 > training.log 2>&1 &
+    --model_dir=${MODEL_OUT:-training} --pipeline_config_path=pipeline.config \
+    --num_train_steps=${STEPS:-15000} > training.log 2>&1 &
 disown
 TPID=$!
 echo "training gestartet (PID $TPID) — caffeinate hält den Mac wach"
