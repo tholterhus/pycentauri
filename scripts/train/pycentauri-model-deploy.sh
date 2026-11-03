@@ -18,22 +18,25 @@ trap 'rm -rf "$WORK"' EXIT
 $PY -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" "$SRC" "$WORK" || { logger -t model-deploy "ZIP kaputt"; exit 1; }
 ls "$WORK"/spaghetti_int8.tflite >/dev/null 2>&1 || { logger -t model-deploy "ZIP ohne spaghetti_int8.tflite — Inhalt: $(ls "$WORK" | tr '\n' ' ')"; exit 1; }
 
-# Edge-TPU-Compiler (self-contained x86-64 Bundle, laeuft ohne Installation)
-if ! command -v edgetpu_compiler >/dev/null 2>&1 && [ ! -x /usr/local/bin/edgetpu_compiler ]; then
+# Edge-TPU-Compiler (self-contained x86-64 Bundle, laeuft ohne Installation).
+# WICHTIG: der Wrapper im Bundle loest sein _bin-Verzeichnis relativ zu $0
+# auf — daher das ganze Verzeichnis nach /opt/edgetpu-compiler und Direktpfad
+# (kein Symlink nach /usr/local/bin, und das -o-Verzeichnis muss existieren).
+ETC=/opt/edgetpu-compiler/edgetpu-compilers-main/16.0/edgetpu_compiler
+if [ ! -x "$ETC" ]; then
     logger -t model-deploy "lade edgetpu_compiler Bundle ..."
     curl -fsSL https://github.com/mbrooksx/edgetpu-compilers/archive/refs/heads/main.tar.gz -o "$WORK/etc.tar.gz" \
-    && tar -xzf "$WORK/etc.tar.gz" -C "$WORK" \
-    && find "$WORK" -name edgetpu_compiler -type f -exec cp {} /usr/local/bin/ \; \
-    && find "$WORK" -name libedgetpu.so.1 -exec cp {} /usr/local/lib/ \; \
-    && ldconfig
+    && { mkdir -p /opt/edgetpu-compiler && tar -xzf "$WORK/etc.tar.gz" -C /opt/edgetpu-compiler && chmod +x "$ETC"; } \
+    || logger -t model-deploy "edgetpu_compiler-bundle install fehlgeschlagen"
 fi
 EDGETPU=""
-if [ -x /usr/local/bin/edgetpu_compiler ] || command -v edgetpu_compiler >/dev/null 2>&1; then
-    cd "$WORK"
-    (/usr/local/bin/edgetpu_compiler -o "$WORK/edgetpu" spaghetti_int8.tflite >/dev/null 2>&1 \
-        || edgetpu_compiler -o "$WORK/edgetpu" spaghetti_int8.tflite >/dev/null 2>&1) \
+if [ -x "$ETC" ]; then
+    mkdir -p "$WORK/edgetpu"
+    (cd "$WORK" && "$ETC" -o "$WORK/edgetpu" spaghetti_int8.tflite >/dev/null 2>&1) \
         && EDGETPU="$WORK/edgetpu/spaghetti_int8_edgetpu.tflite" \
         || logger -t model-deploy "edgetpu-compile fehlgeschlagen — deploye nur CPU-Modell"
+else
+    logger -t model-deploy "edgetpu_compiler nicht verfuegbar — deploye nur CPU-Modell"
 fi
 
 # Backup + Deployment
