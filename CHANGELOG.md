@@ -4,6 +4,16 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.1] - 2026-11-03
+
+### Fixed
+- Serialize the detection backend load: `start()` and the detection session
+  loop raced into two concurrent interpreter loads — the loser fell back to
+  CPU and flapped `data/evidence/.backend`, producing one "Coral weg" /
+  "Coral wieder da" telegram pair on every service restart (four restarts
+  today = four pairs). A double-checked asyncio.Lock allows exactly one
+  load per process.
+
 ## [0.15.0] - 2026-11-03
 
 ### Added
