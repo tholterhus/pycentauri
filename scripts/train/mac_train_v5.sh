@@ -185,6 +185,12 @@ cfg = re.sub(r"num_classes: \d+", "num_classes: 1", cfg)
 cfg = re.sub(r"batch_size: \d+", "batch_size: 8", cfg)
 cfg = re.sub(r"num_steps: \d+", "num_steps: 15000", cfg)
 cfg = re.sub(r"keep_checkpoint_max: \d+", "keep_checkpoint_max: 2", cfg)
+# Runde-2-Divergenz (3.11., regularization_loss 144k @ Step 3900): Peak-LR
+# 0.8 ist für den Fine-Tune viel zu hot — und total_steps:50000 im
+# LR-Schedule vs. num_steps:15000 lässt die LR nie abklingen. Beide fest:
+cfg = re.sub(r"learning_rate_base: [0-9.e+-]+", "learning_rate_base: 0.08", cfg)
+cfg = re.sub(r"warmup_learning_rate: [0-9.e+-]+", "warmup_learning_rate: 0.013", cfg)
+cfg = re.sub(r"total_steps: \d+", "total_steps: 15000", cfg)
 
 # das template hat fuenf NACKTE "PATH_TO_BE_CONFIGURED"-platzhalter in
 # fester reihenfolge (feinjustiert-checkpoint, train-labelmap, train-input,
