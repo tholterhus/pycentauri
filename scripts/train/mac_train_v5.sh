@@ -123,10 +123,10 @@ if true; then  # config immer neu generieren (platzhalter-ersatz)
 import re
 cfg = open("ssd_mobilenet_v2_320x320_coco17_tpu-8/pipeline.config").read()
 MODEL_DIR = "ssd_mobilenet_v2_320x320_coco17_tpu-8"
-cfg = re.sub(r"num_classes: \\d+", "num_classes: 1", cfg)
-cfg = re.sub(r"batch_size: \\d+", "batch_size: 8", cfg)
-cfg = re.sub(r"num_steps: \\d+", "num_steps: 15000", cfg)
-cfg = re.sub(r"keep_checkpoint_max: \\d+", "keep_checkpoint_max: 2", cfg)
+cfg = re.sub(r"num_classes: \d+", "num_classes: 1", cfg)
+cfg = re.sub(r"batch_size: \d+", "batch_size: 8", cfg)
+cfg = re.sub(r"num_steps: \d+", "num_steps: 15000", cfg)
+cfg = re.sub(r"keep_checkpoint_max: \d+", "keep_checkpoint_max: 2", cfg)
 
 # das template hat fuenf NACKTE "PATH_TO_BE_CONFIGURED"-platzhalter in
 # fester reihenfolge (feinjustiert-checkpoint, train-labelmap, train-input,
@@ -144,8 +144,13 @@ cfg = parts[0]
 for value, tail in zip(values, parts[1:]):
     cfg += '"' + value + '"' + tail
 open("pipeline.config", "w").write(cfg)
-print("config ok:", cfg.count("PATH_TO_BE_CONFIGURED") == 0 and "num_classes: 1" in cfg)
-print("config ok:", "num_classes: 1" in cfg)
+ok = (cfg.count("PATH_TO_BE_CONFIGURED") == 0
+      and "num_classes: 1" in cfg
+      and "num_steps: 15000" in cfg
+      and "batch_size: 8" in cfg)
+print("config ok:", ok)
+if not ok:
+    raise SystemExit("config-patch fehlgeschlagen — abbruch, NICHT trainieren!")
 PY2
 fi
 

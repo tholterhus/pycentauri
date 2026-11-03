@@ -74,8 +74,9 @@ def build_example(
         ymaxs.append(float(box.findtext("ymax", "0")) / height)
         classes_text.append(name.encode("utf-8"))
         classes.append(label_to_id[name])
-    if not classes:
-        return None
+    # Boxen-lose Bilder (Negatives) BLEIBEN im Record — leerer groundtruth
+    # ist das Hartnegativ-Material fürs SSD-Training. Früher wurden sie
+    # hier verworfen (return None), wodurch alle Negative verloren gingen.
 
     feature = {
         "image/encoded": bytes_feature(encoded),
