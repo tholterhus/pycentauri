@@ -852,13 +852,46 @@ async def test_controller_alerts_on_edge_tpu_regression(
 
     # Neustart-Simulation: neuer Controller, gleiches evidence_dir (Dotfile: cpu)
     c2 = make_controller(["edgetpu", "cpu"])
-    await c2._ensure_backend()  # cpu → edgetpu: Re-Arm, kein Alert (nur Abbau wird gemeldet)
-    await asyncio.sleep(0.05)
-    assert len(tg) == 1
-    c2._backend = None
-    await c2._ensure_backend()  # zweite Episode → wieder Alert
+    await c2._ensure_backend()  # cpu → edgetpu: Re-Arm + WIEDER-DA-Alert
     await asyncio.sleep(0.05)
     assert len(tg) == 2
+    assert "wieder erreichbar" in tg[1]["event"]["text"]
+    c2._backend = None
+    await c2._ensure_backend()  # zweite Episode → wieder Degradations-Alert
+    await asyncio.sleep(0.05)
+    assert len(tg) == 3
+    assert "nicht mehr erreichbar" in tg[2]["event"]["text"]
+
+
+async def test_controller_no_backend_alert_without_transition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Erster Load auf cpu (kein Coral) alertet NICHT; Doppel-Loads auch nicht."""
+    tg: list[dict[str, Any]] = []
+
+    async def telegram_poster(payload: dict[str, Any]) -> None:
+        tg.append(payload)
+
+    class NamedDetector:
+        def __init__(self, name: str) -> None:
+            self.backend_name = name
+
+    seq = iter(["cpu", "cpu"])
+
+    def fake_from_model(path: Any, force_cpu: bool = False) -> Any:
+        return NamedDetector(next(seq))
+
+    monkeypatch.setattr(detect_backend.Detector, "from_model", staticmethod(fake_from_model))
+    cfg = DetectConfig(model_path=tmp_path / "m.tflite", evidence_dir=tmp_path / "ev")
+    (tmp_path / "ev").mkdir()
+    c = DetectionController(
+        cfg, camera=FakeCamera([]), get_printer=lambda: None, telegram_poster=telegram_poster
+    )
+    await c._ensure_backend()
+    c._backend = None
+    await c._ensure_backend()
+    await asyncio.sleep(0.05)
+    assert tg == []
 
 
 async def test_controller_sends_telegram_on_fire(

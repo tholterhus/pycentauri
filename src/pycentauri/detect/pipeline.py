@@ -489,35 +489,44 @@ class DetectionController:
             if state_file.is_file():
                 previous = state_file.read_text(encoding="utf-8").strip() or None
             state_file.write_text(name or "", encoding="utf-8")
-            if (
-                previous == "edgetpu"
-                and name != "edgetpu"
-                and not self.cfg.force_cpu
-                and not self._backend_alert_sent
-            ):
-                self._backend_alert_sent = True
-                log.warning(
-                    "detection: Edge TPU nicht mehr erreichbar (vorher %s, jetzt %s) — CPU-Fallback",
-                    previous,
-                    name,
-                )
-                self._post_backend_alert(name)
+            if previous is not None and previous != name and not self.cfg.force_cpu:
+                if name != "edgetpu" and not self._backend_alert_sent:
+                    self._backend_alert_sent = True
+                    log.warning(
+                        "detection: Edge TPU nicht mehr erreichbar (vorher %s, jetzt %s) — CPU-Fallback",
+                        previous,
+                        name,
+                    )
+                    self._post_backend_alert(name, back=False)
+                elif name == "edgetpu":
+                    log.info(
+                        "detection: Edge TPU wieder erreichbar (vorher %s) — zurück auf edgetpu",
+                        previous,
+                    )
+                    self._post_backend_alert(name, back=True)
             if name == "edgetpu":
                 self._backend_alert_sent = False  # episode over — re-arm
         except OSError as err:
             log.debug("detection: backend-state datei unbenutzbar: %r", err)
 
-    def _post_backend_alert(self, name: str) -> None:
+    def _post_backend_alert(self, name: str, *, back: bool) -> None:
         if self._telegram_poster is None:
             return
+        if back:
+            text = (
+                "✅ Edge TPU (Coral) wieder erreichbar — Erkennung läuft wieder "
+                f"auf {name}."
+            )
+        else:
+            text = (
+                "⚠️ Edge TPU (Coral) nicht mehr erreichbar — Erkennung läuft "
+                f"auf {name} weiter. Coral am Server ab-/anstecken, dann "
+                "Dienst neu starten."
+            )
         payload = {
             "type": "backend_status",
             "event": {
-                "text": (
-                    "⚠️ Edge TPU (Coral) nicht mehr erreichbar — Erkennung läuft "
-                    f"auf {name} weiter. Coral am Server ab-/anstecken, dann "
-                    "Dienst neu starten."
-                ),
+                "text": text,
                 "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             },
         }
