@@ -486,9 +486,13 @@ class DetectionController:
             name = getattr(self._backend, "backend_name", None)
             state_file = self._backend_state_file()
             previous = None
-            if state_file.is_file():
-                previous = state_file.read_text(encoding="utf-8").strip() or None
-            state_file.write_text(name or "", encoding="utf-8")
+            try:
+                if state_file.is_file():
+                    previous = state_file.read_text(encoding="utf-8").strip() or None
+            except OSError as err:
+                log.debug("detection: backend-state unlesbar: %r", err)
+            # Alerts ZUERST — ein fehlgeschlagener State-Write darf sie
+            # nicht verschlucken (state-file kann fremd-owned sein).
             if previous is not None and previous != name and not self.cfg.force_cpu:
                 if name != "edgetpu" and not self._backend_alert_sent:
                     self._backend_alert_sent = True
@@ -506,8 +510,12 @@ class DetectionController:
                     self._post_backend_alert(name, back=True)
             if name == "edgetpu":
                 self._backend_alert_sent = False  # episode over — re-arm
-        except OSError as err:
-            log.debug("detection: backend-state datei unbenutzbar: %r", err)
+            try:
+                state_file.write_text(name or "", encoding="utf-8")
+            except OSError as err:
+                log.debug("detection: backend-state unbeschreibbar: %r", err)
+        except Exception as err:  # never let the gate break the load
+            log.debug("detection: backend-state check fehlgeschlagen: %r", err)
 
     def _post_backend_alert(self, name: str, *, back: bool) -> None:
         if self._telegram_poster is None:
