@@ -300,7 +300,7 @@ async function doAction(label, path, confirmMsg) {
 async function doUpload() {
   const input = $("upload-file");
   const file = input?.files?.[0];
-  if (!file) { setMsg("Choose a file to upload first.", "warn"); return; }
+  if (!file) { setMsg("Erst eine Datei wählen.", "warn"); return; }
   const start = $("upload-start")?.checked;
   const fd = new FormData();
   fd.append("file", file, file.name);
@@ -310,13 +310,14 @@ async function doUpload() {
   for (const b of btns) b.disabled = true;
   // The browser->server leg is fast on a LAN; the slow, invisible part is
   // the server chunking to the printer. Show an honest indeterminate state.
-  setMsg(`» uploading ${file.name}…`);
+  setMsg(`⏳ hochladen: ${file.name} …`);
   try {
     const r = await fetch("/files/upload", { method: "POST", body: fd });
     if (!r.ok) throw new Error(`HTTP ${r.status} — ${await r.text()}`);
     const data = await r.json();
-    setMsg(`✓ uploaded ${data.filename}${start ? " — print started" : ""}`, "ok");
+    setMsg(`✓ hochgeladen: ${data.filename}${start ? " — Druck gestartet" : ""}`, "ok");
     input.value = "";
+    const un = $("upload-name"); if (un) un.textContent = "";
     setTimeout(loadFiles, 1500); // reflect the new file in the Files panel
 
   } catch (e) {
@@ -328,16 +329,20 @@ async function doUpload() {
 
 function wireControls() {
   $("btn-pause")?.addEventListener("click", () =>
-    doAction("PAUSE", "/print/pause", "Pause the current print?")
+    doAction("PAUSE", "/print/pause", "Aktuellen Druck pausieren?")
   );
   $("btn-resume")?.addEventListener("click", () =>
     doAction("RESUME", "/print/resume")
   );
   $("btn-stop")?.addEventListener("click", () =>
     doAction("STOP", "/print/stop",
-      "Stop the current print?\n\nThis cannot be undone.")
+      "Aktuellen Druck stoppen?\n\nDas lässt sich nicht rückgängig machen.")
   );
   $("btn-upload")?.addEventListener("click", doUpload);
+  $("upload-file")?.addEventListener("change", (ev) => {
+    const un = $("upload-name");
+    if (un) un.textContent = ev.target?.files?.[0]?.name || "";
+  });
 
   // Keyboard shortcuts when controls are visible.
   document.addEventListener("keydown", (ev) => {
@@ -693,6 +698,15 @@ function renderDetect(state) {
     b.setAttribute("aria-pressed", String(active));
   }
 
+  const hint = $("detect-hint");
+  if (hint) {
+    hint.textContent = {
+      notify: "Melden — Alarme werden nur angezeigt/gemailt.",
+      pause: "SCHARF: pausiert den Druck bei bestätigter Erkennung (einmalig, danach zurück auf Melden).",
+      stop: "SCHARF: stoppt den Druck bei bestätigter Erkennung (einmalig, danach zurück auf Melden).",
+    }[state.action] || "";
+  }
+
   const ev = state.last_event;
   const card = $("detect-event");
   if (ev) {
@@ -778,8 +792,8 @@ function wireDetect() {
   for (const b of document.querySelectorAll(".detect-action-btn")) {
     b.addEventListener("click", () => {
       const action = b.dataset.action;
-      if (action === "pause" && !confirm("Arm PAUSE? A confirmed detection will pause the print.")) return;
-      if (action === "stop" && !confirm("Arm STOP? A confirmed detection will stop the print.")) return;
+      if (action === "pause" && !confirm("PAUSE scharf stellen? Bei der nächsten bestätigten Erkennung wird der Druck pausiert (einmalig).")) return;
+      if (action === "stop" && !confirm("STOPP scharf stellen? Bei der nächsten bestätigten Erkennung wird der Druck gestoppt (einmalig).")) return;
       postDetect("/api/detect/action", { action });
     });
   }
@@ -802,7 +816,8 @@ function renderCanvas(data) {
   // Firmware 01.03.02.51 wraps the payload in canvas_info; tolerate a
   // flat shape too (CanvasStatus.from_payload accepts both).
   const ci = data && (data.canvas_info || (data.canvas_list ? data : null));
-  if (!ci) { panel.hidden = true; return; }
+  const hasTrays = !!(ci && (ci.canvas_list || []).some((u) => (u.tray_list || []).length));
+  if (!ci || !hasTrays) { panel.hidden = true; return; }  // CC1: leere Liste → Panel aus
   panel.hidden = false;
   const traysEl = $("canvas-trays");
   traysEl.innerHTML = "";
@@ -924,7 +939,7 @@ function renderFiles(data) {
   if (!files.length) {
     const empty = document.createElement("div");
     empty.className = "files-empty";
-    empty.textContent = "(no files)";
+    empty.textContent = "(keine Dateien)";
     listEl.appendChild(empty);
     return;
   }
