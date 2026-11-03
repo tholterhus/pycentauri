@@ -113,6 +113,35 @@ if [ -f "$MLV" ] && grep -q "assert_existing_objects_matched" "$MLV"; then
     echo "model_lib_v2: assert_existing_objects_matched entfernt (drift-fix)"
 fi
 
+# Drift-Fix #4+#5 (v2-Training kollabierte daran — Runde 1, 3.11.):
+#  #4: input_layer mit tensor=placeholder_with_default(0.0) füttert das
+#      Backbone im Graph-Modus nur mit Zeros → input-blind.
+#  #5: _extract_features ruft classification_backbone OHNE training-KW →
+#      BN läuft im Inference-Modus (Moving-Stats = Identität) →
+#      aktivierungsblind. (Diffs vom Mac-Agent 21:20/22:45 verifiziert.)
+./venv/bin/python - << 'PY4'
+p4 = 'models/research/object_detection/models/keras_models/model_utils.py'
+s = open(p4).read()
+alt4 = "    return tf.keras.layers.Input(tensor=placeholder_with_default)"
+assert alt4 in s, 'input_layer-Pattern nicht gefunden'
+open(p4, 'w').write(s.replace(
+  "  if tf.executing_eagerly():\n    return tf.keras.layers.Input(shape=shape)\n  else:\n" + alt4,
+  "  # drift-fix #4: placeholder_with_default evaluiert im Graph zum\n"
+  "  # ZEROS-Default — Bild wird nie gefuettert → immer plain Input\n"
+  "  return tf.keras.layers.Input(shape=shape)"))
+p5 = 'models/research/object_detection/models/ssd_mobilenet_v2_keras_feature_extractor.py'
+s5 = open(p5).read()
+alt5 = """    image_features = self.classification_backbone(
+        ops.pad_to_multiple(preprocessed_inputs, self._pad_to_multiple))"""
+assert alt5 in s5, 'feature_extractor-Pattern nicht gefunden'
+open(p5, 'w').write(s5.replace(alt5, """    # drift-fix #5: ohne training-KW laeuft das BN im Inference-Modus
+    # (Moving-Stats = Identitaet) → aktivierungsblindes Modell.
+    image_features = self.classification_backbone(
+        ops.pad_to_multiple(preprocessed_inputs, self._pad_to_multiple),
+        training=self._is_training)"""))
+print("drift-fix #4+#5 angewendet (input_layer + training-KW)")
+PY4
+
 # TF 2.15 hat control_flow_ops.case/cond/while_loop/Assert/no_op entfernt —
 # tf_slim 1.1.0 ruft sie aber noch. Shim auf die oeffentlichen tf.*-APIs:
 ./venv/bin/python - << 'PY3'
