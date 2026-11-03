@@ -154,7 +154,7 @@ def main() -> None:
         per_day.setdefault(day, []).append(f)
     print("negatives per day available:", {d: len(v) for d, v in per_day.items()})
     quota = max(1, NEG_TARGET // max(1, len(per_day)))
-    for day, files in per_day.items():
+    for files in per_day.values():
         step = max(1, len(files) // quota)
         neg_files.extend(files[::step][:quota])
 

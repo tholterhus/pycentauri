@@ -495,6 +495,8 @@ class DetectionController:
         """
         try:
             name = getattr(self._backend, "backend_name", None)
+            if name is None:
+                return
             state_file = self._backend_state_file()
             previous = None
             try:
@@ -522,7 +524,7 @@ class DetectionController:
             if name == "edgetpu":
                 self._backend_alert_sent = False  # episode over — re-arm
             try:
-                state_file.write_text(name or "", encoding="utf-8")
+                state_file.write_text(name, encoding="utf-8")
             except OSError as err:
                 log.debug("detection: backend-state unbeschreibbar: %r", err)
         except Exception as err:  # never let the gate break the load

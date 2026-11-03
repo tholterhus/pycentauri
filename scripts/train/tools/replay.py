@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, "/opt/pycentauri/src")
 
-from pycentauri.detect.backend import Detector  # noqa: E402
+from pycentauri.detect.backend import Detector
 
 model = Path(sys.argv[1])
 pattern = sys.argv[2]
@@ -23,7 +23,7 @@ for f in files:
     jpeg = f.read_bytes()
     try:
         dets = det.detect(jpeg, threshold=0.01)
-    except Exception as err:  # noqa: BLE001
+    except Exception as err:
         print(f"{f.name} ERROR {err!r}", flush=True)
         continue
     top = dets[0] if dets else None

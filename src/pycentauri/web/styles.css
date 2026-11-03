@@ -955,8 +955,6 @@ body {
   50% { opacity: 0.15; }
 }
 
-/* detect-hint + files-upload (GUI-Klarstellung, 3.11.) */
-.files-head { display: none; }
 .upload-disable.disabled, .upload-disable:disabled {
   opacity: 0.45;
   pointer-events: none;

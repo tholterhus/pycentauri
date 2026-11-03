@@ -4,8 +4,9 @@ from pathlib import Path
 
 sys.path.insert(0, "/opt/pycentauri/src")
 
-from PIL import Image, ImageDraw  # noqa: E402
-from pycentauri.detect.backend import Detector  # noqa: E402
+from PIL import Image, ImageDraw
+
+from pycentauri.detect.backend import Detector
 
 pattern, out = sys.argv[1], sys.argv[2]
 force_cpu = "--cpu" in sys.argv

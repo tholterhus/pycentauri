@@ -56,7 +56,7 @@ def main() -> int:
     det = Detector.from_model(MODEL, force_cpu=True)
     stats: dict[str, int] = {}
     unboxed: list[str] = []
-    for cls in CLASSES + ("negative",):
+    for cls in (*CLASSES, "negative"):
         folder = INBOX / cls
         if not folder.is_dir():
             continue
