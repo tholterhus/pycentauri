@@ -1,0 +1,5 @@
+# Roboflow Universe Kandidaten — Format: <workspace>/<project>  (# = Notiz)
+# Lizenz + Bildanzahl auf der Universe-Seite im Browser prüfen und hier
+# ergänzen. Download läuft dann über: python3 scripts/roboflow-harvest.py download <slug>
+training-l9tjj/3d-printer-spaghetti-detection   # "3D Printer Spaghetti Detection" (Universe, Jul 2025)
+# 3d-printing-failure/<projekt>                  # "Spaghetti 3D Object Detection" (~715 Bilder) — slug im Browser nachsehen
