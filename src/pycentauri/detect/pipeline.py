@@ -478,7 +478,7 @@ class DetectionController:
                 lambda: Detector.from_model(self.cfg.model_path, force_cpu=self.cfg.force_cpu),
             )
             self._error = None
-            self._check_backend_regression()
+            await self._check_backend_regression()
         except Exception as err:
             # Not fatal for the server: status watching continues, sessions
             # no-op, and /api/detect surfaces the reason.
@@ -488,7 +488,7 @@ class DetectionController:
     def _backend_state_file(self) -> Path:
         return self.cfg.evidence_dir / ".backend"
 
-    def _check_backend_regression(self) -> None:
+    async def _check_backend_regression(self) -> None:
         """Warn (once per episode) when the Edge TPU degrades to CPU.
 
         The Coral's runtime SIGABRTs the whole process on USB errors and a
@@ -519,13 +519,13 @@ class DetectionController:
                         previous,
                         name,
                     )
-                    self._post_backend_alert(name, back=False)
+                    await self._post_backend_alert(name, back=False)
                 elif name == "edgetpu":
                     log.info(
                         "detection: Edge TPU wieder erreichbar (vorher %s) — zurück auf edgetpu",
                         previous,
                     )
-                    self._post_backend_alert(name, back=True)
+                    await self._post_backend_alert(name, back=True)
             if name == "edgetpu":
                 self._backend_alert_sent = False  # episode over — re-arm
             try:
@@ -535,7 +535,7 @@ class DetectionController:
         except Exception as err:  # never let the gate break the load
             log.debug("detection: backend-state check fehlgeschlagen: %r", err)
 
-    def _post_backend_alert(self, name: str, *, back: bool) -> None:
+    async def _post_backend_alert(self, name: str, *, back: bool) -> None:
         if self._telegram_poster is None:
             return
         if back:
@@ -556,9 +556,9 @@ class DetectionController:
                 "when": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             },
         }
-        task = asyncio.create_task(self._send_backend_alert(payload))
-        self._status_posts.add(task)
-        task.add_done_callback(self._status_posts.discard)
+        # inline awaited — ein Task könnte vom nächsten Deploy-Restart
+        # gecancelt werden, bevor Telegram die Meldung bekommt (00:31-Bug).
+        await self._send_backend_alert(payload)
 
     async def _send_backend_alert(self, payload: dict[str, Any]) -> None:
         poster = self._telegram_poster
