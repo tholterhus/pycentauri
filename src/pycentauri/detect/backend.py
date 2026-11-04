@@ -175,7 +175,13 @@ def _build_interpreter(model_path: Path, delegate: Any) -> Any:
 def _load_edge_tpu_delegate() -> Any:
     from ai_edge_litert.interpreter import load_delegate
 
-    return load_delegate(EDGE_TPU_LIB)
+    try:
+        return load_delegate(EDGE_TPU_LIB)
+    except Exception:
+        # Der erste Open nach einem Replug/Reset re-enumeriert den Coral
+        # (devnum driftet) — der zweite Versuch nach kurzem Settle lädt.
+        time.sleep(2.0)
+        return load_delegate(EDGE_TPU_LIB)
 
 
 def _locate_outputs(output_details: list[dict[str, Any]]) -> dict[str, int | None]:
