@@ -13,6 +13,7 @@ sibling XML gets an auto-generated VOC annotation:
 
 Existing XMLs are never touched. Idempotent.
 """
+
 from __future__ import annotations
 
 import json

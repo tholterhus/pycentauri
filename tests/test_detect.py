@@ -1168,8 +1168,11 @@ async def test_failure_ring_flushed_on_fire(
     class NamedDetector:
         backend_name = "edgetpu"
 
-    monkeypatch.setattr(detect_backend.Detector, "from_model",
-                        staticmethod(lambda path, force_cpu=False: NamedDetector()))
+    monkeypatch.setattr(
+        detect_backend.Detector,
+        "from_model",
+        staticmethod(lambda path, force_cpu=False: NamedDetector()),
+    )
     c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
     await c._ensure_backend()
     for i in range(3):

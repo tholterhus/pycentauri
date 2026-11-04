@@ -10,6 +10,7 @@ Layout (matches scripts/train/colab_spaghetti.py expectations):
   out_dir/val/images/*.jpg   + annotations/*.xml
   out_dir/classes.txt  (one class: spaghetti)
 """
+
 import json
 import random
 import xml.etree.ElementTree as ET
@@ -47,7 +48,7 @@ def voc_xml(stem: str, size: tuple[int, int], boxes: list[tuple]) -> str:
     ET.SubElement(size_el, "width").text = str(w)
     ET.SubElement(size_el, "height").text = str(h)
     ET.SubElement(size_el, "depth").text = "3"
-    for (x0, y0, x1, y1) in boxes:
+    for x0, y0, x1, y1 in boxes:
         obj = ET.SubElement(root, "object")
         ET.SubElement(obj, "name").text = "spaghetti"
         ET.SubElement(obj, "difficult").text = "0"
@@ -124,9 +125,7 @@ def main() -> None:
         stem = Path(name).stem
         split = "val" if name in VAL_POSITIVES else "train"
         save_jpg(im, OUT / split / "images" / f"{stem}.jpg")
-        (OUT / split / "annotations" / f"{stem}.xml").write_text(
-            voc_xml(stem, size, boxes)
-        )
+        (OUT / split / "annotations" / f"{stem}.xml").write_text(voc_xml(stem, size, boxes))
         n_pos += 1
         if split == "val":
             continue
@@ -166,9 +165,7 @@ def main() -> None:
         stem = "neg_" + f.stem
         split = "val" if i < n_val_neg else "train"
         save_jpg(im, OUT / split / "images" / f"{stem}.jpg")
-        (OUT / split / "annotations" / f"{stem}.xml").write_text(
-            voc_xml(stem, size, [])
-        )
+        (OUT / split / "annotations" / f"{stem}.xml").write_text(voc_xml(stem, size, []))
 
     manifest = {
         "positives_train": n_pos - len(VAL_POSITIVES),

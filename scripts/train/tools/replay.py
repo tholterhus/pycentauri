@@ -1,4 +1,5 @@
 """Replay the spaghetti detector over collected frames and print raw scores."""
+
 import sys
 from pathlib import Path
 
@@ -29,7 +30,9 @@ for f in files:
     top = dets[0] if dets else None
     score = f"{top.score:.4f}" if top else "-"
     label = top.label if top else "-"
-    boxes = " ".join(
-        f"[{d.label} {d.score:.3f} x={d.box[0]:.2f} y={d.box[1]:.2f}]" for d in dets[:3]
-    ) if dets else ""
+    boxes = (
+        " ".join(f"[{d.label} {d.score:.3f} x={d.box[0]:.2f} y={d.box[1]:.2f}]" for d in dets[:3])
+        if dets
+        else ""
+    )
     print(f"{f.name} top={score} {label} {boxes}", flush=True)

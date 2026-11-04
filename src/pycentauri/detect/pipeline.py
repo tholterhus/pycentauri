@@ -29,8 +29,8 @@ import asyncio
 import contextlib
 import dataclasses
 import json
-import re
 import logging
+import re
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
@@ -459,9 +459,7 @@ class DetectionController:
             raise ValueError(f"threshold must be within 0..1, got {threshold!r}")
         self.cfg.threshold = float(threshold)
         try:
-            (self.cfg.evidence_dir / ".threshold").write_text(
-                f"{threshold:.2f}", encoding="utf-8"
-            )
+            (self.cfg.evidence_dir / ".threshold").write_text(f"{threshold:.2f}", encoding="utf-8")
         except OSError as err:
             log.debug("detection: threshold-state unbeschreibbar: %r", err)
 
@@ -538,11 +536,14 @@ class DetectionController:
             if previous is not None and previous != name and not self.cfg.force_cpu:
                 # Cooldown: der Coral re-enumeriert gelegentlich am Open —
                 # ohne Cooldown gäbe es ein ⚠️/✅-Paar pro Restart (16:58/17:03).
-                cooled = (time.time() - self._last_backend_alert_time) >= self.cfg.backend_alert_cooldown_s
+                cooled = (
+                    time.time() - self._last_backend_alert_time
+                ) >= self.cfg.backend_alert_cooldown_s
                 if not cooled:
                     log.warning(
                         "detection: backend-Wechsel %s→%s erkannt — Alert UNTERDRÜCKT (cooldown %.0fs seit dem letzten)",
-                        previous, name,
+                        previous,
+                        name,
                         time.time() - self._last_backend_alert_time,
                     )
                 if name != "edgetpu" and not self._backend_alert_sent and cooled:
@@ -574,10 +575,7 @@ class DetectionController:
         if self._telegram_poster is None:
             return
         if back:
-            text = (
-                "✅ Edge TPU (Coral) wieder erreichbar — Erkennung läuft wieder "
-                f"auf {name}."
-            )
+            text = f"✅ Edge TPU (Coral) wieder erreichbar — Erkennung läuft wieder auf {name}."
         else:
             text = (
                 "⚠️ Edge TPU (Coral) nicht mehr erreichbar — Erkennung läuft "
@@ -598,7 +596,9 @@ class DetectionController:
     async def _send_backend_alert(self, payload: dict[str, Any]) -> None:
         poster = self._telegram_poster
         if poster is None:
-            log.warning("detection: backend-alert NICHT gesendet — kein Telegram-Poster konfiguriert")
+            log.warning(
+                "detection: backend-alert NICHT gesendet — kein Telegram-Poster konfiguriert"
+            )
             return
         try:
             await poster(payload)
@@ -757,7 +757,9 @@ class DetectionController:
                 if jpeg is None:
                     continue
                 self._last_frame = jpeg
-                self._failure_ring.append((datetime.now(timezone.utc).isoformat(timespec="seconds"), jpeg))
+                self._failure_ring.append(
+                    (datetime.now(timezone.utc).isoformat(timespec="seconds"), jpeg)
+                )
                 # Collection has no grace period — priming and first layers
                 # are valuable training material too.
                 if self._collecting and self._collect_due(now, last_collect, collect_saved):

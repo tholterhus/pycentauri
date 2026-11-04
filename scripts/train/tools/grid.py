@@ -1,4 +1,5 @@
 """Overlay a 10% coordinate grid on images for manual box annotation."""
+
 import sys
 from pathlib import Path
 
