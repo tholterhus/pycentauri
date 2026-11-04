@@ -835,7 +835,8 @@ def create_app(
             controller.set_threshold(body.threshold)
         except ValueError as err:
             raise HTTPException(status_code=400, detail=str(err)) from err
-        return controller.state()
+        state: dict[str, Any] = controller.state()
+        return state
 
     @app.post("/api/detect/action", tags=["detect"])
     async def detect_action(body: DetectActionBody, request: Request) -> dict[str, Any]:
