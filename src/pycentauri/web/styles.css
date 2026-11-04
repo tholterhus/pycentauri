@@ -985,6 +985,7 @@ body {
   justify-content: center;
   z-index: 100;
 }
+.modal-backdrop[hidden] { display: none; }
 .modal {
   background: var(--panel-bg, #1c1f24);
   border: 1px solid var(--border, #3a3f45);
@@ -995,6 +996,11 @@ body {
 .modal-header { font-weight: 600; margin-bottom: 10px; }
 .modal-body { display: flex; flex-direction: column; gap: 8px; }
 .modal-body input[type="range"] { width: 100%; }
-.threshold-value { font-size: 22px; text-align: center; }
+.threshold-value {
+  font-size: 30px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 6px;
+}
 .threshold-hint { font-size: 11px; color: var(--dim, #9aa0a6); line-height: 1.35; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
