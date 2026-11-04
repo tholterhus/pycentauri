@@ -128,12 +128,13 @@ class FakeCamera:
 class FakePrinter:
     """Yields one Status per configured print_status code."""
 
-    def __init__(self, statuses: list[int]) -> None:
+    def __init__(self, statuses: list[int], delay: float = 0.01) -> None:
         self._statuses = statuses
+        self._delay = delay
 
     async def watch(self) -> AsyncIterator[Status]:
         for code in self._statuses:
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(self._delay)
             yield Status.from_payload({"PrintInfo": {"Status": code, "Filename": "job.gcode"}})
 
 
@@ -973,7 +974,7 @@ async def test_controller_sends_telegram_on_status_changes(
         action="notify",
         evidence_dir=tmp_path / "ev",
     )
-    camera = FakeCamera([_jpeg()] * 30)
+    camera = FakeCamera([_jpeg()] * 60)
     tg: list[dict[str, Any]] = []
 
     async def telegram_poster(payload: dict[str, Any]) -> None:
@@ -985,7 +986,8 @@ async def test_controller_sends_telegram_on_status_changes(
         cfg,
         camera=camera,
         get_printer=lambda: FakePrinter(
-            [0] + [PRINTING] * 10 + [PAUSED] + [PRINTING] * 10 + [COMPLETED, COMPLETED]
+            [0] + [PRINTING] * 10 + [PAUSED] + [PRINTING] * 10 + [COMPLETED, COMPLETED],
+            delay=0.05,
         ),
         telegram_poster=telegram_poster,
     )
