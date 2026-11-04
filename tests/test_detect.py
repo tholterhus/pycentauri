@@ -832,7 +832,11 @@ async def test_controller_alerts_on_edge_tpu_regression(
             return NamedDetector(next(seq))
 
         monkeypatch.setattr(detect_backend.Detector, "from_model", staticmethod(fake_from_model))
-        cfg = DetectConfig(model_path=tmp_path / "m.tflite", evidence_dir=tmp_path / "ev")
+        cfg = DetectConfig(
+            model_path=tmp_path / "m.tflite",
+            evidence_dir=tmp_path / "ev",
+            backend_alert_cooldown_s=0.0,
+        )
         return DetectionController(
             cfg, camera=FakeCamera([]), get_printer=lambda: None, telegram_poster=telegram_poster
         )

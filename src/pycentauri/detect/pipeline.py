@@ -135,6 +135,7 @@ class DetectConfig:
     # Failure-Ring: die letzten N Frames des Drucks bleiben im RAM und
     # werden beim Alarm als Evidenz-Phase weggeschrieben.
     collect_ring_frames: int = 200
+    backend_alert_cooldown_s: float = 600.0
 
     def __post_init__(self) -> None:
         if self.action not in ACTIONS:
@@ -324,6 +325,7 @@ class DetectionController:
         self._last_print_status: int | None = None
         self._failure_ring: deque[tuple[str, bytes]] = deque(maxlen=cfg.collect_ring_frames)
         self._backend_alert_sent = False  # one alert per edgetpu→cpu episode
+        self._last_backend_alert_time = 0.0
         # Training-frame collection toggle — restored across restarts via a
         # dotfile in collect_dir (the FIFO only touches *.jpg / *.json).
         marker = cfg.collect_dir / ".collecting"
@@ -512,15 +514,20 @@ class DetectionController:
             # Alerts ZUERST — ein fehlgeschlagener State-Write darf sie
             # nicht verschlucken (state-file kann fremd-owned sein).
             if previous is not None and previous != name and not self.cfg.force_cpu:
-                if name != "edgetpu" and not self._backend_alert_sent:
+                # Cooldown: der Coral re-enumeriert gelegentlich am Open —
+                # ohne Cooldown gäbe es ein ⚠️/✅-Paar pro Restart (16:58/17:03).
+                cooled = (time.time() - self._last_backend_alert_time) >= self.cfg.backend_alert_cooldown_s
+                if name != "edgetpu" and not self._backend_alert_sent and cooled:
                     self._backend_alert_sent = True
+                    self._last_backend_alert_time = time.time()
                     log.warning(
                         "detection: Edge TPU nicht mehr erreichbar (vorher %s, jetzt %s) — CPU-Fallback",
                         previous,
                         name,
                     )
                     await self._post_backend_alert(name, back=False)
-                elif name == "edgetpu":
+                elif name == "edgetpu" and cooled:
+                    self._last_backend_alert_time = time.time()
                     log.info(
                         "detection: Edge TPU wieder erreichbar (vorher %s) — zurück auf edgetpu",
                         previous,

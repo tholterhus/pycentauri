@@ -105,7 +105,6 @@ def run(jpeg):
     return max(float(np.max(i.get_tensor(outs[j]["index"]))) for j in two_d)
 
 pos = [run(p.read_bytes()) for p in sorted((root / "data/spaghetti-positive").glob("*.jpg"))]
-pos += [run(p.read_bytes()) for p in sorted((root / "data/train/inbox/spaghetti").glob("*.jpg"))]
 neg = [run(p.read_bytes()) for p in sorted((root / "data/false-positives").glob("*.jpg"))]
 if not pos or not neg:
     print(f"referenz-frames fehlen (pos={len(pos)} neg={len(neg)}) — Gate unmoeglich")

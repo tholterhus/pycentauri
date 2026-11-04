@@ -140,6 +140,18 @@ open(p5, 'w').write(s5.replace(alt5, """    # drift-fix #5: ohne training-KW lae
         ops.pad_to_multiple(preprocessed_inputs, self._pad_to_multiple),
         training=self._is_training)"""))
 print("drift-fix #4+#5 angewendet (input_layer + training-KW)")
+
+# Drift-Fix #7 (Mac-Agent 17:15): der Export-Graph enthielt preprocess
+# NICHT — das Serving füttert 0-255 in einen [-1,1]-erwartenden Graphen
+# → 255x Mismatch → konstante Scores. Betrifft auch v1 (seit Oktober)!
+p7 = 'models/research/object_detection/export_tflite_graph_lib_tf2.py'
+s7 = open(p7).read()
+alt7 = "predicted_tensors = self._model.predict(image, true_image_shapes=None)"
+assert alt7 in s7, 'export-Pattern nicht gefunden'
+open(p7, 'w').write(s7.replace(alt7, """preprocessed_images, true_image_shapes = self._model.preprocess(image)
+        predicted_tensors = self._model.predict(
+            preprocessed_images, true_image_shapes=true_image_shapes)"""))
+print("drift-fix #7 angewendet (export-preprocess)")
 PY4
 
 # TF 2.15 hat control_flow_ops.case/cond/while_loop/Assert/no_op entfernt —
