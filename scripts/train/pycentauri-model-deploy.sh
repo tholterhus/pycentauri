@@ -149,7 +149,12 @@ cp -r "$MODELS" "$BK"
 cp "$WORK/spaghetti_int8.tflite" "$MODELS/spaghetti.tflite"
 [ -f "$WORK/spaghetti.tflite" ] && cp "$WORK/spaghetti.tflite" "$MODELS/spaghetti-float32.tflite"
 [ -f "$WORK/spaghetti_labels.txt" ] && cp "$WORK/spaghetti_labels.txt" "$MODELS/spaghetti.txt"
-[ -n "$EDGETPU" ] && [ -f "$EDGETPU" ] && cp "$EDGETPU" "$MODELS/spaghetti_edgetpu.tflite"
+# OPTION A (Tim/Mac 4.11.): int8-CPU servieren — der Edge-TPU-Compile
+# degradet das Modell (POS 0.383-0.555 vs int8 0.648-0.715). Das stale
+# _edgetpu-File MUSS aus dem Load-Pfad, sonst lädt der Dienst via
+# Coral-Pfad das ALLE Modell (der Sibling-Fallback greift nur bei
+# Delegate-Fail — der Coral läuft aber!).
+mv "$MODELS/spaghetti_edgetpu.tflite" "$MODELS/spaghetti_edgetpu.tflite.disabled" 2>/dev/null || true
 chown pycentauri:pycentauri "$MODELS"/*
 
 # Threshold 0.5 (neues Modell) — idempotent

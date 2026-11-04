@@ -107,11 +107,10 @@ for cls_dir in "$RB_INBOX"/*/; do
         fi
         split=train
         if [ $(( (inbox_merged + 1) % 7 )) -eq 0 ]; then split=val; fi
-        if [ -e "$OUT/$split/images/$base" ]; then
-            skipped=$((skipped+1)); continue
-        fi
-        cp "$jpg" "$OUT/$split/images/$base"
-        cp "$xml" "$OUT/$split/annotations/"
+        # Inbox gewinnt: die neuen/relabeleden Frames überschreiben ältere
+        # Merges (sonst lernt die Runde die Frühwarn-Frames als Negativ).
+        cp -f "$jpg" "$OUT/$split/images/$base"
+        cp -f "$xml" "$OUT/$split/annotations/"
         inbox_merged=$((inbox_merged+1))
     done
 done 2>/dev/null || true

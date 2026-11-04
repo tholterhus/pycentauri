@@ -134,7 +134,8 @@ class DetectConfig:
     collect_max_files: int = 4000
     # Failure-Ring: die letzten N Frames des Drucks bleiben im RAM und
     # werden beim Alarm als Evidenz-Phase weggeschrieben.
-    collect_ring_frames: int = 200
+    collect_ring_frames: int = 600  # die Ablösephase (5-10 min @ 1s) muss komplett rein
+    collect_retention_days: float = 30.0  # Timeline-Vergleiche brauchen Historie (Tim 4.11.)
     backend_alert_cooldown_s: float = 600.0
 
     def __post_init__(self) -> None:
@@ -345,6 +346,7 @@ class DetectionController:
         self._last_event: DetectionEvent | None = None
         self._error: str | None = None
         self._last_look: float = 0.0  # monotonic ts of the last model run
+        self._last_top_score = 0.0  # top score der letzten Inferenz (Collect-Hochtakt)
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -746,6 +748,15 @@ class DetectionController:
                 self._last_look = time.time()
                 await self._evaluate(jpeg)
 
+    def _collect_interval(self) -> float:
+        """Adaptive Cadence (Tim 4.11.): 1 Bild/MINUTE im stillen Normalbetrieb,
+        5-s-Takt sobald der Score steigt (Fehler-Phase dicht aufnehmen)."""
+        if self._last_top_score >= 0.4 or sum(self._window) >= 2:
+            return self.cfg.collect_interval_s
+        if self.cfg.collect_interval_s <= 0:  # expliziter Jede-Frame-Modus
+            return 0.0
+        return max(self.cfg.collect_interval_s, 60.0)
+
     def _collect_due(self, now: float, last_collect: float, collect_saved: int) -> bool:
         """Decide whether to save a training frame at ``now``.
 
@@ -768,10 +779,10 @@ class DetectionController:
         dense_share = max(20, budget // 4)
         if layer <= 0 or total <= 0 or layer <= self.cfg.collect_first_layers:
             if collect_saved < dense_share:
-                return now - last_collect >= self.cfg.collect_interval_s
+                return now - last_collect >= self._collect_interval()
             # Dense-Share aus — ohne Layer-Info aufs Mindest-Intervall
             # ausweichen statt weiter im 5-s-Takt zu feuern.
-            return now - last_collect >= self.cfg.collect_min_gap_s
+            return now - last_collect >= max(self._collect_interval(), self.cfg.collect_min_gap_s)
         remaining_budget = max(1, budget - collect_saved)
         remaining_layers = max(1, total - layer)
         gap = max(1.0, remaining_layers / remaining_budget)
@@ -803,6 +814,16 @@ class DetectionController:
         def _trim() -> int:
             frames = sorted(self.cfg.collect_dir.glob("*.jpg"))
             removed = 0
+            # Retention (Tim 4.11.): Frames älter als collect_retention_days
+            # fliegen zuerst — Vorher/Nachher-Vergleiche brauchen die
+            # Historie, aber nicht endlos.
+            cutoff = time.time() - self.cfg.collect_retention_days * 86400
+            for f in list(frames):
+                if f.stat().st_mtime < cutoff:
+                    f.unlink(missing_ok=True)
+                    f.with_suffix(".json").unlink(missing_ok=True)
+                    frames.remove(f)
+                    removed += 1
             for old in frames[: max(0, len(frames) - limit)]:
                 old.unlink(missing_ok=True)
                 old.with_suffix(".json").unlink(missing_ok=True)
@@ -826,6 +847,7 @@ class DetectionController:
             log.warning("detection: inference failed: %r", err)
             return
         self._window.append(bool(detections))
+        self._last_top_score = float(detections[0].score) if detections else 0.0
         if not detections or self._fired:
             return
         if sum(self._window) < self.cfg.window_needed:
