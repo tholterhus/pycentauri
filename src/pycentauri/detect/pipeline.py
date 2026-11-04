@@ -563,9 +563,14 @@ class DetectionController:
     async def _send_backend_alert(self, payload: dict[str, Any]) -> None:
         poster = self._telegram_poster
         if poster is None:
+            log.warning("detection: backend-alert NICHT gesendet — kein Telegram-Poster konfiguriert")
             return
         try:
             await poster(payload)
+            log.warning(
+                "detection: backend-alert VERSENDET: %s",
+                payload["event"]["text"].split(" — ")[0],
+            )
         except Exception as err:
             log.error("detection: telegram delivery failed: %r", err)
 
