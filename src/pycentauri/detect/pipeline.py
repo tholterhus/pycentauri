@@ -539,6 +539,12 @@ class DetectionController:
                 # Cooldown: der Coral re-enumeriert gelegentlich am Open —
                 # ohne Cooldown gäbe es ein ⚠️/✅-Paar pro Restart (16:58/17:03).
                 cooled = (time.time() - self._last_backend_alert_time) >= self.cfg.backend_alert_cooldown_s
+                if not cooled:
+                    log.warning(
+                        "detection: backend-Wechsel %s→%s erkannt — Alert UNTERDRÜCKT (cooldown %.0fs seit dem letzten)",
+                        previous, name,
+                        time.time() - self._last_backend_alert_time,
+                    )
                 if name != "edgetpu" and not self._backend_alert_sent and cooled:
                     self._backend_alert_sent = True
                     self._last_backend_alert_time = time.time()

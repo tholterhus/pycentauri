@@ -917,6 +917,7 @@ body {
 .detect-arm { margin-top: 10px; }
 
 .detect-action-modes { display: flex; gap: 6px; }
+.detect-action-modes .detect-action-btn { flex: 1 1 0; }
 
 /* exactly ONE button (the armed action) is framed; the others are dimmed.
    Color = severity: notify green, pause amber, stop red. */
