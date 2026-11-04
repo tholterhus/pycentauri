@@ -344,6 +344,39 @@ function wireControls() {
     if (un) un.textContent = ev.target?.files?.[0]?.name || "";
   });
 
+  // Detection threshold slider (gear next to the Threshold value).
+  $("btn-threshold")?.addEventListener("click", () => {
+    const cur = parseFloat($("detect-threshold").textContent) || 0.5;
+    const sl = $("threshold-slider");
+    sl.value = String(cur);
+    $("threshold-value").textContent = cur.toFixed(2);
+    $("threshold-modal").hidden = false;
+  });
+  $("threshold-cancel")?.addEventListener("click", () => {
+    $("threshold-modal").hidden = true;
+  });
+  $("threshold-slider")?.addEventListener("input", (ev) => {
+    $("threshold-value").textContent = parseFloat(ev.target.value).toFixed(2);
+  });
+  $("threshold-set")?.addEventListener("click", async () => {
+    const v = parseFloat($("threshold-slider").value);
+    const btn = $("threshold-set");
+    btn.disabled = true;
+    try {
+      const r = await fetch("/api/detect/threshold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threshold: v }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status} — ${await r.text()}`);
+      $("threshold-modal").hidden = true;
+    } catch (e) {
+      $("threshold-value").textContent = "✗ " + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // Keyboard shortcuts when controls are visible.
   document.addEventListener("keydown", (ev) => {
     if ($("controls").hidden) return;

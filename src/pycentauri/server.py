@@ -267,6 +267,10 @@ class RtspController:
 # --- Pydantic request bodies ------------------------------------------------
 
 
+class DetectThresholdBody(BaseModel):
+    threshold: float
+
+
 class StartPrintBody(BaseModel):
     filename: str = Field(..., description="File name as it appears on the printer.")
     storage: str = Field("local", description="'local' or 'udisk'.")
@@ -820,6 +824,18 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(err)) from err
         state: dict[str, Any] = controller.state()
         return state
+
+    @app.post("/api/detect/threshold", tags=["detect"])
+    async def detect_threshold_route(body: DetectThresholdBody, request: Request) -> dict[str, Any]:
+        """Set the detection threshold at runtime (persisted; 0.30-0.80)."""
+        controller = _detect_controller(request)
+        if not 0.30 <= body.threshold <= 0.80:
+            raise HTTPException(status_code=400, detail="threshold must be within 0.30..0.80")
+        try:
+            controller.set_threshold(body.threshold)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=str(err)) from err
+        return controller.state()
 
     @app.post("/api/detect/action", tags=["detect"])
     async def detect_action(body: DetectActionBody, request: Request) -> dict[str, Any]:

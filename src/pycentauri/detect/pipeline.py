@@ -343,6 +343,13 @@ class DetectionController:
             saved = ""
         if saved in ACTIONS:
             cfg.action = saved
+        # Detection threshold (GUI slider) — persists like the armed action.
+        try:
+            t = float((self.cfg.evidence_dir / ".threshold").read_text(encoding="utf-8").strip())
+            if 0.0 <= t <= 1.0:
+                cfg.threshold = t
+        except (OSError, ValueError):
+            pass
         self._last_event: DetectionEvent | None = None
         self._error: str | None = None
         self._last_look: float = 0.0  # monotonic ts of the last model run
@@ -441,12 +448,25 @@ class DetectionController:
         ):
             self._begin_session()
 
-    def set_action(self, action: str) -> None:
-        """Arm the response at runtime (the dashboard's notify/pause/stop).
+    def set_threshold(self, threshold: float) -> None:
+        """Set the detection threshold at runtime; persists in evidence_dir.
 
-        The choice persists across restarts; the config's DETECT_ACTION is
-        only the initial default.
+        The GUI slider enforces a sensible range (0.30-0.80); the
+        controller accepts the full 0..1 (tests, API callers with their
+        own validation).
         """
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError(f"threshold must be within 0..1, got {threshold!r}")
+        self.cfg.threshold = float(threshold)
+        try:
+            (self.cfg.evidence_dir / ".threshold").write_text(
+                f"{threshold:.2f}", encoding="utf-8"
+            )
+        except OSError as err:
+            log.debug("detection: threshold-state unbeschreibbar: %r", err)
+
+    def set_action(self, action: str) -> None:
+        """Arm the response at runtime (the dashboard's notify/pause/stop)."""
         if action not in ACTIONS:
             raise ValueError(f"action must be one of {ACTIONS}, got {action!r}")
         if action in ("pause", "stop") and not self._control_allowed:

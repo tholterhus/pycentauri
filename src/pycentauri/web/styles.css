@@ -967,3 +967,34 @@ body {
   white-space: nowrap;
   max-width: 40%;
 }
+
+/* threshold gear + modal (4.11.) */
+.gear-btn {
+  font-size: 12px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  opacity: 0.75;
+}
+.gear-btn:hover { opacity: 1; }
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: var(--panel-bg, #1c1f24);
+  border: 1px solid var(--border, #3a3f45);
+  border-radius: 8px;
+  padding: 14px 16px;
+  width: min(92vw, 360px);
+}
+.modal-header { font-weight: 600; margin-bottom: 10px; }
+.modal-body { display: flex; flex-direction: column; gap: 8px; }
+.modal-body input[type="range"] { width: 100%; }
+.threshold-value { font-size: 22px; text-align: center; }
+.threshold-hint { font-size: 11px; color: var(--dim, #9aa0a6); line-height: 1.35; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }

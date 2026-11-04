@@ -1064,6 +1064,7 @@ def test_collect_due_budget_aware(tmp_path: Path) -> None:
         collect_min_gap_s=20.0,
     )
     c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    c._last_top_score = 0.5  # steigender Score = 5-s-Takt (dichtes Fenster)
 
     # Dense phase (layer <= 3): 5 s interval up to the dense share
     # (budget // 4 = 50), then the 20 s floor instead of burning the
@@ -1180,3 +1181,16 @@ async def test_failure_ring_flushed_on_fire(
     assert len(jpgs) == 3
     assert (dirs[0] / "alarm.json").is_file()
     assert not c._failure_ring  # Ring geleert — nächster Druck startet frisch
+
+
+def test_set_threshold_persists_across_restart(tmp_path: Path) -> None:
+    """Der GUI-Slider setzt den Threshold runtime + restart-fest (0.15.3-Fix)."""
+    cfg = DetectConfig(model_path=tmp_path / "m.tflite", evidence_dir=tmp_path / "ev")
+    (tmp_path / "ev").mkdir()
+    c = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    c.set_threshold(0.55)
+    assert cfg.threshold == 0.55
+    c2 = DetectionController(cfg, camera=FakeCamera([]), get_printer=lambda: None)
+    assert c2.cfg.threshold == 0.55  # aus dem .threshold-Dotfile restauriert
+    with pytest.raises(ValueError):
+        c2.set_threshold(1.5)
