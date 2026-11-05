@@ -22,6 +22,14 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   event — the failure phase is captured deterministically, no collect cap
   or print length can make it go unrecorded.
 
+### Changed
+- Serving switched to the int8-CPU model (`spaghetti.tflite`): the
+  Edge-TPU-compiled round-2b artifact degraded detection (the compiler
+  requantizes the TPU segment and destroyed the positive/negative
+  separation the int8 kept — POS 0.383-0.555 vs 0.648-0.715 on the
+  reference frames). The Coral remains supported; QAT is the path back
+  to TPU parity. Documented in docs/CORAL_SPAGHETTI_DETECTION.md.
+
 ## [0.15.1] - 2026-11-03
 
 ### Fixed

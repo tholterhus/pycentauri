@@ -424,6 +424,14 @@ bot — strictly one-way, nothing is ever received), and the optional
 update check is off by default.
 **with a Google Coral USB Accelerator** its AI chip does the same in
 ~5–15 ms — the stick is purely an accelerator, never a requirement.
+⚠️ **Measure before you trust the compiled model.** The Edge-TPU compiler
+requantizes the TPU segment and can degrade detection quality — with our
+v2 retrain the compiled variant lost the positive/negative separation the
+int8 model kept (0.383–0.555 vs 0.648–0.715 on the reference frames).
+Score both variants on your own reference frames and serve the better
+one (the loader picks `*_edgetpu.tflite` when a Coral is present — see
+the "Ship models in pairs" notes below). QAT (quantization-aware
+training) is the path back to TPU parity.
 The detector taps the same
 shared camera stream as the dashboard (the printer never sees a second
 camera connection), skips the first `--detect-grace` seconds of a print,
@@ -480,6 +488,9 @@ Notes:
 - **Ship models in pairs**: an Edge-TPU-compiled `*_edgetpu.tflite` cannot
   execute on the CPU — on a machine without a Coral the software
   automatically loads the uncompiled CPU variant (`<name>.tflite`) instead.
+  Note the compiled variant can be *worse*: the compiler requantizes the
+  TPU segment and may degrade separation (our v2 retrain lost it — see the
+  Coral section above). Score both and keep the better one live.
 - **Optional Telegram push**: with `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID`
   (in `/etc/pycentauri.conf`, or `--telegram-token` / `--telegram-chat-id`
   on the CLI) every alert goes to your chat — a one-liner with the camera

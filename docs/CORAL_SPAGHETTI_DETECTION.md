@@ -203,3 +203,35 @@ Phase 0 (system, ~1 h once the Coral is on the desk) → Phase 1
 bulk) → smoke model → Phase 3 (data collection can start immediately,
 in parallel) → Phase 4 (UI polish). Ship as 0.12.0 with README,
 ARCHITECTURE and CHANGELOG updates.
+
+
+## Design record — 4.11.2026: Edge-TPU compile degrades round-2b model
+
+The v2 retrain (round 2b) exposed a serving-quality trap that also
+affected the shipped v1 model:
+
+* The Keras checkpoint separated cleanly on the 29 reference frames
+  (POS 0.63-0.70 / NEG 0.15-0.58).
+* ALL exported artifacts (int8 AND float32) collapsed into a constant
+  0.23-0.48 band: `export_tflite_graph_lib_tf2.py` built an inference
+  graph WITHOUT the preprocessing step — the graph expected [-1,1]
+  images while serving fed 0-255 (a 255x mismatch → BN saturation).
+* Fix #7 (export preprocess included, raw 0-255 input contract) fixed
+  the int8 CPU variant: POS 0.648-0.715 / NEG 0.180-0.574 — separation
+  PASS.
+* The Edge-TPU-compiled variant of the same int8 DEGRADES (POS
+  0.383-0.555, NEG 0.285-0.625 — no separation): the compiler
+  requantizes the TPU segment and destroys the boundary the int8 kept.
+
+Current serving: the int8-CPU model (`spaghetti.tflite`) — the better
+variant. The Coral is plugged, detected and healthy, but paused until
+TPU fidelity returns. Paths back:
+1. QAT (quantization-aware training) in the retrain pipeline.
+2. Compiler options / a newer toolchain release, re-scored with the
+   acceptance gate before any deploy.
+3. The acceptance gate 3 (separation on the reference frames) is part
+   of the deploy script — a degraded compile cannot go live again.
+
+The v1 model on the Coral scored 0.648-0.715 on the same reference
+frames (measured 4.11.) — the Coral hardware and runtime are fine; the
+artifacts are where quality is lost.
