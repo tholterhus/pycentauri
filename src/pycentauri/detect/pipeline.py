@@ -137,6 +137,7 @@ class DetectConfig:
     collect_ring_frames: int = 600  # die Ablösephase (5-10 min @ 1s) muss komplett rein
     collect_retention_days: float = 30.0  # Timeline-Vergleiche brauchen Historie (Tim 4.11.)
     backend_alert_cooldown_s: float = 600.0
+    classifier_path: Path | None = None  # two-stage: None = legacy threshold
 
     def __post_init__(self) -> None:
         if self.action not in ACTIONS:
@@ -354,6 +355,7 @@ class DetectionController:
         self._error: str | None = None
         self._last_look: float = 0.0  # monotonic ts of the last model run
         self._last_top_score = 0.0  # top score der letzten Inferenz (Collect-Hochtakt)
+        self._classifier: Any = None  # two-stage Klassifikator, lazy geladen
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -492,7 +494,7 @@ class DetectionController:
 
     async def _load_backend(self) -> None:
         try:
-            from pycentauri.detect.backend import Detector
+            from pycentauri.detect.backend import Detector, detection_features
 
             loop = asyncio.get_running_loop()
             self._backend = await loop.run_in_executor(
@@ -501,6 +503,7 @@ class DetectionController:
             )
             self._error = None
             await self._check_backend_regression()
+            self._load_classifier()
         except Exception as err:
             # Not fatal for the server: status watching continues, sessions
             # no-op, and /api/detect surfaces the reason.
@@ -618,6 +621,30 @@ class DetectionController:
         yet) counts as not busy.
         """
         return self._last_print_status is not None and self._last_print_status not in (0, 8, 9, 14)
+
+    def _load_classifier(self) -> None:
+        """Two-stage Klassifikator laden (None = legacy threshold)."""
+        path = self.cfg.classifier_path
+        if path is None or not Path(path).is_file():
+            self._classifier = None
+            return
+        try:
+            import joblib
+
+            self._classifier = joblib.load(path)
+            log.info("detection: two-stage Klassifikator geladen: %s", path)
+        except Exception as err:
+            self._classifier = None
+            log.error("detection: Klassifikator %s unladbar: %r", path, err)
+
+    def _two_stage_verdict(self, detections: list[Any]) -> bool:
+        """Two-stage verdict: die Klassifikator-Wahrscheinlichkeit über den
+        Detektions-Features; ohne Klassifikator: die Legacy-Detektion."""
+        if self._classifier is None or not detections:
+            return bool(detections)
+        feats = detection_features(detections)
+        prob = float(self._classifier.predict_proba([feats])[0][1])
+        return prob >= 0.5
 
     # --- status watch -------------------------------------------------------
 
@@ -874,7 +901,12 @@ class DetectionController:
         except Exception as err:
             log.warning("detection: inference failed: %r", err)
             return
-        self._window.append(bool(detections))
+        if detections:
+            detections = [
+                d for d in detections if d.score >= 0.30
+            ]  # noise floor
+        verdict = self._two_stage_verdict(detections)
+        self._window.append(verdict)
         self._last_top_score = float(detections[0].score) if detections else 0.0
         if not detections or self._fired:
             return

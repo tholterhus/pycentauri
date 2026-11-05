@@ -172,6 +172,39 @@ def _build_interpreter(model_path: Path, delegate: Any) -> Any:
     return interpreter
 
 
+TOP_K = 5
+
+
+def detection_features(detections: list[Detection]) -> list[float]:
+    """Fixed-size feature vector from one frame's detections (two-stage serving).
+
+    Features per frame (19 dims): top-5 scores, top-5 normalized box areas,
+    top-5 vertical centers (the printhead false alarms sit at y≈0 — the
+    position separates them), plus frame stats (count, max score, score
+    spread, total area). A lightweight classifier learns the alarm verdict
+    from this vector — the base tflite model stays frozen, no TF retraining.
+    """
+    if not detections:
+        return [0.0] * 19
+    boxes = sorted(detections, key=lambda d: -d.score)[:TOP_K]
+    scores = [d.score for d in boxes] + [0.0] * (TOP_K - len(boxes))
+    areas = []
+    centers = []
+    for d in boxes:
+        x0, y0, x1, y1 = d.box
+        areas.append(max(0.0, (x1 - x0)) * max(0.0, (y1 - y0)))
+        centers.append((y0 + y1) / 2)
+    areas += [0.0] * (TOP_K - len(areas))
+    centers += [0.0] * (TOP_K - len(centers))
+    spread = max(scores) - min(scores)
+    return scores + areas + centers + [
+        float(len(detections)),
+        max(scores),
+        spread,
+        sum(areas),
+    ]
+
+
 def _load_edge_tpu_delegate() -> Any:
     from ai_edge_litert.interpreter import load_delegate
 
