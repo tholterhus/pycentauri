@@ -21,6 +21,8 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from PIL import Image
+
 sys.path.insert(0, "/opt/pycentauri/src")
 
 INBOX = Path("/opt/pycentauri/data/train/inbox")
@@ -67,17 +69,16 @@ def main() -> int:
                 continue
             stem = jpg.stem
             if cls == "negative":
-                from PIL import Image
-
                 w, h = Image.open(jpg).size
                 xml.write_text(voc_xml(stem, (w, h), cls, None, "inbox: negative"))
                 stats["negative"] = stats.get("negative", 0) + 1
                 continue
+            w, h = Image.open(jpg).size
             dets = det.detect(jpg.read_bytes(), threshold=MIN_SCORE)
             if dets:
                 top = dets[0]
                 note = f"inbox: auto-boxed by {det.backend_name} detector (score {top.score:.2f})"
-                xml.write_text(voc_xml(stem, jpg.size, cls, tuple(top.box), note))
+                xml.write_text(voc_xml(stem, (w, h), cls, tuple(top.box), note))
                 stats[cls] = stats.get(cls, 0) + 1
             else:
                 unboxed.append(str(jpg))
