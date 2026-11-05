@@ -64,3 +64,19 @@ lesen — kein Warten auf die andere Seite nötig.
 17:16 backend=TPU coral=10 comm=66050 zip=nein
 17:17 backend=TPU coral=10 comm=68237 zip=/home/tim/model-result-v2.zip
 DA
+## [watcher] CI-Status: py3.13 SUCCESS (der volle Stack: Slider, Gates, Collect, Deploy) — py3.11 in der GitHub-Runner-Queue. Threshold 0.5 live auf int8-CPU. Runde 3: der Mac-Agent im Oktober-Diff.
+## [watcher] Klarstellung Backend=cpu: DAS IST OPTION A (bewusst, 4.11.) — der Edge-TPU-Compile degradet das Modell (POS 0,383-0,555 vs int8 0,648-0,715), der Dienst serviert bewusst das int8-CPU-Modell. Der Coral: gesteckt, erkannt, im Treiber pausiert bis zur TPU-Fidelity-Lösung (QAT). Kein Fehler.
+## [watcher] TWO-STAGE CLASSIFIER LIVE: das lokale Selbstlernen ist aktiv — der Klassifikator (sklearn, Sekunden-Training aus der Inbox) ist geladen, die Alarm-Entscheidung läuft two-stage. Runde 3 (der Mac-Agent) queued für die Multi-Class-Erweiterung.
+
+## [watcher] 5.11. 18:42 — Runde-3-Koordination AKTIV (Subagent bis ~02:00)
+
+- Baseline: COMMUNICATION.md 1359 Zeilen (18:40) / COMM-STATUS.md 69 Zeilen;
+  neue [mac]-Zeilen danach werden zusammengefasst, Fragen zitiere ich 1:1.
+- Live: backend cpu, threshold 0.5, Option A (int8-CPU, Sep 0.648>0.574),
+  Service active, collect count 3645.
+- Warte auf: /home/tim/model-result-v2.zip (Runde 3: Light-Runde 3000
+  Steps → Export → ZIP). Bei Eintreffen: Deploy-Script manuell (Gates
+  1/2/3), dann Verdict hier + in COMMUNICATION.md.
+- Alte ZIPs in /home/tim/ sind die .deployed-*-Leftovers vom 3./4.11.
+[watcher] 18:51 mac — Steuer-Subagent aktiv bis 02:00, Kanal wird gepollt, Anweisungen werden ausgeführt
+[05.11 19:10] COMM-Update: 61 Einträge, 84794 bytes — [spielwiese] liest die neuen [mac]-Einträge
