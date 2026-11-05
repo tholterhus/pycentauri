@@ -18,7 +18,6 @@ Usage:
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -35,8 +34,7 @@ OUT = ROOT / "data/models/classifier.joblib"
 
 def main() -> int:
     from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import cross_val_score
-
+    
     det = Detector.from_model(ROOT / "data/models/spaghetti.tflite", force_cpu=True)
 
     feats: list[list[float]] = []

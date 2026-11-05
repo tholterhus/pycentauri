@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from pycentauri.camera import EOI, SOI
+from pycentauri.detect.backend import detection_features
 
 if TYPE_CHECKING:
     from pycentauri.models import Status
@@ -494,7 +495,7 @@ class DetectionController:
 
     async def _load_backend(self) -> None:
         try:
-            from pycentauri.detect.backend import Detector, detection_features
+            from pycentauri.detect.backend import Detector
 
             loop = asyncio.get_running_loop()
             self._backend = await loop.run_in_executor(
