@@ -375,9 +375,7 @@ class DetectionController:
                 # im async-for suspendierten watch()-Generator nie zugestellt
                 # werden (CI-Hang, 6.11.) — dann wird die Task verlassen,
                 # statt den Shutdown zu blockieren.
-                with contextlib.suppress(
-                    asyncio.TimeoutError, asyncio.CancelledError, Exception
-                ):
+                with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError, Exception):
                     await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
         self._session_task = self._status_task = None
 

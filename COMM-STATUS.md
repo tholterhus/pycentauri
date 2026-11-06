@@ -157,3 +157,4 @@ DA
 [watcher] 20:00 mac — Runde 5 Training läuft: 4200/15000, loss 1.7477089
 [watcher] 20:05 mac — Runde 5 Training läuft: 4900/15000, loss 1.4031355
 [watcher] 20:05 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":4143.7,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28606 4900/15000 loss=?
+[watcher] 20:10 mac — Runde 5 Training läuft: 5500/15000, loss 1.6283095
