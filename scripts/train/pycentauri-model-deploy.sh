@@ -73,7 +73,10 @@ PY9
 GATE_RC=$?
 logger -t model-deploy "HARD-GATE (rc=$GATE_RC): $GATE_LOG"
 if [ "$GATE_RC" -ne 0 ]; then
-    logger -t model-deploy "Deploy ABGEBROCHEN — Kandidat ist input-blind oder unladbar. ZIP bleibt liegen."
+    logger -t model-deploy "Deploy ABGEBROCHEN — Kandidat ist input-blind oder unladbar."
+    mv "$SRC" "$SRC.rejected-$(date +%Y%m%d-%H%M)" \
+        && logger -t model-deploy "ZIP umbenannt (kein Retry-Loop)" \
+        || logger -t model-deploy "WARN: ZIP umbenennen fehlgeschlagen"
     exit 1
 fi
 
@@ -118,7 +121,10 @@ PY10
 SEP_RC=$?
 logger -t model-deploy "GATE 3 (rc=$SEP_RC): $SEP_LOG"
 if [ "$SEP_RC" -ne 0 ]; then
-    logger -t model-deploy "Deploy ABGEBROCHEN — Acceptance-Fail (keine Separation). ZIP bleibt liegen."
+    logger -t model-deploy "Deploy ABGEBROCHEN — Acceptance-Fail (keine Separation)."
+    mv "$SRC" "$SRC.rejected-$(date +%Y%m%d-%H%M)" \
+        && logger -t model-deploy "ZIP umbenannt (kein Retry-Loop)" \
+        || logger -t model-deploy "WARN: ZIP umbenennen fehlgeschlagen"
     exit 1
 fi
 
