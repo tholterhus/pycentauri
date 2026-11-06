@@ -36,7 +36,7 @@ OUT = ROOT / "data/models/classifier.joblib"
 def main() -> int:
     from sklearn.linear_model import LogisticRegression
 
-    det = Detector.from_model(ROOT / "data/models/spaghetti.tflite", force_cpu=True)
+    det = Detector.from_model(ROOT / "data/models/spaghetti-float32.tflite", force_cpu=True)
 
     feats: list[list[float]] = []
     labels: list[int] = []
