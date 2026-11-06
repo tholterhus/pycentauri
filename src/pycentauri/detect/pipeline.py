@@ -630,7 +630,7 @@ class DetectionController:
             self._classifier = None
             return
         try:
-            import joblib
+            import joblib  # type: ignore[import-untyped]
 
             self._classifier = joblib.load(path)
             log.info("detection: two-stage Klassifikator geladen: %s", path)
