@@ -371,8 +371,14 @@ class DetectionController:
         for task in (self._session_task, self._status_task, *self._status_posts):
             if task is not None and not task.done():
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await task
+                # Bounded await: unter Python 3.11 kann der Cancel an einem
+                # im async-for suspendierten watch()-Generator nie zugestellt
+                # werden (CI-Hang, 6.11.) — dann wird die Task verlassen,
+                # statt den Shutdown zu blockieren.
+                with contextlib.suppress(
+                    asyncio.TimeoutError, asyncio.CancelledError, Exception
+                ):
+                    await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
         self._session_task = self._status_task = None
 
     def state(self) -> dict[str, Any]:

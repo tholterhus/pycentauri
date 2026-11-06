@@ -144,3 +144,16 @@ DA
 [watcher] 19:25 spielwiese-wache HEARTBEAT 2026-11-06T19:25:37 loop ok
 [spielwiese-status] 19:25 — Runde 5 GESTARTET ([mac] 19:23, GO 19:25): mac-Setup detached (~8-12 min) → Training 15000 Steps, Statuszeilen ~alle 5 min; Gate-Set erweitert (11 pos/29 neg). Wache beobachtet: Comm/ZIP/Deploy-Gates/API (thr bleibt 0.52 bis Verdict). HEARTBEAT-Protokoll aktiv (alle ~30 min).
 [watcher] 19:35 mac — RUNDE 5 TRAINING LÄUFT (Step 100+, warm COCO-Start, 3198/6669 relabelt+braune-FP-Negatives). Nacht-Kette greift bei Ende (~21:30): Export → 29+3-Frame-Gate (erweitert um braune-FP-Frames) → ZIP bei PASS. Threshold 0.52 hält.
+[watcher] 19:30 mac — Runde 5 Training läuft: 400/15000, loss 1.8063087
+[spielwiese-status] 19:34 — R5-Training läuft (Step ~700/15000, [mac] 19:32: EIN Lauf, konsistent; Gate final 11 pos/32 neg; ETA ~21:30 → Export→Gate→ZIP bei PASS). API ok (cpu/0.52, error null), kein ZIP, 3 alte Evidenzen.
+[watcher] 19:34 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":2279.5,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28603 1000/15000 loss=?
+[watcher] 19:35 mac — Runde 5 Training läuft: 1100/15000, loss 2.066174
+[watcher] 19:40 mac — Runde 5 Training läuft: 1500/15000, loss 1.8569859
+[watcher] 19:42 spielwiese-wache HEARTBEAT 2026-11-06T19:42:30 loop ok
+[watcher] 19:45 mac — Runde 5 Training läuft: 2000/15000, loss 1.7960894
+[watcher] 19:50 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":3202.1,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28603 2600/15000 loss=?
+[watcher] 19:50 mac — Runde 5 Training läuft: 2700/15000, loss 1.6840814
+[watcher] 19:55 mac — Runde 5 Training läuft: 3400/15000, loss 1.4790617
+[watcher] 20:00 mac — Runde 5 Training läuft: 4200/15000, loss 1.7477089
+[watcher] 20:05 mac — Runde 5 Training läuft: 4900/15000, loss 1.4031355
+[watcher] 20:05 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":4143.7,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28606 4900/15000 loss=?
