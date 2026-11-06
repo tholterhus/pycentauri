@@ -30,6 +30,7 @@ import contextlib
 import dataclasses
 import json
 import logging
+import math
 import re
 import time
 from collections import deque
@@ -41,7 +42,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from pycentauri.camera import EOI, SOI
-from pycentauri.detect.backend import detection_features
+from pycentauri.detect.backend import Detection, detection_features
 
 if TYPE_CHECKING:
     from pycentauri.models import Status
@@ -104,6 +105,12 @@ class DetectConfig:
     threshold: float = 0.5
     window_size: int = 6  # M — how many recent frames the decision looks at
     window_needed: int = 4  # K — positives among the last M before alerting
+    # Objekt-Verschiebung (Tim 6.11.): das Teil verrutscht auf dem Bett —
+    # ein Einzelbild sieht das nicht (intaktes Teil), aber der Positions-
+    # sprung über die Looks. Alarm als Label „shift", ein Alarm pro Druck.
+    shift_enabled: bool = False
+    shift_move: float = 0.12  # min. Verschiebung des Objekt-Zentrums (normiert)
+    shift_max_gap_s: float = 120.0  # ältere Baseline wird verworfen (Pause)
     min_frame_interval_s: float = 1.0
     grace_s: float = 90.0
     action: str = "notify"
@@ -323,6 +330,8 @@ class DetectionController:
         self._last_frame: bytes | None = None  # latest camera JPEG
         self._status_posts: set[asyncio.Task[None]] = set()
         self._window: deque[bool] = deque(maxlen=cfg.window_size)
+        self._part_track: tuple[float, float, float] | None = None  # (cx, cy, ts)
+        self._shift_arm: tuple[float, float] | None = None  # Baseline vor der Bewegung
         self._backend: Any = None  # detect.backend.Detector, loaded lazily
         self._backend_lock = asyncio.Lock()  # start() und _session_loop racen um den ersten Load
         self._last_print_status: int | None = None
@@ -894,6 +903,75 @@ class DetectionController:
         if removed:
             log.info("detection: collect FIFO trimmed %d oldest frames", removed)
 
+    def _part_candidate(self, detections: list[Any]) -> Any | None:
+        """Das größte Objekt im unteren Bildbereich — das Druckteil.
+
+        Oben (cy < 0.35) ist der Druckkopf — das bekannte FP-Muster, hier
+        wird nie getrackt. Schon ab score 0.20: ein intaktes Teil darf
+        ruhig niedrig scoren, es ist trotzdem dasselbe Objekt.
+        """
+        best: Any | None = None
+        best_area = 0.0
+        for d in detections:
+            if d.score < 0.20:
+                continue
+            x0, y0, x1, y1 = d.box
+            cy = (y0 + y1) / 2.0
+            if cy < 0.35:
+                continue
+            area = (x1 - x0) * (y1 - y0)
+            if area > best_area:
+                best, best_area = d, area
+        return best
+
+    async def _shift_check(self, detections: list[Any], jpeg: bytes) -> None:
+        """Objekt-Verschiebung über die Zeit: Zentrum des Bett-Objekts wandert.
+
+        Bestätigung erst, wenn zwei Looks in Folge weit weg von der
+        Baseline vor der Bewegung sind — ein Ein-Look-Glitch (Kopf-Schatten,
+        Okklusion) setzt zurück. Bei Bestätigung: sofortiger Alarm (Label
+        „shift"), ein Alert pro Druck (geteilter Budget mit Spaghetti).
+        """
+        if not self.cfg.shift_enabled or self._fired:
+            return
+        best = self._part_candidate(detections)
+        if best is None:
+            return
+        x0, y0, x1, y1 = best.box
+        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        now = time.monotonic()
+        prev = self._part_track
+        self._part_track = (cx, cy, now)
+        if prev is None or now - prev[2] > self.cfg.shift_max_gap_s:
+            self._shift_arm = None  # frische Baseline, nichts comparieren
+            return
+        moved = math.hypot(cx - prev[0], cy - prev[1])
+        if moved < self.cfg.shift_move:
+            # Objekt ruhig — aber wenn es weit weg von der Pre-Shift-Baseline
+            # steht, ist die Verschiebung bestätigt (der Sprung selbst ist
+            # genau EIN Look lang sichtbar, danach steht das Teil am neuen Ort).
+            if self._shift_arm is not None:
+                if (
+                    math.hypot(cx - self._shift_arm[0], cy - self._shift_arm[1])
+                    >= self.cfg.shift_move
+                ):
+                    self._fired = True
+                    det = Detection(label="shift", score=round(min(1.0, moved), 4), box=best.box)
+                    log.warning(
+                        "detection: SHIFT DETECTED — Objektzentrum %.2f verschoben",
+                        moved,
+                    )
+                    await self._fire([det], jpeg)
+                else:
+                    self._shift_arm = None  # zurück am alten Ort — Glitch
+            return
+        if self._shift_arm is None:
+            self._shift_arm = (prev[0], prev[1])
+            log.info(
+                "detection: shift verdächtig (%.2f) — Bestätigung im nächsten Look",
+                moved,
+            )
+
     async def _evaluate(self, jpeg: bytes) -> None:
         if self._backend is None:
             return
@@ -906,6 +984,7 @@ class DetectionController:
         except Exception as err:
             log.warning("detection: inference failed: %r", err)
             return
+        await self._shift_check(detections, jpeg)
         if detections:
             detections = [d for d in detections if d.score >= 0.30]  # noise floor
         verdict = self._two_stage_verdict(detections)
@@ -940,7 +1019,7 @@ class DetectionController:
         self._last_event = event
         await self._flush_failure_ring(event)
         log.warning(
-            "SPAGHETTI DETECTED: %s score=%.2f backend=%s evidence=%s",
+            "DETECTION ALERT (%s): score=%.2f backend=%s evidence=%s",
             event.label,
             event.score,
             event.backend,

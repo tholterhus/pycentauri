@@ -1199,3 +1199,103 @@ def test_set_threshold_persists_across_restart(tmp_path: Path) -> None:
     assert c2.cfg.threshold == 0.55  # aus dem .threshold-Dotfile restauriert
     with pytest.raises(ValueError):
         c2.set_threshold(1.5)
+
+
+class _SeqDetector:
+    """FakeDetector mit programmierbarer Box-Folge (letzte Box wiederholt)."""
+
+    def __init__(self, boxes: list[tuple[float, float, float, float]]) -> None:
+        self.backend_name = "cpu"
+        self._boxes = list(boxes)
+
+    def detect(self, jpeg: bytes, *, threshold: float = 0.5) -> list[Detection]:
+        box = self._boxes.pop(0) if self._boxes else self._last
+        self._last = box
+        # score 0.25: unter dem 0.30-Noise-Floor → die Spaghetti-Window
+        # bleibt ruhig, nur die Shift-Spur sieht das Objekt.
+        return [Detection(label="spaghetti", score=0.25, box=box)]
+
+
+async def test_shift_fires_after_confirmed_object_move(tmp_path: Path) -> None:
+    """Zwei Looks in Folge verschoben → shift-Alarm (einzelner Glitch nicht)."""
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        detect_backend.Detector,
+        "from_model",
+        staticmethod(
+            lambda path, force_cpu=False: _SeqDetector(
+                [
+                    (0.3, 0.6, 0.7, 0.95),  # Baseline (Zentrum 0.5, 0.775)
+                    (0.5, 0.6, 0.9, 0.95),  # verschoben (Zentrum 0.7) → arm
+                    (0.5, 0.6, 0.9, 0.95),  # bleibt verschoben → bestätigt
+                    (0.5, 0.6, 0.9, 0.95),
+                ]
+            )
+        ),
+    )
+    try:
+        cfg = DetectConfig(
+            model_path=tmp_path / "m_edgetpu.tflite",
+            grace_s=0.0,
+            min_frame_interval_s=0.0,
+            evidence_dir=tmp_path / "ev",
+            shift_enabled=True,
+        )
+        controller = DetectionController(
+            cfg,
+            camera=FakeCamera([_jpeg()] * 8),
+            get_printer=lambda: FakePrinter([PRINTING] * 20 + [9]),
+        )
+        await controller.start()
+        fired = await _wait_for(lambda: controller._last_event is not None)
+        await _wait_for(lambda: controller.state()["processing"] is False)
+        await controller.stop()
+        assert fired
+        assert controller._last_event is not None
+        assert controller._last_event.label == "shift"
+    finally:
+        monkeypatch.undo()
+
+
+async def test_shift_ignores_glitch_and_head(tmp_path: Path) -> None:
+    """Ein-Look-Sprung zurück + Kopf-Boxen oben: kein shift-Alarm."""
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        detect_backend.Detector,
+        "from_model",
+        staticmethod(
+            lambda path, force_cpu=False: _SeqDetector(
+                [
+                    (0.3, 0.6, 0.7, 0.95),  # Baseline
+                    (0.5, 0.6, 0.9, 0.95),  # Sprung → arm
+                    (0.3, 0.6, 0.7, 0.95),  # zurück → Glitch, arm reset
+                    (0.3, 0.6, 0.7, 0.95),
+                    (0.1, 0.05, 0.5, 0.3),  # Kopf oben (cy < 0.35) — wird ignoriert
+                    (0.4, 0.05, 0.9, 0.3),  # Kopf „verschoben" — egal
+                    (0.3, 0.6, 0.7, 0.95),  # Teil unverändert
+                    (0.3, 0.6, 0.7, 0.95),
+                ]
+            )
+        ),
+    )
+    try:
+        cfg = DetectConfig(
+            model_path=tmp_path / "m_edgetpu.tflite",
+            grace_s=0.0,
+            min_frame_interval_s=0.0,
+            evidence_dir=tmp_path / "ev",
+            shift_enabled=True,
+        )
+        camera = FakeCamera([_jpeg()] * 8)
+        controller = DetectionController(
+            cfg,
+            camera=camera,
+            get_printer=lambda: FakePrinter([PRINTING] * 12 + [9]),
+        )
+        await controller.start()
+        await _wait_for(lambda: controller.state()["processing"] is False)
+        await controller.stop()
+        assert controller._last_event is None
+        assert not any(controller._window)
+    finally:
+        monkeypatch.undo()

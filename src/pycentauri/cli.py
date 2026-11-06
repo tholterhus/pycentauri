@@ -839,6 +839,11 @@ def cmd_server(
     detect_cpu: bool = typer.Option(
         False, "--detect-cpu", help="Force CPU inference even when a Coral is present."
     ),
+    detect_shift: bool = typer.Option(
+        False,
+        "--detect-shift",
+        help="Alarm when the printed object moves on the bed (position tracked across looks).",
+    ),
 ) -> None:
     """Run the HTTP + SSE server (requires `pip install 'pycentauri[server]'`)."""
     try:
@@ -896,6 +901,7 @@ def cmd_server(
             collect_max_per_print=detect_collect_max_per_print,
             collect_max_files=detect_collect_max_files,
             force_cpu=detect_cpu,
+            shift_enabled=detect_shift,
         )
 
     async def resolve() -> tuple[str, str | None]:
