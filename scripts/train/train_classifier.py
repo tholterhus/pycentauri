@@ -16,6 +16,7 @@ immediately).
 Usage:
     venv/bin/python scripts/train/train_classifier.py [--min-score 0.30]
 """
+
 from __future__ import annotations
 
 import sys
@@ -49,8 +50,10 @@ def main() -> int:
             labels.append(label)
 
     if len(feats) < 8 or not (0 < sum(labels) < len(labels)):
-        print(f"zu wenig gemischte Daten: {len(feats)} Frames, "
-              f"{sum(labels)} positive — Inbox füllen und erneut.")
+        print(
+            f"zu wenig gemischte Daten: {len(feats)} Frames, "
+            f"{sum(labels)} positive — Inbox füllen und erneut."
+        )
         return 1
 
     X = np.array(feats, dtype=np.float32)
@@ -69,9 +72,11 @@ def main() -> int:
     neg = probs[np.array(y) == 0]
     sep = (pos.min() > neg.max()) if len(pos) and len(neg) else False
     print(f"trainiert: {len(X)} Frames ({sum(y)} pos / {len(y) - sum(y)} neg)")
-    print(f"prob: positives {pos.min():.3f}-{pos.max():.3f} | "
-          f"negatives {neg.min():.3f}-{neg.max():.3f} | "
-          f"separation: {'PASS' if sep else 'FAIL'}")
+    print(
+        f"prob: positives {pos.min():.3f}-{pos.max():.3f} | "
+        f"negatives {neg.min():.3f}-{neg.max():.3f} | "
+        f"separation: {'PASS' if sep else 'FAIL'}"
+    )
     print(f"artefakt: {OUT}")
     return 0
 

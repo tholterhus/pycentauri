@@ -1046,22 +1046,22 @@ def cmd_detect_train_classifier(
     model: Annotated[
         Path, typer.Option("--model", help="Basis-tflite (liefert die Detektions-Features).")
     ] = Path("data/models/spaghetti.tflite"),
-    out: Annotated[
-        Path, typer.Option("--out", help="Ziel-Artefakt für den Klassifikator.")
-    ] = Path("data/models/classifier.joblib"),
+    out: Annotated[Path, typer.Option("--out", help="Ziel-Artefakt für den Klassifikator.")] = Path(
+        "data/models/classifier.joblib"
+    ),
 ) -> None:
     """Train the two-stage classifier from the labeled inbox (seconds, no TF)."""
     import subprocess
 
     cmd = [
         sys.executable,
-        str(Path(__file__).parent / "train_classifier.py").replace(
-            "cli.py", ""
-        ),
+        str(Path(__file__).parent / "train_classifier.py").replace("cli.py", ""),
     ]
     # Das Skript liegt in scripts/train/ — über die packaged resources oder
     # den Repo-Pfad auflösen:
-    script = Path(__file__).resolve().parent.parent.parent / "scripts" / "train" / "train_classifier.py"
+    script = (
+        Path(__file__).resolve().parent.parent.parent / "scripts" / "train" / "train_classifier.py"
+    )
     if script.is_file():
         cmd[1] = str(script)
     cmd += ["--inbox", str(inbox), "--model", str(model), "--out", str(out)]

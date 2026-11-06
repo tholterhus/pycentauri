@@ -197,12 +197,17 @@ def detection_features(detections: list[Detection]) -> list[float]:
     areas += [0.0] * (TOP_K - len(areas))
     centers += [0.0] * (TOP_K - len(centers))
     spread = max(scores) - min(scores)
-    return scores + areas + centers + [
-        float(len(detections)),
-        max(scores),
-        spread,
-        sum(areas),
-    ]
+    return (
+        scores
+        + areas
+        + centers
+        + [
+            float(len(detections)),
+            max(scores),
+            spread,
+            sum(areas),
+        ]
+    )
 
 
 def _load_edge_tpu_delegate() -> Any:

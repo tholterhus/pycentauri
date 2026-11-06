@@ -903,9 +903,7 @@ class DetectionController:
             log.warning("detection: inference failed: %r", err)
             return
         if detections:
-            detections = [
-                d for d in detections if d.score >= 0.30
-            ]  # noise floor
+            detections = [d for d in detections if d.score >= 0.30]  # noise floor
         verdict = self._two_stage_verdict(detections)
         self._window.append(verdict)
         self._last_top_score = float(detections[0].score) if detections else 0.0
