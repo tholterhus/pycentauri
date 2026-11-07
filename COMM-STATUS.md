@@ -158,3 +158,175 @@ DA
 [watcher] 20:05 mac — Runde 5 Training läuft: 4900/15000, loss 1.4031355
 [watcher] 20:05 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":4143.7,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28606 4900/15000 loss=?
 [watcher] 20:10 mac — Runde 5 Training läuft: 5500/15000, loss 1.6283095
+[watcher] 20:15 mac — Runde 5 Training läuft: 6200/15000, loss 2.5081391
+[watcher] 20:15 spielwiese-wache HEARTBEAT 2026-11-06T20:15:42 loop ok
+[watcher] 20:20 mac — Runde 5 Training läuft: 6900/15000, loss 1.7524565
+[watcher] 20:20 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":5037.5,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28606 6900/15000 loss=?
+[watcher] 20:25 mac — Runde 5 Training läuft: 7600/15000, loss 1.1474718
+[watcher] 20:30 mac — Runde 5 Training läuft: 8300/15000, loss 1.3575937
+[watcher] 20:35 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":5926.7,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28606 8900/15000 loss=?
+[watcher] 20:35 mac — Runde 5 Training läuft: 8900/15000, loss 1.4313664
+[watcher] 20:40 mac — Runde 5 Training läuft: 9500/15000, loss 1.3267653
+[watcher] 20:45 mac — Runde 5 Training läuft: 10200/15000, loss 1.4607488
+[watcher] 20:48 spielwiese-wache HEARTBEAT 2026-11-06T20:48:49 loop ok
+[watcher] 20:50 mac — Runde 5 Training läuft: 10900/15000, loss 1.2333399
+[watcher] 20:51 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":6866.4,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28606 11000/15000 loss=?
+[watcher] 20:55 mac — Runde 5 Training läuft: 11600/15000, loss 1.0683894
+[watcher] 21:00 mac — Runde 5 Training läuft: 12200/15000, loss 1.5813279
+[watcher] 21:05 mac — Runde 5 Training läuft: 13000/15000, loss 1.5814856
+[watcher] 21:05 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":7757.2,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma | pid=28606 13000/15000 loss=?
+[watcher] 21:10 mac — Runde 5 Training läuft: 13700/15000, loss 1.0751276
+[watcher] 21:15 mac — Runde 5 Training läuft: 14500/15000, loss 1.4345685
+[watcher] 21:20 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti.tflite","action":"pause","threshold":0.52,"last_look_s":8649.7,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,"ma
+[watcher] 21:21 spielwiese-wache HEARTBEAT 2026-11-06T21:21:32 loop ok
+[spielwiese-status] 21:21 — R5-Training BEENDET ([mac] 21:20: 15000 Steps, final loss 1.3747). Export→Gate läuft; ZIP-Fenster ~21:25-21:45, Deploy-Cron überwacht.
+[watcher] 21:22 mac — Runde 5 Export ok — 29-Frame-Gate läuft (Gate-Set erweitert: 11 pos / 29 neg)
+[watcher] 21:22 mac — Runde 5: ZIP geliefert (GATE PASS) — [spielwiese] deployt
+[watcher] 21:22 mac — Runde-5-Kette beendet
+[spielwiese-status] 21:30 — R5 VERDICT: REJECTED (Cron 21:25: Gate 1 PASS spread 0.289, Gate 3 FAIL min(pos)=max(neg)=0.500 — keine Separation). ZIP → model-result-v2.zip.rejected-20261106-2125. 2b bleibt live @0.52, gesund. mac-Analyse deckt sich (int8 nur 3 diskrete Scores); float32-Frage = Tim.
+[spielwiese-status] 21:39 — [mac] ~21:35: Detektor-FEATURE-Limit belegt (float32: braune-FP 0.660-0.674 auf POS-Niveau trotz Training als Negatives). mac-Anweisung an spielwiese-Lane: (1) Backend-Patch float-Zweig (0-255 Feed, arr/255.0 streichen), (2) Two-Stage-Classifier-Retrain mit braunen-FP-Frames. mac baut float32-ZIP. Threshold 0.52 hält. Hauptagent informiert.
+[watcher] 21:44 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":null,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":5
+[spielwiese-status] 21:47 — FLOAT32 LIVE ([spielwiese] 21:52: Unit-Edit+Restart 21:42, kein Code-Patch nötig — Feed war schon 0..255; Probe: pos 0.633-0.700/neg 0.167-0.275/braun 0.464-0.480, Separation PASS @ thr 0.52). Two-Stage bleibt AUS (FAIL auch auf float32-Features). mac: float32-ZIP nur bei Tim-GO (Alt-Szenen-Tradeoff). Neue Gate-3-Referenz = live-float32 (pos>=0.633, neg<=0.275). Wache verifiziert live-Modell im nächsten Check.
+[watcher] 21:56 spielwiese-wache HEARTBEAT 2026-11-06T21:56:04 loop ok
+[watcher] 22:01 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":null,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":5
+[spielwiese-status] 22:04 — [mac] 21:58: Gate-Set korrigiert (4 umbenannte Onsets waren R5-Trainings-Positive → raus; 10 pos/22 neg+3). R5-float32 korrigiert: ohne a1-frueh-Kollaps sep=PASS, aber live-2b schlägt R5 auf pos/neg (0.63/0.28 vs 0.49/0.36), R5 besser bei braun (0.33 vs 0.48). mac liefert KEIN R5-ZIP — braun-Tradeoff = Tim. Vor R6: Live-Test (Tims nächster Druck) zeigt Onset-Floor. 21:31-Verdict bleibt gültig (Alt-Gate-Artefakt, kein Floyd).
+[watcher] 22:10 mac — RUNDE 6 läuft (15000 Steps, 2b-Rezeptur, Gate-Set bereinigt: 10 pos/22 neg+3 fp). ETA ~00:05 → Export → Gate gegen live-float32-Referenz → ZIP bei PASS. Threshold 0.52 hält.
+[spielwiese-status] 22:12 — R6 läuft ([mac] 22:10: seit 22:0x, Dataset/Rezeptur unverändert 3198/6669, ETA ~00:05; danach Export float32-Hauptartefakt → mac-Gate vs Live-Ref pos>=0.633/neg<=0.275/braun<=0.480/Onset-Ziele → bei PASS ZIP). NEU LIVE: Shift-Erkennung ([spielwiese] 22:4x: Bett-Zentrum-Sprung >=0.12 → Alarm 'shift', --detect-shift, 151 Tests grün). API: float32 @0.52, error null. Wache: kritisch ~00:05-00:30 (ZIP-Fenster), Vollreport spätestens 01:30.
+[watcher] 22:16 mac — Runde 6 Training läuft: pid=37585 900/15000 loss=?
+[watcher] 22:18 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":null,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":5 | pid=37585 1200/15000 loss=?
+[watcher] 22:21 mac — Runde 6 Training läuft: pid=37585 1600/15000 loss=?
+[watcher] 22:26 mac — Runde 6 Training läuft: pid=37585 2300/15000 loss=?
+[watcher] 22:29 spielwiese-wache HEARTBEAT 2026-11-06T22:29:01 loop ok
+[watcher] 22:31 mac — Runde 6 Training läuft: pid=37585 3000/15000 loss=?
+[watcher] 22:33 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":null,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":5 | pid=37585 3300/15000 loss=?
+[watcher] 22:36 mac — Runde 6 Training läuft: pid=37585 3800/15000 loss=?
+[watcher] 22:42 mac — Runde 6 Training läuft: pid=37585 4500/15000 loss=?
+[watcher] 22:47 mac — Runde 6 Training läuft: pid=37585 5200/15000 loss=?
+[watcher] 22:49 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":null,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":5 | pid=37585 5500/15000 loss=?
+[watcher] 22:52 mac — Runde 6 Training läuft: pid=37585 5900/15000 loss=?
+[watcher] 22:57 mac — Runde 6 Training läuft: pid=37585 6700/15000 loss=?
+[watcher] 23:01 spielwiese-wache HEARTBEAT 2026-11-06T23:01:38 loop ok
+[watcher] 23:02 mac — Runde 6 Training läuft: pid=37585 7400/15000 loss=?
+[watcher] 23:04 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":null,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":5 | pid=37585 7800/15000 loss=?
+[watcher] 23:07 mac — Runde 6 Training läuft: pid=37585 8200/15000 loss=?
+[watcher] 23:12 mac — Runde 6 Training läuft: pid=37585 8900/15000 loss=?
+[watcher] 23:17 mac — Runde 6 Training läuft: pid=37585 9600/15000 loss=?
+[spielwiese-status] 23:18 — printing=true (Druck läuft, vermutlich Tims Live-Test für Onset-Floor-Frage; float32 @0.52 + Shift-Spur aktiv). Keine Evidenzen, kein Alarm.
+[watcher] 23:19 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":0.4,"window":{"positives":0,"size":6,"needed":4},"processing":true,"printing":true,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500, | pid=37585 9900/15000 loss=?
+[watcher] 23:22 mac — Runde 6 Training läuft: pid=37585 10400/15000 loss=?
+[watcher] 23:27 mac — Runde 6 Training läuft: pid=37585 11100/15000 loss=?
+[watcher] 23:32 mac — Runde 6 Training läuft: pid=37585 11800/15000 loss=?
+[watcher] 23:34 spielwiese-wache HEARTBEAT 2026-11-06T23:34:18 loop ok
+[watcher] 23:34 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":0.7,"window":{"positives":0,"size":6,"needed":4},"processing":true,"printing":true,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500, | pid=37585 12100/15000 loss=?
+[watcher] 23:37 mac — Runde 6 Training läuft: pid=37585 12600/15000 loss=?
+[watcher] 23:42 mac — Runde 6 Training läuft: pid=37585 13300/15000 loss=?
+[watcher] 23:47 mac — Runde 6 Training läuft: pid=37585 14100/15000 loss=?
+[watcher] 23:49 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":0.6,"window":{"positives":0,"size":6,"needed":4},"processing":true,"printing":true,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500, | pid=37585 14400/15000 loss=?
+[watcher] 23:52 mac — Runde 6 Training läuft: pid=37585 14800/15000 loss=?
+[watcher] 00:04 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":0.8,"window":{"positives":0,"size":6,"needed":4},"processing":true,"printing":true,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,
+[watcher] 00:06 spielwiese-wache HEARTBEAT 2026-11-07T00:06:55 loop ok
+[spielwiese-status] 00:07 — R6-Training BEENDET (~00:00, 15000 Steps, loss 1.3609). EXPORT STEHT AUS ([mac] 00:05: model-result.zip steht noch auf R5/21:22; mac übergibt bis ~00:20 freiwillig — 'go, exportiere' genügt). Hauptagent geweckt. Live: 2b-float32 @0.52, error null, Druck beendet ohne Alarm.
+[watcher] 00:15 mac — RUNDE 6 GATE FAIL (4. Kollaps: pos/neg bitidentische Bereiche) — kein ZIP, nichts deployt. 2b-float32 @ 0.52 bleibt live (fehlerfrei). Muster-Analyse + Optionen im File (Tim entscheidet morgen).
+[spielwiese-status] 00:15 — RUNDEN-MORATORIUM (Tim ~00:1x): keine weiteren Trainingsrunden, 2b-float32 = PRODUKTION (festgezogen, seit float32-Umstellung 0 Fehlalarme). Shift-Spur aktiv. Verbesserung nur über Code/Daten (Input-Pfad-Ursache belegen → dann wieder Runden; Onset via shift). R6-Export damit hinfällig. Live: float32 @0.52 ok, Druck läuft.
+[watcher] 00:20 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":0.1,"window":{"positives":0,"size":6,"needed":4},"processing":true,"printing":true,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,
+[watcher] 00:35 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":0.2,"window":{"positives":0,"size":6,"needed":4},"processing":true,"printing":true,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":500,
+[watcher] 00:40 spielwiese-wache HEARTBEAT 2026-11-07T00:40:03 loop ok
+[spielwiese-status] 00:40 — GO RUNDE 7 ([spielwiese] 00:35, Tim: 'prüft alles, dann los'): 2b-Rezeptur + NUR neue Daten (372 braune-FP-Negatives, 4 Nov-1-Onsets als Positive, Nov-3-Frame). PRE-FLIGHT-Pflicht (Diff vs training-2b-backup vor Start posten). Acceptance vorab registriert: pos>=0.60 | neg<=0.35 | braun<=0.48 | Onsets 202101/154>=0.52, 201917/008>=0.50. Live-System NICHT anfassen (Druck läuft). Wache: Vollreport spätestens 01:30 in beide Files.
+[watcher] 00:35 mac — RUNDE 7 LÄUFT: kontrolliertes Experiment (2b-Datenzustand exakt + nur braune-Negatives als Delta). ETA ~02:25 → Messung int8+float32 → A/B-Verdict (Trennung wie 2b = Label-Fix-Daten waren der Kollaps-Trigger; sonst = instabiles Training → Ansatzwechsel).
+[spielwiese-status] 00:48 — R7: Training seit 00:3x gestartet, RESTART mit frischem Paket ([spielwiese] 00:48: unified-rebuilt.zip 00:46, 183963720 B, SHA 33477f41...c29b41e0 — R5-Zip obsolet). 2b-Rezeptur pur + braune-FP als Hintergrund-Negatives (3192/6663). Acceptance registriert (pos>=0.60/neg<=0.35/braun<=0.48/Onsets). ETA ~02:25, Gate-Verdict+ZIP von mac (pipefail-Fix drin). Live: float32 @0.52 ok. Vollreport spätestens 01:30.
+[watcher] 00:52 mac — Runde 6 Training läuft: pid=46081 700/15000 loss=?
+[watcher] 00:57 mac — Runde 6 Training läuft: pid=46081 1300/15000 loss=?
+[watcher] 00:57 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":1072.3,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=46081 1300/15000 loss=?
+[spielwiese-status] 00:57 — [mac]-ENTSCHEIDSFRAGE an spielwiese-Lane (weckt Hauptagenten): R7-Konflikt — macs laufender Control-Lauf (2b-Reset+160 braune-HG, KEINE Onsets, ETA ~03:10) vs spielwieses 00:48-Paket (Onsets als Positive, Nov-3-Frame, cosine@50000). (a) sequenziell [macs Vorschlag, Default] oder (b) killen+sofort. Ohne Antwort: (a) + Auto-Start Package-R7 danach (gates_r7.py mit registrierter Acceptance).
+[watcher] 01:02 mac — Runde 6 Training läuft: pid=46081 2000/15000 loss=?
+[watcher] 01:07 mac — Runde 6 Training läuft: pid=46081 2800/15000 loss=?
+[watcher] 01:12 mac — Runde 6 Training läuft: pid=46081 3500/15000 loss=?
+[watcher] 01:12 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":1982.8,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=46081 3500/15000 loss=?
+[watcher] 01:13 spielwiese-wache HEARTBEAT 2026-11-07T01:13:38 loop ok
+[watcher] 01:17 mac — Runde 6 Training läuft: pid=46081 4300/15000 loss=?
+[watcher] 01:22 mac — Runde 6 Training läuft: pid=46081 5000/15000 loss=?
+[spielwiese-status] 01:22 — VOLLREPORT WACHE (Tag 1, 19:15-01:21+; Wache läuft WEITER über 01:30 hinaus). (1) LIVE: 2b-float32 @ thr 0.52 (persistiert), backend cpu, error null; KEIN Fehlalarm seit float32-Umstellung 21:42 (die 3 Fehlalarme des 6.11. = int8-Score-0.5-Plateau; int8 hat nur 3 diskrete Scores). Evidenzen: nur die 3 alten. Kein ZIP da (R4: rejected-1848; R5: zip.rejected-2125). (2) R5 VERDICT 21:31: REJECTED (Cron-Gate 3: min(pos)=max(neg)=0.500, keine Separation — int8-unfit; Gate 1 PASS spread 0.2891). (3) Wendepunkt: float32-Serving LIVE 21:42 (Unit-Edit+Restart, kein Code-Patch nötig — Feed war schon 0..255): Probe pos 0.633-0.700 / neg 0.167-0.275 / braun 0.464-0.480 → 0.52 trennt. Two-Stage bleibt AUS (FAIL auch auf float32-Features). Shift-Erkennung LIVE 22:4x (Bett-Zentrum-Sprung >=0.12, commit 29905db, 151 Tests grün). (4) Runden-Moratorium Tim ~00:1x → GO R7 Tim 00:35 ('prüft alles, dann los'). (5) R7 JETZT: macs Control-Lauf seit 00:35 (2b-Reset + 160 braune-HG-Frames, KEINE Onsets, ETA ~03:10) — mac-Frage (a) sequenziell vs (b) killen an Hauptagent offen; Default (a): danach Auto-Start Package-R7 (00:48er Zip, SHA 33477f41...c29b41e0, Onsets als Positive, gates_r7.py, Acceptance pos>=0.60/neg<=0.35/braun<=0.48/Onsets 202101+202154>=0.52, 201917+202008>=0.50). (6) Deploy-Cron zieht ZIP binnen 5 min → Verdict = Wache-Lane (großes Delta). (7) Wache: Heartbeats alle ~30 min (letzte 01:13), Schleife intakt,printing-Status nur hier im File. Drucker-Status NICHT an Tim. Wache wacht weiter — nächster Vollreport nur auf Aufforderung/Quoten-Notfall.
+[watcher] 01:27 mac — Runde 6 Training läuft: pid=46081 5600/15000 loss=?
+[watcher] 01:27 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":2906.7,"window":{"positives":0,"size":6,"needed":4},"processing":true,"printing":true,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print":5 | pid=46081 5600/15000 loss=?
+[watcher] 01:32 mac — Runde 6 Training läuft: pid=46081 6300/15000 loss=?
+[watcher] 01:37 mac — Runde 6 Training läuft: pid=46081 6900/15000 loss=?
+[watcher] 01:42 mac — Runde 6 Training läuft: pid=46081 7600/15000 loss=?
+[watcher] 01:42 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":450.7,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print": | pid=46081 7600/15000 loss=?
+[watcher] 01:46 spielwiese-wache HEARTBEAT 2026-11-07T01:46:54 loop ok
+[watcher] 01:47 mac — Runde 6 Training läuft: pid=46081 8400/15000 loss=?
+[watcher] 01:53 mac — Runde 6 Training läuft: pid=46081 9000/15000 loss=?
+[watcher] 01:58 mac — Runde 6 Training läuft: pid=46081 9700/15000 loss=?
+[watcher] 01:58 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":1367.1,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=46081 9700/15000 loss=?
+[watcher] 02:03 mac — Runde 6 Training läuft: pid=46081 10400/15000 loss=?
+[watcher] 02:08 mac — Runde 6 Training läuft: pid=46081 11200/15000 loss=?
+[watcher] 02:13 mac — Runde 6 Training läuft: pid=46081 11900/15000 loss=?
+[watcher] 02:13 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":2299.1,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=46081 11900/15000 loss=?
+[watcher] 02:18 mac — Runde 6 Training läuft: pid=46081 12700/15000 loss=?
+[watcher] 02:19 spielwiese-wache HEARTBEAT 2026-11-07T02:19:33 loop ok
+[watcher] 02:24 mac — Runde 6 Training läuft: pid=46081 13500/15000 loss=?
+[watcher] 02:29 mac — Runde 6 Training läuft: pid=46081 14300/15000 loss=?
+[watcher] 02:29 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":3277.5,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=46081 14300/15000 loss=?
+[watcher] 02:50 mac — RUNDE 7 A/B: KEIN KOLLAPS — Kollaps-Trigger = Label-Fix-Daten (bewiesen durch Kontroll-Experiment). R7: braun robust unterdrückt (≤0.32) aber keine Onset-Frühwarnung; 2b-float32 bleibt live (Frühwarnung + dünne braune Marge, production-stabil). Onset-Erkennung → doc's Verschiebungs-Feature. Beide Deploy-Optionen für Tim im File.
+[watcher] 02:41 mac — Runde-5-Kette scharf: wartet auf Trainings-Ende (60 min auf Start), dann Export→Gate→ZIP
+[spielwiese-status] 02:45 — R7 A/B-VERDICT ([mac] 02:50): Control NICHT kollabiert (float32: pos 0.473-0.723/neg 0.167-0.316/braun <=0.316 robust). BEWEIS: Kollaps-Trigger = Label-Fix-Daten (Onsets als Positive, ~90% identisch mit Negatives). R7-ZIP NICHT geliefert (pos-Floor 0.473 < 0.633-Referenz, Nachtregel). 2b-float32 bleibt LIVE. Onset-Frühwarnung → Shift-Feature (DOKUMENTIERT+ABGESCHLOSSEN). Tim-Entscheid offen: 2b (Frühwarnung, dünne braune Marge) vs R7-float32 (braun robust, keine Frühwarnung). Package-R7 (pid 46081) war @14300/15000 um 02:29 — Gate/ZIP-Fenster aktiv, Cron überwacht. Hauptagent geweckt.
+[watcher] 02:45 mac — Runde 7 Training läuft: ?/15000, loss ?
+[watcher] 02:50 mac — Runde 7 Training läuft: 800/15000, loss 2.0677829
+[watcher] 02:51 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":4589.6,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=53219 900/15000 loss=?
+[watcher] 02:53 spielwiese-wache HEARTBEAT 2026-11-07T02:53:34 loop ok
+[spielwiese-status] 02:53 — Package-R7 läuft ([mac] ~02:5x: PID 53219, 2b-Pins verifiziert total_steps 50000/num_steps 15000/LR 0.08, Records 3198/6669+751 = R5-Zusammensetzung; echter Delta = LR-Schedule cosine@50000). Gate gates_r7.py (Acceptance 1:1, float32 RAW), ZIP nur bei PASS. ETA ~04:5x → ZIP-Fenster ~05:15. Live 2b @0.52 unberührt.
+[watcher] 02:55 mac — Runde 7 Training läuft: 1500/15000, loss 2.0365233
+[watcher] 03:00 mac — Runde 7 Training läuft: 2200/15000, loss 2.1040795
+[watcher] 03:05 mac — Runde 7 Training läuft: 3000/15000, loss 1.8775563
+[watcher] 03:07 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":5538.4,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=53219 3200/15000 loss=?
+[watcher] 03:10 mac — Runde 7 Training läuft: 3700/15000, loss 1.7653561
+[watcher] 03:15 mac — Runde 7 Training läuft: 4500/15000, loss 1.8290194
+[watcher] 03:20 mac — Runde 7 Training läuft: 5200/15000, loss 1.7664943
+[watcher] 03:24 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":6552.0,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=53219 5700/15000 loss=?
+[watcher] 03:25 mac — Runde 7 Training läuft: 5900/15000, loss 1.5985017
+[watcher] 03:26 spielwiese-wache HEARTBEAT 2026-11-07T03:26:32 loop ok
+[watcher] 03:30 mac — Runde 7 Training läuft: 6600/15000, loss 1.8186014
+[watcher] 03:35 mac — Runde 7 Training läuft: 7400/15000, loss 1.889405
+[watcher] 03:40 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":7526.0,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=53219 8000/15000 loss=?
+[watcher] 03:40 mac — Runde 7 Training läuft: 8100/15000, loss 1.8373804
+[watcher] 03:45 mac — Runde 7 Training läuft: 8800/15000, loss 1.4136269
+[watcher] 03:50 mac — Runde 7 Training läuft: 9500/15000, loss 1.4640595
+[watcher] 03:55 mac — Runde 7 Training läuft: 10300/15000, loss 1.7383275
+[watcher] 03:57 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":8516.5,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=53219 10500/15000 loss=?
+[watcher] 03:59 spielwiese-wache HEARTBEAT 2026-11-07T03:59:03 loop ok
+[watcher] 04:00 mac — Runde 7 Training läuft: 11000/15000, loss 1.4656854
+[watcher] 04:05 mac — Runde 7 Training läuft: 11800/15000, loss 1.6579543
+[watcher] 04:10 mac — Runde 7 Training läuft: 12500/15000, loss 1.6469606
+[watcher] 04:13 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":9473.1,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print" | pid=53219 12800/15000 loss=?
+[watcher] 04:15 mac — Runde 7 Training läuft: 13200/15000, loss 1.4426128
+[watcher] 04:20 mac — Runde 7 Training läuft: 13900/15000, loss 1.5425148
+[watcher] 04:25 mac — Runde 7 Training läuft: 14700/15000, loss 1.5631061
+[watcher] 04:28 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":10396.0,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 04:31 spielwiese-wache HEARTBEAT 2026-11-07T04:31:45 loop ok
+[spielwiese-status] 04:31 — R7-Package-Training BEENDET (15000, final loss 1.5380). Export→gates_r7.py läuft; ZIP nur bei PASS. ZIP-Fenster ~04:35-05:00, Cron überwacht.
+[watcher] 04:32 mac — Runde 7 Export ok — 29-Frame-Gate läuft (Gate-Set erweitert: 11 pos / 29 neg)
+[watcher] 04:32 mac — Runde 7: GATE FAIL — kein ZIP (Nachtregel)
+[watcher] 04:32 mac — Runde-5-Kette beendet
+[spielwiese-status] 04:40 — R7-Package VERDICT: FAIL ([mac] ~04:37: min(pos)=0.233, Ziel >=0.60 ✗) → KEIN ZIP, Nachtregel hielt (pipefail-Fix aktiv). STRUKTUR-BEWEIS (3 Läufe): Onsets ~90% identisch mit Negatives → Positive-Boxen ziehen Negatives hoch; Onset-hoch+braun-niedrig deterministisch unerreichbar mit diesem Material. Architektur: Detektor (2b-float32 oder Control-R7, beides deploy-fähig) + Shift-Feature. Keine weiteren Läufe ohne doc-Auftrag. Tim-Entscheid (2b vs Control-R7) bleibt offen. Hauptagent geweckt.
+[watcher] 04:44 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":11343.6,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 04:59 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":12262.8,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 05:05 spielwiese-wache HEARTBEAT 2026-11-07T05:05:10 loop ok
+[watcher] 05:15 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":13188.4,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 05:30 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":14104.6,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 05:37 spielwiese-wache HEARTBEAT 2026-11-07T05:37:50 loop ok
+[watcher] 05:45 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":15041.5,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 06:01 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":15990.6,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 06:10 spielwiese-wache HEARTBEAT 2026-11-07T06:10:18 loop ok
+[watcher] 06:18 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":17018.5,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 06:34 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":17941.9,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 06:42 spielwiese-wache HEARTBEAT 2026-11-07T06:42:53 loop ok
+[watcher] 06:49 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":18862.6,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 07:05 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":19812.8,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 07:15 spielwiese-wache HEARTBEAT 2026-11-07T07:15:30 loop ok
+[watcher] 07:21 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":20744.0,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 07:36 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":21688.8,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 07:48 spielwiese-wache HEARTBEAT 2026-11-07T07:48:08 loop ok
+[watcher] 07:52 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":22627.8,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 08:08 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":23573.5,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 08:20 spielwiese-wache HEARTBEAT 2026-11-07T08:20:51 loop ok
+[watcher] 08:23 mac — api: {"enabled":true,"backend":"cpu","model":"data/models/spaghetti-float32.tflite","action":"pause","threshold":0.52,"last_look_s":24506.8,"window":{"positives":0,"size":6,"needed":4},"processing":false,"printing":false,"collect":{"enabled":true,"count":4000,"target":1000,"interval_s":5.0,"max_per_print
+[watcher] 02:55 mac — Wächter von Tim angehalten (A/B-Verdict komplett im File). Live: 2b-float32 @ 0.52, fehlerfrei. [mac] offline bis zur nächsten Session.
