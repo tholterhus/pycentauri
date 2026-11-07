@@ -389,6 +389,9 @@ body {
   margin-top: 4px;
 }
 
+/* Nur 2 Controls sichtbar (Pause|Stop bzw. Resume|Stop) — die füllen die Reihe. */
+.btn-grid.two-btns { grid-template-columns: repeat(2, 1fr); }
+
 .upload-row {
   display: flex;
   align-items: center;

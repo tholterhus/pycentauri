@@ -1025,8 +1025,35 @@ class DetectionController:
             event.backend,
             event.evidence,
         )
+        # Erst die Aktion ausführen, DANN eine einzige Meldung mit Ausgang
+        # (Tim 7.11.: „Spaghetti erkannt, Druck pausiert" — nicht zwei
+        # getrennte Nachrichten).
+        action_note = ""
+        if self.cfg.action in ("pause", "stop"):
+            if not self._control_allowed or self._action_runner is None:
+                log.error(
+                    "detection: refusing %s — requires --enable-control; notify only",
+                    self.cfg.action,
+                )
+            else:
+                try:
+                    await self._action_runner(self.cfg.action)
+                    action_note = (
+                        "Druck pausiert" if self.cfg.action == "pause" else "Druck gestoppt"
+                    )
+                except Exception as err:
+                    log.error("detection: %s action failed: %r", self.cfg.action, err)
+        label_de = "Objekt verschoben" if event.label == "shift" else "Spaghetti erkannt"
+        caption = f"{label_de} (score {event.score:.2f})"
+        if action_note:
+            caption += f" — {action_note}"
+        caption += f"\n{event.when} · backend {event.backend}"
         if self.cfg.webhook_url and self._webhook_poster is not None:
-            payload = {"type": "spaghetti_detected", "event": event.as_dict()}
+            payload = {
+                "type": "spaghetti_detected",
+                "action": action_note or self.cfg.action,
+                "event": event.as_dict(),
+            }
             try:
                 await self._webhook_poster(payload)
             except Exception as err:
@@ -1034,21 +1061,13 @@ class DetectionController:
         if self._telegram_poster is not None:
             try:
                 await self._telegram_poster(
-                    {"type": "spaghetti_detected", "event": event.as_dict()}
+                    {
+                        "type": "spaghetti_detected",
+                        "event": {**event.as_dict(), "text": caption},
+                    }
                 )
             except Exception as err:
                 log.error("detection: telegram delivery failed: %r", err)
-        if self.cfg.action in ("pause", "stop"):
-            if not self._control_allowed or self._action_runner is None:
-                log.error(
-                    "detection: refusing %s — requires --enable-control; notify only",
-                    self.cfg.action,
-                )
-                return
-            try:
-                await self._action_runner(self.cfg.action)
-            except Exception as err:
-                log.error("detection: %s action failed: %r", self.cfg.action, err)
 
     async def _flush_failure_ring(self, event: DetectionEvent) -> None:
         """Preserve the last N frames before the alarm as failure evidence.

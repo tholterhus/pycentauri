@@ -156,6 +156,16 @@ function renderStatus(raw) {
   }
   sc.textContent = (pstatus != null) ? String(pstatus).padStart(2, "0") : "--";
 
+  // Controls: nur die passenden Buttons zeigen (Tim 7.11.) — läuft: Pause,
+  // pausiert (manuell/Spaghetti/Filament): Resume. Stop bleibt immer da.
+  const paused = info?.cls === "state-paused";
+  const grid = document.querySelector("#controls .btn-grid");
+  if (grid && $("btn-pause") && $("btn-resume")) {
+    $("btn-pause").hidden = paused;
+    $("btn-resume").hidden = !paused;
+    grid.classList.add("two-btns");
+  }
+
   // Layer — show current even when the total is unknown (the CC2's status
   // has no total-layer field; it's filled from file metadata when available).
   $("layer").textContent =
@@ -381,8 +391,8 @@ function wireControls() {
   document.addEventListener("keydown", (ev) => {
     if ($("controls").hidden) return;
     if (ev.target && /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
-    if (ev.key === "F1") { ev.preventDefault(); $("btn-pause").click(); }
-    if (ev.key === "F2") { ev.preventDefault(); $("btn-resume").click(); }
+    if (ev.key === "F1" && !$("btn-pause").hidden) { ev.preventDefault(); $("btn-pause").click(); }
+    if (ev.key === "F2" && !$("btn-resume").hidden) { ev.preventDefault(); $("btn-resume").click(); }
     if (ev.key === "F3") { ev.preventDefault(); $("btn-stop").click(); }
   });
 }
