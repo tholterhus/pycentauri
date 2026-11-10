@@ -562,19 +562,18 @@ centauri server --host printer.example --enable-control \
   file check, homing, leveling, preheating, printing). Also on when the
   daemon attaches while a print is already running (e.g. after a service
   restart mid-print).
-- **Off** once the nozzle crosses below `--light-cool-temp` (default
-  50 °C) while no print is active. A job that ends with the nozzle already
-  cold turns the light off immediately. Paused jobs count as active — a
-  nozzle may cool during a long pause, but the light stays on.
+- **Off whenever the nozzle is below `--light-cool-temp`** (default
+  50 °C) — no exceptions: it does not matter whether the light was
+  toggled by hand, and a paused job does not protect it either ("kalt
+  heißt dunkel"). One OFF command per cold episode — no chatter.
 
-Rules of engagement: commands fire only on these transitions, and only
-when the reported light state disagrees — a light you toggled by hand at
-idle is never fought, and reconnects can't chatter the light. One guard
-against a stuck light: if the watcher reconnects while the printer is
-idle, cold and lit **and** the automation itself was the last thing seen
-switching that light on (a print ended while the service was down), it
-clears the light. Requires `--enable-control`; the daemon reports the
-feature in `/api/info` as `light_automation`.
+The two rules only meet in the seconds after a cold start: the light
+comes on at print start, and the cool-down rule waits until the nozzle's
+heat-up passes the threshold (or the job ends — a print cancelled during
+file check / leveling never heats at all, and its light goes out with
+it). Attaching while idle, cold and lit (service restart during
+cool-down) goes dark immediately. Requires `--enable-control`; the
+daemon reports the feature in `/api/info` as `light_automation`.
 
 ## Print status codes
 

@@ -1,12 +1,11 @@
-"""Chamber-light automation: light on at print start, off after cool-down.
+"""Chamber-light automation: light on at print start, off when cold.
 
 Replaces the Home-Assistant automation pair that used to do exactly this
-job: the chamber light comes on when a print starts, and goes out once the
-nozzle has cooled below a threshold (default 50 °C) while no print is
-active anymore. Lives in the server daemon
-(``centauri server --light-automation``) and follows the same status stream
-as the spaghetti detection — ``printer.watch()`` with backoff-retry across
-reconnects.
+job: the chamber light comes on when a print starts, and goes out whenever
+the nozzle sits below a threshold (default 50 °C) — no exceptions. Lives in
+the server daemon (``centauri server --light-automation``) and follows the
+same status stream as the spaghetti detection — ``printer.watch()`` with
+backoff-retry across reconnects.
 """
 
 from __future__ import annotations
@@ -36,8 +35,8 @@ RETRY_BACKOFF_MAX = 30.0
 class LightConfig:
     """Tunables for :class:`LightAutomation` (CLI: ``--light-cool-temp``)."""
 
-    #: Nozzle temperature below which — with no active print — the light
-    #: goes out ("wenn die Düse auf X° abgekühlt ist").
+    #: Nozzle temperature below which the light goes out, no matter what
+    #: ("Immer aus bei <50°").
     cool_temp: float = 50.0
 
 
@@ -56,21 +55,21 @@ def _light_is_on(st: Status) -> bool | None:
 class LightAutomation:
     """Drive the chamber light from the printer's status stream.
 
-    Rules (the Home-Assistant pair this replaces):
+    Two rules, straight from the Home-Assistant pair this replaces:
 
     * a print starts — light ON. Also fires when attaching while a print is
       already running (service restart mid-print);
-    * the nozzle cools below ``cool_temp`` while no print is active — light
-      OFF. A print that ends with the nozzle already cold turns the light
-      off immediately (no crossing will come);
-    * attaching while idle, cold and lit *and* the automation itself was
-      the last thing seen switching the light on — light OFF once, so a
-      service restart or outage during cool-down cannot leave the light on
-      forever. A light the *user* switched on is never fought here.
+    * the nozzle sits below ``cool_temp`` — light OFF, **no exceptions**: a
+      manually toggled light does not protect it, and a paused job does not
+      either. One OFF command per cold episode (deduped until the light is
+      seen off or the nozzle warms up).
 
-    Commands fire only on these transitions and only when the reported
-    light state disagrees with the rule's outcome — a manually toggled
-    light at idle is never fought, and redundant commands are skipped.
+    The rules only meet in the seconds after a cold start: while the nozzle
+    has not yet passed the threshold, the cool-down rule waits for the
+    print's heat-up — or for the job to end, which is how a print cancelled
+    during file check / leveling (never heats at all) still goes dark.
+    Attaching while idle, cold and lit (service restart during cool-down)
+    goes dark immediately: there is no heat-up to wait for.
     """
 
     def __init__(
@@ -87,11 +86,15 @@ class LightAutomation:
         self._status_task: asyncio.Task[None] | None = None
         self._cmds: set[asyncio.Task[None]] = set()
         self._active = False  # a job occupies the printer
-        self._prev_temp: float | None = None  # nozzle temp of the previous push
         self._first_push = True  # next status is the first of a (re)connect
-        # True while the last light switch this automation knows of was its
-        # own ON — gates rule 4 so a user's manual light survives reconnects.
-        self._our_on = False
+        # True between a cold print start and the nozzle first passing the
+        # threshold (or the job ending) — the window in which the print-
+        # start rule keeps the light on against the cool-down rule.
+        self._awaiting_heat = False
+        # An OFF command for the current cold episode has been sent; suppress
+        # further ones until the light is seen off or the nozzle warms up
+        # (a status push can predate the command's effect on the printer).
+        self._cold_off_sent = False
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -148,55 +151,38 @@ class LightAutomation:
         self._active = active
         first = self._first_push
         self._first_push = False
-        # An observed "light off" is the newest truth: the automation can no
-        # longer claim responsibility for the current light state.
+
+        # Rule 1 — print start (also when attaching mid-print): light on.
+        # A start with the nozzle still below the threshold suspends the
+        # cool-down rule until the heat-up passes it or the job ends.
+        if active and (first or not was_active):
+            self._awaiting_heat = temp is None or temp < self.cfg.cool_temp
+            if light_on is not True:
+                self._fire(True, "Druck gestartet")
+        elif not active and was_active:
+            # Job over (finished/stopped/errored) — the suspension lifts
+            # even if the nozzle never heated (cancelled file check or
+            # leveling): the invariant cleans the light up.
+            self._awaiting_heat = False
+
+        # Rule 2 — the invariant: cold means dark, no exceptions. Neither a
+        # pause nor a manually toggled light protects it. ``_cold_off_sent``
+        # only dedupes: one OFF per cold episode, because the status push
+        # right after a command can predate its effect on the printer.
+        if temp is not None and temp >= self.cfg.cool_temp:
+            self._awaiting_heat = False
+            self._cold_off_sent = False
         if light_on is False:
-            self._our_on = False
-
-        # 1) Print start — also on the first push when attaching mid-print.
-        #    (Already lit → nothing to send, and the light stays the user's.)
-        if active and (first or not was_active) and light_on is not True:
-            self._fire(True, "Druck gestartet")
-
-        # 2) Job ended with the nozzle already cold — light off right away.
+            self._cold_off_sent = False
         if (
-            not active
-            and was_active
-            and temp is not None
+            temp is not None
             and temp < self.cfg.cool_temp
+            and not self._awaiting_heat
+            and not self._cold_off_sent
             and light_on is not False
         ):
-            self._fire(False, f"Druck beendet, Düse schon kalt ({temp:.1f} °C)")
-
-        # 3) The usual path: the nozzle crosses below the threshold while
-        #    idle. Fires once per crossing; suppressed while any job is
-        #    active (a long pause may cool the nozzle, but the light stays).
-        if (
-            not active
-            and not first
-            and temp is not None
-            and temp < self.cfg.cool_temp
-            and self._prev_temp is not None
-            and self._prev_temp >= self.cfg.cool_temp
-            and light_on is not False
-        ):
-            self._fire(False, f"Düse abgekühlt ({temp:.1f} °C < {self.cfg.cool_temp:.0f} °C)")
-
-        # 4) Attaching while idle, cold and lit: a print ended while the
-        #    watcher was down (service restart, outage) and the light is one
-        #    the automation itself switched on — clear it. Only fires while
-        #    _our_on, so a manually lit light survives reconnects.
-        if (
-            first
-            and not active
-            and self._our_on
-            and temp is not None
-            and temp < self.cfg.cool_temp
-            and light_on
-        ):
-            self._fire(False, f"neu verbunden: kalt und leer ({temp:.1f} °C)")
-
-        self._prev_temp = temp
+            self._fire(False, f"Düse kalt ({temp:.1f} °C < {self.cfg.cool_temp:.0f} °C)")
+            self._cold_off_sent = True
 
     # --- command path -------------------------------------------------------
 
@@ -208,8 +194,6 @@ class LightAutomation:
                 reason,
             )
             return
-        # Our own command is the newest known truth about the light.
-        self._our_on = on
         task = asyncio.create_task(self._send(on, reason), name=f"pycentauri-light-{on}")
         self._cmds.add(task)
         task.add_done_callback(self._cmds.discard)

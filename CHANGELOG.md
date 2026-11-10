@@ -4,6 +4,21 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.1] - 2026-11-10
+
+### Changed
+- Light automation simplified to a strict invariant ("immer aus bei
+  <50°"): the light goes out whenever the nozzle is below
+  `--light-cool-temp` — no exceptions. The former guards are gone: a
+  paused job no longer protects the light (it goes out when the nozzle
+  cools past the threshold during a long pause), and a manually toggled
+  light is no longer respected while cold. The print-start rule still
+  wins for the seconds of a cold start: the cool-down rule waits for the
+  heat-up to pass the threshold — or for the job to end, which also cleans
+  up a print cancelled during file check / leveling (never heats, light
+  goes out with it). One OFF command per cold episode (deduped) instead
+  of one per temperature crossing.
+
 ## [0.16.0] - 2026-11-10
 
 ### Added
