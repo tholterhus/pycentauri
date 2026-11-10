@@ -844,6 +844,21 @@ def cmd_server(
         "--detect-shift",
         help="Alarm when the printed object moves on the bed (position tracked across looks).",
     ),
+    light_automation: bool = typer.Option(
+        False,
+        "--light-automation/--no-light-automation",
+        help=(
+            "Chamber-light automation: light on at print start, off once the "
+            "nozzle has cooled below --light-cool-temp while no print is "
+            "active. Replaces the Home-Assistant automation; requires "
+            "--enable-control."
+        ),
+    ),
+    light_cool_temp: float = typer.Option(
+        50.0,
+        "--light-cool-temp",
+        help="Nozzle °C below which (while idle) the chamber light goes out.",
+    ),
 ) -> None:
     """Run the HTTP + SSE server (requires `pip install 'pycentauri[server]'`)."""
     try:
@@ -861,6 +876,15 @@ def cmd_server(
         raise typer.Exit(code=2)
     if telegram_password and not (telegram_token and telegram_chat_id):
         _echo_err("--telegram-password requires --telegram-token and --telegram-chat-id.")
+        raise typer.Exit(code=2)
+    if light_automation and not enable_control:
+        _echo_err("--light-automation requires --enable-control (it switches the chamber light).")
+        raise typer.Exit(code=2)
+    if not light_automation and light_cool_temp != 50.0:
+        _echo_err("--light-cool-temp requires --light-automation.")
+        raise typer.Exit(code=2)
+    if not 0.0 <= light_cool_temp <= 300.0:
+        _echo_err("--light-cool-temp must be within 0..300 °C.")
         raise typer.Exit(code=2)
 
     detect_cfg = None
@@ -904,6 +928,12 @@ def cmd_server(
             shift_enabled=detect_shift,
         )
 
+    light_cfg = None
+    if light_automation:
+        from pycentauri.lighting import LightConfig
+
+        light_cfg = LightConfig(cool_temp=light_cool_temp)
+
     async def resolve() -> tuple[str, str | None]:
         return await _resolve_target(host)
 
@@ -933,6 +963,7 @@ def cmd_server(
         rtsp_config=rtsp_cfg,
         check_updates=check_updates,
         detect_config=detect_cfg,
+        light_config=light_cfg,
     )
 
 

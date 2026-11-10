@@ -27,3 +27,7 @@ TELEGRAM_CHAT_ID=
 # Optional bot password (BotFather): attached to every Telegram request as
 # the secret-token header. Nothing is ever received from Telegram.
 TELEGRAM_PASSWORD=
+# Chamber-light automation (needs ENABLE_CONTROL=1): light on at print start,
+# off once the nozzle cools below this threshold while idle. Consumed by the
+# service unit's ExecStart as --light-cool-temp ${LIGHT_COOL_TEMP}.
+LIGHT_COOL_TEMP=50

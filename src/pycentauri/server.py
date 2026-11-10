@@ -58,6 +58,7 @@ from pycentauri.client import (
 from pycentauri.connect import connect_auto
 from pycentauri.discovery import DiscoveredPrinter
 from pycentauri.discovery import discover as lan_discover
+from pycentauri.lighting import LightAutomation, LightConfig
 
 if TYPE_CHECKING:
     from pycentauri.detect.pipeline import DetectConfig, DetectionController
@@ -408,6 +409,7 @@ def create_app(
     rtsp_config: rtsp_module.RtspConfig | None = None,
     check_updates: bool = False,
     detect_config: DetectConfig | None = None,
+    light_config: LightConfig | None = None,
 ) -> FastAPI:
     """Build the FastAPI app. ``host`` is the printer's IP/hostname.
 
@@ -416,7 +418,9 @@ def create_app(
     Control endpoints are registered only when ``enable_control`` is ``True``.
     ``rtsp_config`` enables the ``/api/rtsp/*`` endpoints and the "STREAM"
     panel in the web UI. ``detect_config`` enables the ``/api/detect``
-    endpoints and the failed-print detection pipeline.
+    endpoints and the failed-print detection pipeline. ``light_config``
+    enables the chamber-light automation (on at print start, off once the
+    nozzle has cooled below the threshold while idle).
     """
 
     @asynccontextmanager
@@ -462,6 +466,14 @@ def create_app(
                 ),
             )
         app.state.detect = controller
+        light_auto: LightAutomation | None = None
+        if light_config is not None:
+            light_auto = LightAutomation(
+                light_config,
+                get_printer=lambda: manager.printer,
+                control_allowed=enable_control,
+            )
+        app.state.light = light_auto
         update_task: asyncio.Task[None] | None = None
         if check_updates:
             update_task = asyncio.create_task(
@@ -470,9 +482,14 @@ def create_app(
         await manager.start()
         if controller is not None:
             await controller.start()
+        if light_auto is not None:
+            await light_auto.start()
         try:
             yield
         finally:
+            if light_auto is not None:
+                with contextlib.suppress(Exception):
+                    await light_auto.stop()
             if update_task is not None:
                 update_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -869,6 +886,7 @@ def create_app(
             "connected": manager._printer is not None and not manager._printer._closed,
             "enable_control": manager.enable_control,
             "detect_enabled": app.state.detect is not None,
+            "light_automation": app.state.light is not None,
         }
 
     # --- Static web UI ------------------------------------------------------
@@ -1082,6 +1100,7 @@ def run(
     rtsp_config: rtsp_module.RtspConfig | None = None,
     check_updates: bool = False,
     detect_config: DetectConfig | None = None,
+    light_config: LightConfig | None = None,
 ) -> None:
     """Launch the server with uvicorn (blocks).
 
@@ -1111,6 +1130,7 @@ def run(
         rtsp_config=rtsp_config,
         check_updates=check_updates,
         detect_config=detect_config,
+        light_config=light_config,
     )
     # Bound graceful shutdown: open SSE/MJPEG streams never close on
     # their own, and without a timeout uvicorn waits for them forever —

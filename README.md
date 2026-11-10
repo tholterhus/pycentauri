@@ -547,6 +547,35 @@ The model was trained on 7,295 images / 13,791 boxes assembled from:
 - Base architecture: SSD MobileNet V2 320×320, TensorFlow Object
   Detection API (Apache-2.0)
 
+## Chamber-light automation
+
+The daemon can run the little Home-Assistant automation pair that used to
+live around the printer — light on when a print starts, light off once the
+nozzle has cooled down:
+
+```sh
+centauri server --host printer.example --enable-control \
+    --light-automation --light-cool-temp 50
+```
+
+- **On** when a print starts (any transition into a job-occupied state —
+  file check, homing, leveling, preheating, printing). Also on when the
+  daemon attaches while a print is already running (e.g. after a service
+  restart mid-print).
+- **Off** once the nozzle crosses below `--light-cool-temp` (default
+  50 °C) while no print is active. A job that ends with the nozzle already
+  cold turns the light off immediately. Paused jobs count as active — a
+  nozzle may cool during a long pause, but the light stays on.
+
+Rules of engagement: commands fire only on these transitions, and only
+when the reported light state disagrees — a light you toggled by hand at
+idle is never fought, and reconnects can't chatter the light. One guard
+against a stuck light: if the watcher reconnects while the printer is
+idle, cold and lit **and** the automation itself was the last thing seen
+switching that light on (a print ended while the service was down), it
+clears the light. Requires `--enable-control`; the daemon reports the
+feature in `/api/info` as `light_automation`.
+
 ## Print status codes
 
 `print_status` in the API and library uses the CC1 firmware's code

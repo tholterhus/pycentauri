@@ -4,6 +4,22 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.0] - 2026-11-10
+
+### Added
+- Chamber-light automation in the server daemon (`centauri server
+  --light-automation --light-cool-temp 50`): the light comes on when a
+  print starts and goes out once the nozzle has cooled below the threshold
+  while no print is active — replacing the Home-Assistant automation pair
+  that existed solely for this. Fires only on transitions (print start,
+  cool-down crossing, attach), skips commands when the reported light
+  state already matches, and never fights a manually toggled light at
+  idle. A paused job counts as active (light stays on), a job ending with
+  the nozzle already cold goes dark immediately, and a reconnect while
+  idle+cold+lit clears a stale light the automation itself had switched on
+  (service restart during cool-down). Requires `--enable-control`;
+  `/api/info` reports it as `light_automation`.
+
 ## [0.15.3] - 2026-11-04
 
 ### Fixed
