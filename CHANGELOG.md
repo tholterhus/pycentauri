@@ -4,6 +4,18 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.3] - 2026-11-13
+
+### Fixed
+- Duplicate spaghetti alert at print boundaries: the pause/job-end re-arm
+  reset the one-alert-per-print flag but left the positive window filled,
+  so an evaluation already in flight (inference runs in the executor and
+  yields the loop) could fire off the stale positives right after the
+  reset. The window now resets with the flag — one alert per printing
+  segment, deterministically. Flaked twice under timing pressure
+  (locally on 3.11, then on the 3.13 CI runner) before being pinned
+  down; the production path had the same race.
+
 ## [0.16.2] - 2026-11-13
 
 ### Changed
