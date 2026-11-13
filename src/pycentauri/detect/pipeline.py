@@ -717,8 +717,13 @@ class DetectionController:
         if self._active and not was_active:
             self._begin_session()
         elif not self._active and was_active:
-            # Session loop observes the flag and unsubscribes itself.
+            # Session loop observes the flag and unsubscribes itself. The
+            # window must reset too: an evaluation already in flight when
+            # the job ended would otherwise fire off the stale positives
+            # right after this reset (duplicate telegram alert — flaked on
+            # CI, 13.11.).
             self._fired = False
+            self._window.clear()
         text = STATUS_ALERTS.get(code) if code is not None else None
         if (
             self._telegram_poster is not None
