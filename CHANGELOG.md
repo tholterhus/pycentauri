@@ -4,6 +4,23 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.2] - 2026-11-13
+
+### Changed
+- Light automation reduced to a pure temperature rule ("nur die
+  Nozzle-Temp entscheidet"): the light is ON while the nozzle is above
+  `--light-cool-temp` and OFF below it — the print status is irrelevant
+  in both directions. The print-start rule is gone (the heat-up crossing
+  lights the chamber a few seconds after a cold start instead), and the
+  temperature now rules symmetrically: pause, idle, manual toggles —
+  every status push reconciles the reported light state with the target,
+  so a manually switched light is put back in line within a second.
+  Reconciliation dedupes via the believed state plus a 3 s report-lag
+  grace (a push that predates the command's effect is not a fresh
+  deviation); failed commands back off exponentially (2 s → 60 s) so the
+  invariant cannot become per-push (1/s) command spam while the printer
+  is unreachable.
+
 ## [0.16.1] - 2026-11-10
 
 ### Changed

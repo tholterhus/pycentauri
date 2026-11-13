@@ -1,11 +1,12 @@
-"""Chamber-light automation: light on at print start, off when cold.
+"""Chamber-light automation driven purely by the nozzle temperature.
 
 Replaces the Home-Assistant automation pair that used to do exactly this
-job: the chamber light comes on when a print starts, and goes out whenever
-the nozzle sits below a threshold (default 50 °C) — no exceptions. Lives in
-the server daemon (``centauri server --light-automation``) and follows the
-same status stream as the spaghetti detection — ``printer.watch()`` with
-backoff-retry across reconnects.
+job. One input, one target state — the light is ON while the nozzle is
+above a threshold (default 50 °C) and OFF while it is below; the print
+status plays no role. Lives in the server daemon
+(``centauri server --light-automation``) and follows the same status
+stream as the spaghetti detection — ``printer.watch()`` with backoff-retry
+across reconnects.
 """
 
 from __future__ import annotations
@@ -21,22 +22,22 @@ from pycentauri.models import Status
 
 log = logging.getLogger(__name__)
 
-#: ``print_status`` codes meaning "no job occupies the printer" — the same
-#: set the detection pipeline and the UI treat as not busy (IDLE, STOPPED,
-#: COMPLETED, ERROR). Everything else — FILE_CHECKING, HOMING, PAUSED,
-#: PREHEATING, PRINTING, ... — counts as an active job.
-INACTIVE_CODES = frozenset({0, 8, 9, 14})
-
-RETRY_BACKOFF_START = 1.0
-RETRY_BACKOFF_MAX = 30.0
+#: Retry backoff after a failed light command — the invariant would
+#: otherwise re-fire on every status push (1/s) while sends keep failing.
+RETRY_BACKOFF_START = 2.0
+RETRY_BACKOFF_MAX = 60.0
+#: A status push can predate the effect of a command we just sent; reports
+#: matching the pre-command state are ignored for this long (they are lag,
+#: not a fresh manual toggle).
+LAG_GRACE_S = 3.0
 
 
 @dataclass(frozen=True)
 class LightConfig:
     """Tunables for :class:`LightAutomation` (CLI: ``--light-cool-temp``)."""
 
-    #: Nozzle temperature below which the light goes out, no matter what
-    #: ("Immer aus bei <50°").
+    #: The nozzle temperature that decides the light: above it → ON,
+    #: at/below it → OFF ("nur die Nozzle-Temp entscheidet").
     cool_temp: float = 50.0
 
 
@@ -53,23 +54,26 @@ def _light_is_on(st: Status) -> bool | None:
 
 
 class LightAutomation:
-    """Drive the chamber light from the printer's status stream.
+    """Drive the chamber light purely from the nozzle temperature.
 
-    Two rules, straight from the Home-Assistant pair this replaces:
+    Every status push reconciles the reported light state with the target
+    state (nozzle above ``cool_temp`` → ON, at/below → OFF):
 
-    * a print starts — light ON. Also fires when attaching while a print is
-      already running (service restart mid-print);
-    * the nozzle sits below ``cool_temp`` — light OFF, **no exceptions**: a
-      manually toggled light does not protect it, and a paused job does not
-      either. One OFF command per cold episode (deduped until the light is
-      seen off or the nozzle warms up).
+    * a heat-up crossing the threshold turns the light on — a print
+      starting cold lights up as soon as the nozzle passes the threshold;
+    * a cool-down below the threshold turns it off — print end, long pause,
+      aborted file check, all the same;
+    * a light toggled by hand is put back in line with the temperature on
+      the next push ("nur die Nozzle-Temp entscheidet", beide Richtungen);
+    * attaching to an already hot or cold printer (service restart,
+      outage) normalizes the state immediately.
 
-    The rules only meet in the seconds after a cold start: while the nozzle
-    has not yet passed the threshold, the cool-down rule waits for the
-    print's heat-up — or for the job to end, which is how a print cancelled
-    during file check / leveling (never heats at all) still goes dark.
-    Attaching while idle, cold and lit (service restart during cool-down)
-    goes dark immediately: there is no heat-up to wait for.
+    Reconciliation dedupes via ``_applied`` — the state we last observed or
+    commanded — so each correction costs one command; a report that still
+    shows the pre-command state within :data:`LAG_GRACE_S` is treated as
+    lag, not as a new deviation. Failed commands back off exponentially
+    (from :data:`RETRY_BACKOFF_START` up to :data:`RETRY_BACKOFF_MAX`)
+    instead of retrying on every push.
     """
 
     def __init__(
@@ -85,20 +89,24 @@ class LightAutomation:
         self._closing = False
         self._status_task: asyncio.Task[None] | None = None
         self._cmds: set[asyncio.Task[None]] = set()
-        self._active = False  # a job occupies the printer
-        self._first_push = True  # next status is the first of a (re)connect
-        # True between a cold print start and the nozzle first passing the
-        # threshold (or the job ending) — the window in which the print-
-        # start rule keeps the light on against the cool-down rule.
-        self._awaiting_heat = False
-        # An OFF command for the current cold episode has been sent; suppress
-        # further ones until the light is seen off or the nozzle warms up
-        # (a status push can predate the command's effect on the printer).
-        self._cold_off_sent = False
+        #: Light state we last observed (report is truth) or commanded
+        #: (assumed success). ``None`` = never seen; the first push or
+        #: command pins it, and every deviation from the temperature target
+        #: fires exactly one correction.
+        self._applied: bool | None = None
+        self._pre_cmd: bool | None = None  # believed state before the last command
+        self._cmd_at = 0.0  # monotonic ts of the last dispatched command
+        self._retry_not_before = 0.0
+        self._retry_backoff = RETRY_BACKOFF_START
 
     # --- lifecycle ----------------------------------------------------------
 
     async def start(self) -> None:
+        if not self._control_allowed:
+            log.warning(
+                "light-automation: --enable-control fehlt — Beobachtung ohne "
+                "Licht-Befehle (die Invariante kann nicht durchgesetzt werden)"
+            )
         self._status_task = asyncio.create_task(self._status_loop(), name="pycentauri-light-status")
 
     async def stop(self) -> None:
@@ -122,11 +130,10 @@ class LightAutomation:
         may raise while the manager reconnects, and a watch stream dies with
         every printer disconnect — both just fall through to the backoff.
         """
-        backoff = RETRY_BACKOFF_START
+        backoff = 1.0
         while not self._closing:
             try:
                 printer = self._get_printer()
-                self._first_push = True  # attach rules re-arm per connection
                 async for st in printer.watch():
                     self._on_status(st)
                 if not self._closing:
@@ -139,74 +146,70 @@ class LightAutomation:
             if self._closing:
                 break
             await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, RETRY_BACKOFF_MAX)
+            backoff = min(backoff * 2, 30.0)
 
     def _on_status(self, st: Status) -> None:
-        """Apply the rules to one status push (see class docstring)."""
-        code = st.print_status
-        active = code is not None and code not in INACTIVE_CODES
+        """Reconcile the reported light state with the temperature target."""
         temp = st.temp_nozzle
-        light_on = _light_is_on(st)
-        was_active = self._active
-        self._active = active
-        first = self._first_push
-        self._first_push = False
-
-        # Rule 1 — print start (also when attaching mid-print): light on.
-        # A start with the nozzle still below the threshold suspends the
-        # cool-down rule until the heat-up passes it or the job ends.
-        if active and (first or not was_active):
-            self._awaiting_heat = temp is None or temp < self.cfg.cool_temp
-            if light_on is not True:
-                self._fire(True, "Druck gestartet")
-        elif not active and was_active:
-            # Job over (finished/stopped/errored) — the suspension lifts
-            # even if the nozzle never heated (cancelled file check or
-            # leveling): the invariant cleans the light up.
-            self._awaiting_heat = False
-
-        # Rule 2 — the invariant: cold means dark, no exceptions. Neither a
-        # pause nor a manually toggled light protects it. ``_cold_off_sent``
-        # only dedupes: one OFF per cold episode, because the status push
-        # right after a command can predate its effect on the printer.
-        if temp is not None and temp >= self.cfg.cool_temp:
-            self._awaiting_heat = False
-            self._cold_off_sent = False
-        if light_on is False:
-            self._cold_off_sent = False
-        if (
-            temp is not None
-            and temp < self.cfg.cool_temp
-            and not self._awaiting_heat
-            and not self._cold_off_sent
-            and light_on is not False
-        ):
-            self._fire(False, f"Düse kalt ({temp:.1f} °C < {self.cfg.cool_temp:.0f} °C)")
-            self._cold_off_sent = True
+        if temp is None:
+            return  # no temperature reading → no decision basis
+        loop = asyncio.get_running_loop()
+        observed = _light_is_on(st)
+        if observed is not None:
+            if (
+                observed != self._applied
+                and observed == self._pre_cmd
+                and loop.time() - self._cmd_at < LAG_GRACE_S
+            ):
+                pass  # the report predates our command's effect — lag, ignore
+            else:
+                self._applied = observed
+                self._pre_cmd = None
+        # Exactly at the threshold counts as the cold side — the partition
+        # must have no gap, or a crossing could fire twice or never.
+        desired = temp > self.cfg.cool_temp
+        if desired != self._applied and self._fire(desired, temp):
+            self._pre_cmd = self._applied
+            self._applied = desired
 
     # --- command path -------------------------------------------------------
 
-    def _fire(self, on: bool, reason: str) -> None:
+    def _fire(self, on: bool, temp: float) -> bool:
+        """Dispatch a light command; ``True`` when a task was created."""
         if not self._control_allowed:
-            log.warning(
-                "light-automation: Licht %s fällig (%s), aber --enable-control fehlt",
-                "AN" if on else "AUS",
-                reason,
-            )
-            return
+            return False
+        loop = asyncio.get_running_loop()
+        if loop.time() < self._retry_not_before:
+            return False  # backing off after failures — retry later
+        self._cmd_at = loop.time()
+        reason = (
+            f"Düse {'warm' if on else 'kalt'}: {temp:.1f} °C (Schwelle {self.cfg.cool_temp:.0f} °C)"
+        )
         task = asyncio.create_task(self._send(on, reason), name=f"pycentauri-light-{on}")
         self._cmds.add(task)
         task.add_done_callback(self._cmds.discard)
+        return True
 
     async def _send(self, on: bool, reason: str) -> None:
+        loop = asyncio.get_running_loop()
         try:
             printer = self._get_printer()
             await printer.set_light(on)
+            self._retry_backoff = RETRY_BACKOFF_START
+            self._retry_not_before = 0.0
             log.info("light-automation: Licht %s — %s", "AN" if on else "AUS", reason)
         except asyncio.CancelledError:
             raise
         except Exception as err:
-            log.warning("light-automation: set_light(%s) fehlgeschlagen: %r", on, err)
+            self._retry_not_before = loop.time() + self._retry_backoff
+            self._retry_backoff = min(self._retry_backoff * 2, RETRY_BACKOFF_MAX)
+            log.warning(
+                "light-automation: set_light(%s) fehlgeschlagen: %r — nächster "
+                "Versuch nach %.0fs Backoff",
+                on,
+                err,
+                self._retry_backoff,
+            )
 
 
-__all__ = ["INACTIVE_CODES", "LightAutomation", "LightConfig"]
+__all__ = ["LightAutomation", "LightConfig"]

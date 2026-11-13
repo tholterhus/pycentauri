@@ -20,13 +20,18 @@ class FakePrinter:
     """Records set_light calls; watch() replays one status chunk per
     connection, then ends the stream (as a printer disconnect would)."""
 
-    def __init__(self, chunks: list[list[Status]] | None = None) -> None:
+    def __init__(
+        self,
+        chunks: list[list[Status]] | None = None,
+        fail_left: int | None = None,
+    ) -> None:
         self.calls: list[bool] = []
-        self.fail = False  # make set_light raise
+        self.fail_left = fail_left  # fail the first N sends, then succeed
         self.chunks: list[list[Status]] = chunks if chunks is not None else []
 
     async def set_light(self, on: bool) -> None:
-        if self.fail:
+        if self.fail_left is not None and self.fail_left > 0:
+            self.fail_left -= 1
             raise RuntimeError("wire down")
         self.calls.append(on)
 
@@ -81,172 +86,170 @@ async def _until(pred: Callable[[], bool], timeout: float = 2.0) -> None:
         await asyncio.sleep(0.01)
 
 
-# --- rule 1: print start → light on -----------------------------------------
+# --- the invariant: hot = on, cold = off ------------------------------------
 
 
-async def test_print_start_turns_light_on() -> None:
+async def test_heat_up_turns_light_on() -> None:
+    """Crossing the threshold on the way up → ON — no print status needed."""
     printer = FakePrinter()
     auto = _automation(printer)
-    auto._on_status(_status(code=0, nozzle=27.0, light=False))
-    auto._on_status(_status(code=13, nozzle=30.0, light=False))
+    auto._on_status(_status(code=0, nozzle=30.0, light=False))
+    auto._on_status(_status(code=0, nozzle=49.0, light=False))
+    auto._on_status(_status(code=0, nozzle=60.0, light=False))  # crossing → ON
     await _drain(auto)
     assert printer.calls == [True]
 
 
-async def test_no_redundant_on_when_already_lit() -> None:
+async def test_cool_down_turns_light_off() -> None:
     printer = FakePrinter()
     auto = _automation(printer)
-    auto._on_status(_status(code=13, nozzle=215.0, light=True))  # attach mid-print, lit
-    auto._on_status(_status(code=0, nozzle=60.0, light=True))  # idle, warm, lit
-    auto._on_status(_status(code=13, nozzle=215.0, light=True))  # next start, lit
+    auto._on_status(_status(code=0, nozzle=80.0, light=True))
+    auto._on_status(_status(code=0, nozzle=60.0, light=True))
+    auto._on_status(_status(code=0, nozzle=45.0, light=True))  # crossing → OFF
+    auto._on_status(_status(code=0, nozzle=40.0, light=False))  # deduped
     await _drain(auto)
-    assert printer.calls == []
+    assert printer.calls == [False]
 
 
-async def test_attach_mid_print_turns_light_on() -> None:
+async def test_status_is_irrelevant_full_cycle() -> None:
+    """Pause, printing, idle — only the temperature decides. A print that
+    pauses long enough to cool goes dark and lights up again on resume."""
     printer = FakePrinter()
-    auto = _automation(printer)  # fresh watcher, first push is mid-print
+    auto = _automation(printer)
+    auto._on_status(_status(code=13, nozzle=200.0, light=True))  # printing, hot
+    auto._on_status(_status(code=6, nozzle=45.0, light=True))  # paused, cold → OFF
+    auto._on_status(_status(code=13, nozzle=80.0, light=False))  # resumed, warm → ON
+    await _drain(auto)
+    assert printer.calls == [False, True]
+
+
+async def test_boundary_exactly_50_counts_cold() -> None:
+    """The partition has no gap: exactly at the threshold = cold side, so a
+    crossing fires exactly once in each direction."""
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto._on_status(_status(code=0, nozzle=50.0, light=False))  # at 50 = cold: nothing
+    auto._on_status(_status(code=0, nozzle=50.5, light=False))  # above → ON
+    auto._on_status(_status(code=0, nozzle=50.0, light=True))  # back at 50 → OFF
+    await _drain(auto)
+    assert printer.calls == [True, False]
+
+
+# --- manual toggles are reconciled -------------------------------------------
+
+
+async def test_manual_off_while_hot_is_corrected() -> None:
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto._on_status(_status(code=0, nozzle=200.0, light=True))  # hot, lit: nothing
+    auto._on_status(_status(code=0, nozzle=200.0, light=False))  # user off → ON
+    auto._on_status(_status(code=0, nozzle=200.0, light=True))  # confirmed: nothing
+    await _drain(auto)
+    assert printer.calls == [True]
+
+
+async def test_manual_on_while_cold_is_corrected() -> None:
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # user on, cold → OFF
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # lag: deduped
+    await _drain(auto)
+    assert printer.calls == [False]
+
+
+# --- attach normalizes the state ---------------------------------------------
+
+
+async def test_attach_hot_dark_seeds_on() -> None:
+    """Service restart mid-print (hot, dark) → light on immediately."""
+    printer = FakePrinter()
+    auto = _automation(printer)
     auto._on_status(_status(code=13, nozzle=215.0, light=False))
     await _drain(auto)
     assert printer.calls == [True]
 
 
-async def test_cold_start_light_survives_heating() -> None:
-    """The cool-down rule must not kill the print-start light while the
-    nozzle is still heating up from cold — the classic flicker bug."""
+async def test_attach_cold_lit_seeds_off() -> None:
+    """Service restart during cool-down (cold, lit) → light off immediately."""
     printer = FakePrinter()
     auto = _automation(printer)
-    auto._on_status(_status(code=13, nozzle=30.0, light=False))  # start → ON
-    auto._on_status(_status(code=13, nozzle=40.0, light=True))  # still cold!
-    auto._on_status(_status(code=13, nozzle=60.0, light=True))  # heated → armed
-    auto._on_status(_status(code=13, nozzle=220.0, light=True))
-    auto._on_status(_status(code=9, nozzle=45.0, light=True))  # end, cold → OFF
-    await _drain(auto)
-    assert printer.calls == [True, False]
-
-
-# --- rule 2: cold means dark, no exceptions ---------------------------------
-
-
-async def test_light_off_once_nozzle_cools_below_threshold() -> None:
-    printer = FakePrinter()
-    auto = _automation(printer)
-    auto._on_status(_status(code=0, nozzle=27.0, light=False))
-    auto._on_status(_status(code=13, nozzle=215.0, light=False))  # start → ON
-    auto._on_status(_status(code=9, nozzle=180.0, light=True))  # completed, hot
-    auto._on_status(_status(code=9, nozzle=80.0, light=True))
-    auto._on_status(_status(code=9, nozzle=49.9, light=True))  # cold → OFF
-    auto._on_status(_status(code=9, nozzle=49.0, light=True))  # deduped
-    auto._on_status(_status(code=9, nozzle=55.0, light=False))  # warm again
-    auto._on_status(_status(code=9, nozzle=49.0, light=True))  # cold again → OFF
-    await _drain(auto)
-    assert printer.calls == [True, False, False]
-
-
-async def test_off_during_pause() -> None:
-    """A paused job does not protect the light: if the nozzle cools below
-    the threshold during a long pause, the light goes out."""
-    printer = FakePrinter()
-    auto = _automation(printer)
-    auto._on_status(_status(code=13, nozzle=215.0, light=True))
-    auto._on_status(_status(code=6, nozzle=80.0, light=True))  # paused, cooling
-    auto._on_status(_status(code=6, nozzle=45.0, light=True))  # cold → OFF
+    auto._on_status(_status(code=0, nozzle=45.0, light=True))
     await _drain(auto)
     assert printer.calls == [False]
 
 
-async def test_manual_cold_light_is_cleared() -> None:
-    """A light toggled on by hand while the nozzle is cold goes out again —
-    'immer aus bei <50°', regardless of who switched it on."""
+# --- robustness ---------------------------------------------------------------
+
+
+async def test_no_temperature_no_action() -> None:
+    """Without a temperature reading there is no decision basis — but the
+    first real reading reconciles the light immediately."""
     printer = FakePrinter()
     auto = _automation(printer)
-    auto._on_status(_status(code=0, nozzle=27.0, light=False))  # attach, dark
-    auto._on_status(_status(code=0, nozzle=26.0, light=True))  # user switches on
-    auto._on_status(_status(code=0, nozzle=26.5, light=True))  # deduped
+    auto._on_status(_status(code=0, nozzle=None, light=True))
+    auto._on_status(_status(code=0, nozzle=45.0, light=True))  # cold, lit → OFF
     await _drain(auto)
     assert printer.calls == [False]
-
-
-async def test_reconnect_clears_cold_light() -> None:
-    """Service restart / outage during cool-down: attaching while idle,
-    cold and lit goes dark immediately."""
-    printer = FakePrinter()
-    auto = _automation(printer)
-    auto._on_status(_status(code=13, nozzle=215.0, light=False))  # ON, print
-    auto._first_push = True  # watcher reconnect after downtime
-    auto._on_status(_status(code=0, nozzle=45.0, light=True))  # idle, cold, lit
-    await _drain(auto)
-    assert printer.calls == [True, False]
-
-
-async def test_print_cancelled_before_heating_goes_dark() -> None:
-    """A print that never heats the nozzle (cancelled during file check or
-    leveling) ends cold — the suspension lifts with the job and the light
-    goes out instead of burning until the next print."""
-    printer = FakePrinter()
-    auto = _automation(printer)
-    auto._on_status(_status(code=10, nozzle=30.0, light=False))  # file check → ON
-    auto._on_status(_status(code=8, nozzle=30.0, light=True))  # user cancelled
-    await _drain(auto)
-    assert printer.calls == [True, False]
-
-
-# --- robustness --------------------------------------------------------------
-
-
-async def test_control_disabled_logs_but_never_sends() -> None:
-    printer = FakePrinter()
-    auto = _automation(printer, control_allowed=False)
-    auto._on_status(_status(code=0, nozzle=27.0, light=False))
-    auto._on_status(_status(code=13, nozzle=30.0, light=False))
-    await _drain(auto)
-    assert printer.calls == []
-
-
-async def test_send_failure_does_not_break_the_machine() -> None:
-    printer = FakePrinter()
-    printer.fail = True
-    auto = _automation(printer)
-    auto._on_status(_status(code=13, nozzle=215.0, light=False))  # ON attempted, fails
-    await _drain(auto)
-    auto._on_status(_status(code=9, nozzle=45.0, light=True))  # OFF attempted, fails
-    await _drain(auto)
-    assert printer.calls == []
 
 
 async def test_unknown_light_state_still_acts_without_spam() -> None:
     """Without LightStatus in the push the rules fire anyway (harmless
     no-op on the firmware if the light already matches) — but exactly once
-    per cold episode."""
+    per state change, since our own command pins the assumed state."""
     printer = FakePrinter()
     auto = _automation(printer)
-    auto._on_status(_status(code=13, nozzle=215.0, light=None))  # start, state unknown
+    auto._on_status(_status(code=0, nozzle=45.0, light=None))  # cold → OFF once
+    auto._on_status(_status(code=0, nozzle=44.0, light=None))  # deduped
+    auto._on_status(_status(code=0, nozzle=60.0, light=None))  # warm → ON
+    auto._on_status(_status(code=0, nozzle=55.0, light=None))  # deduped
+    await _drain(auto)
+    assert printer.calls == [False, True]
+
+
+async def test_send_failure_backs_off_then_retries(monkeypatch: Any) -> None:
+    """A failed command must not be re-fired on every push (1/s spam while
+    the printer is unreachable) — exponential backoff instead."""
+    monkeypatch.setattr(lighting, "RETRY_BACKOFF_START", 0.01)
+    monkeypatch.setattr(lighting, "LAG_GRACE_S", 0.0)
+    printer = FakePrinter(fail_left=1)
+    auto = _automation(printer)
+    auto._on_status(_status(code=0, nozzle=80.0, light=False))  # ON → fails
+    await _drain(auto)
+    auto._on_status(_status(code=0, nozzle=80.0, light=False))  # within backoff: skipped
+    await _drain(auto)
+    assert printer.calls == []
+    await asyncio.sleep(0.02)  # backoff elapses
+    auto._on_status(_status(code=0, nozzle=80.0, light=False))  # retry → succeeds
     await _drain(auto)
     assert printer.calls == [True]
-    auto._on_status(_status(code=9, nozzle=180.0, light=None))
-    auto._on_status(_status(code=9, nozzle=45.0, light=None))  # cold, unknown → OFF
-    auto._on_status(_status(code=9, nozzle=44.0, light=None))  # deduped
+
+
+async def test_control_disabled_never_sends() -> None:
+    printer = FakePrinter()
+    auto = _automation(printer, control_allowed=False)
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))
+    auto._on_status(_status(code=0, nozzle=80.0, light=False))
     await _drain(auto)
-    assert printer.calls == [True, False]
+    assert printer.calls == []
 
 
 async def test_status_loop_survives_watch_deaths_and_reseeds(
     monkeypatch: Any,
 ) -> None:
-    """watch() dying must not kill the automation; a reconnect re-arms the
-    attach rules (first-push rules fire again on the new connection)."""
+    """watch() dying must not kill the automation; a reconnect reconciles
+    the light from the first push of the new connection."""
     monkeypatch.setattr(lighting, "RETRY_BACKOFF_START", 0.01)
     monkeypatch.setattr(lighting, "RETRY_BACKOFF_MAX", 0.02)
     printer = FakePrinter(
         chunks=[
-            [_status(code=13, nozzle=215.0, light=False)],  # attach mid-print → ON
+            [_status(code=13, nozzle=215.0, light=False)],  # attach hot+dark → ON
         ]
     )
     auto = _automation(printer)
     await auto.start()
     try:
         await _until(lambda: printer.calls == [True])
-        # Next connection: idle, cold, lit → invariant clears it.
+        # Next connection: idle, cold, lit → reconciled to OFF.
         printer.chunks.append([_status(code=0, nozzle=45.0, light=True)])
         await _until(lambda: printer.calls == [True, False])
     finally:
