@@ -126,12 +126,9 @@
           <button class="btn adj-apply" data-target="temp-bed" type="button">Set</button>
         </div>
         <div class="adj-row">
-          <label class="adj-lbl" id="adj-temp-chamber-lbl" for="adj-temp-chamber">Chamber</label>
-          <input type="range" id="adj-temp-chamber-slider" min="0" max="60" step="1" value="0">
-          <input type="number" id="adj-temp-chamber" min="0" max="60" step="1" value="0">
-          <button class="btn adj-apply" data-target="temp-chamber" type="button">Set</button>
+          <label class="adj-lbl">Chamber</label>
+          <span class="adj-readout"><span id="adj-temp-chamber-readout">—</span> °C</span>
         </div>
-        <div class="adj-hint" id="adj-chamber-hint" hidden></div>
 
         <div class="ctrl-msg" id="adj-msg" aria-live="polite"></div>
       </div>

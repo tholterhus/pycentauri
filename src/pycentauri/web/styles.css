@@ -1132,9 +1132,10 @@ body {
   font-weight: 700;
 }
 
-.adj-hint {
+.adj-readout {
   font-family: var(--f-mono);
-  font-size: 10px;
-  color: var(--fg-dim);
-  margin: -2px 0 8px 8px;
+  font-size: 13px;
+  color: var(--cyan);
+  text-align: right;
+  flex: 1;
 }

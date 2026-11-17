@@ -487,11 +487,6 @@ const ADJUST_TARGETS = {
       ? `Set bed target to ${g("temp-bed")}°C ? High-temp; check bed adhesive.`
       : null,
   },
-  "temp-chamber": {
-    label: "CHAMBER TEMP",
-    path: "/print/temperature",
-    build: (g) => ({ chamber: g("temp-chamber") }),
-  },
 };
 
 async function applyAdjust(target, getters) {
@@ -499,27 +494,6 @@ async function applyAdjust(target, getters) {
   if (!spec) return;
   const get = (k) => getters[k] ? getters[k]() : 0;
 
-  // While a heating session is armed, the CHAMBER TEMP row drives the
-  // chamber-heating setpoint (the printer itself has no chamber heater);
-  // 0 clears the target and falls back to the configured min/max band.
-  if (target === "temp-chamber" && heatingArmed) {
-    const v = get("temp-chamber");
-    setAdjMsg(`» CHAMBER HEATING TARGET…`);
-    const btns = document.querySelectorAll("#adjust .btn");
-    for (const b of btns) b.disabled = true;
-    try {
-      const ok = await postHeating({ chamber_target: v });
-      if (ok) {
-        clearAdjustDirty(target);  // confirmed — the live value may re-hydrate
-        setAdjMsg(`✓ CHAMBER HEATING TARGET → ${v || "off (min/max band)"} acknowledged`, "ok");
-      }
-    } catch (e) {
-      setAdjMsg(`✗ CHAMBER HEATING TARGET: ${e.message}`, "err");
-    } finally {
-      setTimeout(() => { for (const b of btns) b.disabled = false; }, 600);
-    }
-    return;
-  }
   const confirmMsg = spec.confirm ? spec.confirm(get) : null;
   if (confirmMsg && !confirm(confirmMsg)) {
     // Declined: the edit is abandoned — the control returns to the live
@@ -561,10 +535,6 @@ function hydrateAdjust(raw) {
     ["fan-chamber",  fans.BoxFan],
     ["temp-nozzle",  raw.TempTargetNozzle],
     ["temp-bed",     raw.TempTargetHotbed],
-    // Armed heating session: the chamber row shows the effective OFF point
-    // (set target, or the configured max) — 0 clears back to the min/max
-    // band. Not armed: the printer's own placeholder target.
-    ["temp-chamber", heatingArmed ? (heatingEffMax ?? 0) : raw.TempTargetBox],
   ];
   for (const [base, v] of targets) {
     if (v == null) continue;
@@ -577,6 +547,11 @@ function hydrateAdjust(raw) {
     num.value = rounded;
     slider.value = rounded;
   }
+  // Chamber row is a readout of the current chamber temperature — the
+  // heater regulation lives in the Chamber heating panel (min/max or a
+  // set target), not in this slider section.
+  const readout = $("adj-temp-chamber-readout");
+  if (readout) readout.textContent = (raw.TempOfBox != null) ? (+raw.TempOfBox).toFixed(1) : "—";
 }
 
 async function applySpeedMode(mode) {
@@ -615,7 +590,6 @@ function wireAdjust() {
     "fan-chamber":   bindPair("fan-chamber"),
     "temp-nozzle":   bindPair("temp-nozzle"),
     "temp-bed":      bindPair("temp-bed"),
-    "temp-chamber":  bindPair("temp-chamber"),
   };
   for (const btn of document.querySelectorAll("#adjust .adj-apply")) {
     btn.addEventListener("click", () => applyAdjust(btn.dataset.target, getters));
@@ -911,45 +885,35 @@ function wireDetect() {
 let heatingControlEnabled = false;
 let heatingDirty = false;
 let heatingOpen = false;
-// Mirrored for the ADJUST chamber row: while a session is armed, its Set
-// slider targets the chamber-heating setpoint (the effective OFF point)
-// instead of the printer's (heater-less) chamber target.
-let heatingArmed = false;
-let heatingTarget = null;
-let heatingEffMax = null;
-let heatingArmedPrev = false;
 
 function renderHeating(state) {
   const badge = $("heating-badge");
   badge.classList.remove("on", "warn", "err");
   const on = state.heater_on === true;
   const off = state.heater_on === false;
-  if (!state.enabled) {
-    badge.textContent = "OFF";
-  } else if (on) {
-    badge.textContent = "ON";
-    badge.classList.add("on");
-  } else if (off) {
-    badge.textContent = "IDLE";
-  } else {
-    badge.textContent = "—";
+  // The badge only carries meaning while a session is armed (ON/OFF) — an
+  // idle dash-box says nothing and disappears entirely.
+  badge.hidden = !state.armed;
+  if (state.armed) {
+    badge.textContent = on ? "ON" : off ? "OFF" : "…";
+    if (on) badge.classList.add("on");
   }
 
-  heatingArmed = !!state.armed;
-  heatingTarget = (state.settings && state.settings.chamber_target) || null;
-  heatingEffMax = heatingTarget ?? (state.settings ? state.settings.chamber_max : null);
-  // An armed-state flip changes the chamber row's semantics — any pending
-  // edit there belongs to the old mode and must not linger.
-  if (heatingArmed !== heatingArmedPrev) clearAdjustDirty("temp-chamber");
-  heatingArmedPrev = heatingArmed;
-
-  // The one indicator that answers "is the heater running right now?".
+  // One line that answers "is the heater running right now?" — with an
+  // idle printer it simply says "idle" instead of a cryptic HEATER ?
+  // (an idle heater is definitionally off; the automation guarantees a
+  // confirmed OFF at every session end).
+  const heatingTarget = (state.settings && state.settings.chamber_target) || null;
   const ind = $("heater-indicator");
   ind.classList.remove("on", "off", "warn");
   if (!state.enabled) {
-    ind.textContent = "HEATER —";
+    ind.textContent = "disabled";
     ind.classList.add("off");
     ind.title = "chamber heating disabled";
+  } else if (!state.armed) {
+    ind.textContent = "idle";
+    ind.classList.add("off");
+    ind.title = "no print needs chamber heat";
   } else if (on) {
     ind.textContent = "HEATER ON";
     ind.classList.add("on");
@@ -968,26 +932,13 @@ function renderHeating(state) {
   const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
   let detail;
   if (heatingTarget != null) {
-    detail = `chamber ${chamber} · hold ${Math.round(heatingTarget - 2)}–${Math.round(+heatingTarget)}°`;
+    detail = `hold ${Math.round(heatingTarget - 2)}–${Math.round(+heatingTarget)}°`;
   } else if (state.armed) {
-    detail = `chamber ${chamber} · hold ${Math.round(s.chamber_min ?? 0)}–${Math.round(s.chamber_max ?? 0)}°`;
+    detail = `hold ${Math.round(s.chamber_min ?? 0)}–${Math.round(s.chamber_max ?? 0)}°`;
   } else {
-    detail = `chamber ${chamber} · idle`;
+    detail = "";
   }
   $("heater-detail").textContent = detail;
-
-  // Show the consequence of the chamber Set at the control itself.
-  const hint = $("adj-chamber-hint");
-  if (hint) {
-    if (state.armed && heatingControlEnabled) {
-      const lo = heatingTarget != null ? Math.round(heatingTarget - 2) : Math.round(s.chamber_min ?? 0);
-      const hi = heatingTarget != null ? Math.round(+heatingTarget) : Math.round(s.chamber_max ?? 0);
-      hint.textContent = `heater holds ${lo}–${hi}° · Set sets the target (0 = min/max band)`;
-      hint.hidden = false;
-    } else {
-      hint.hidden = true;
-    }
-  }
 
   // Master checkbox (far left) and the settings toggle (far right) share
   // one row with deliberate distance — no fat-finger crosstalk. The
@@ -1015,9 +966,6 @@ function renderHeating(state) {
     $("heating-chamber-max").value = s.chamber_max ?? "";
     $("heating-markers").value = (s.material_markers || []).join(",");
   }
-
-  // While a session is armed, the ADJUST chamber row is the heating
-  // setpoint — its hydration source switches with heatingArmed above.
 }
 
 async function loadHeating() {

@@ -4,6 +4,19 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.6] - 2026-11-18
+
+### Changed
+- Idle chamber heating panel stops pretending: the dash badge and the
+  "HEATER ?" indicator only existed when no successful command had been
+  sent yet — an idle heater is definitionally off, so the panel now says
+  "idle" (and the badge disappears entirely outside an armed session).
+- The ADJUST chamber row becomes a pure readout of the current chamber
+  temperature (slider/Set/hint removed): the heater regulation lives in
+  the Chamber heating panel (min/max band, or a target set via the API) —
+  a thermostat setpoint below the current chamber temperature would
+  silently mean "heater off", which was impossible to see from a slider.
+
 ## [0.17.5] - 2026-11-17
 
 ### Changed
