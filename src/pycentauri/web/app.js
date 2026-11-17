@@ -105,6 +105,7 @@ async function loadInfo() {
       $("adjust").hidden = false;
       canvasControlEnabled = true;
       filesControlEnabled = true;
+      heatingControlEnabled = true;
     }
 
     try {
@@ -835,6 +836,133 @@ function wireDetect() {
 }
 
 // ---------------------------------------------------------------------------
+// Chamber heating (Shelly) — armed at print start by bed target or filename
+// marker; while armed the heater follows the chamber hysteresis. The settings
+// are only visible when the master checkbox is on (and editable with
+// control); they persist in data/heating.json and win over .conf defaults.
+
+let heatingControlEnabled = false;
+let heatingDirty = false;
+
+function setHeatingMsg(text, kind) {
+  const el = $("heating-msg");
+  el.classList.remove("ok", "warn", "err");
+  if (kind) el.classList.add(kind);
+  el.textContent = text || "";
+}
+
+function renderHeating(state) {
+  const badge = $("heating-badge");
+  const led = $("heating-led");
+  badge.classList.remove("on", "warn", "err");
+  led.hidden = true;
+  if (!state.enabled) {
+    badge.textContent = "OFF";
+  } else if (state.heater_on === true) {
+    badge.textContent = "HEAT";
+    badge.classList.add("on");
+    led.hidden = false;
+  } else if (state.heater_on === false) {
+    badge.textContent = "IDLE";
+  } else {
+    badge.textContent = "—";
+  }
+
+  $("heating-state").textContent =
+    state.enabled ? (state.armed ? "REGELT" : "BEREIT") : "AUS";
+  $("heating-session").textContent = state.armed
+    ? (state.armed_reason || "armed")
+    : "kein heizbedürftiger Druck";
+  $("heating-chamber").textContent = fmtTemp(state.chamber_temp);
+  $("heating-bed").textContent =
+    (state.bed_target != null) ? `${Math.round(+state.bed_target)} °C` : "—";
+
+  if (state.last_error) setHeatingMsg(state.last_error, "err");
+  else setHeatingMsg(state.last_action || "", "ok");
+
+  // Master checkbox always visible; the fields only when enabled — and
+  // only editable when the server runs with --enable-control.
+  const editable = state.enabled && heatingControlEnabled;
+  $("heating-fields").hidden = !state.enabled;
+  $("heating-enabled").disabled = !heatingControlEnabled;
+  for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
+                    "heating-chamber-min", "heating-chamber-max", "heating-markers",
+                    "heating-save"]) {
+    $(id).disabled = !editable;
+  }
+
+  // Hydrate inputs — never while the user is typing in them.
+  if (!heatingDirty) {
+    $("heating-enabled").checked = !!state.enabled;
+    const s = state.settings || {};
+    $("heating-url-on").value = s.url_on || "";
+    $("heating-url-off").value = s.url_off || "";
+    $("heating-bed-temp").value = s.bed_temp ?? "";
+    $("heating-chamber-min").value = s.chamber_min ?? "";
+    $("heating-chamber-max").value = s.chamber_max ?? "";
+    $("heating-markers").value = (s.material_markers || []).join(",");
+  }
+}
+
+async function loadHeating() {
+  try {
+    const r = await fetch("/api/heating");
+    if (r.status === 404) { $("heating-panel").hidden = true; return; }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    renderHeating(await r.json());
+    $("heating-panel").hidden = false;
+  } catch (_) {
+    // transient server hiccup — keep whatever the panel last showed
+  }
+}
+
+async function postHeating(body) {
+  try {
+    const r = await fetch("/api/heating/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const detail = (await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`;
+      setHeatingMsg(detail, "err");
+      return false;
+    }
+    renderHeating(await r.json());
+    setHeatingMsg("gespeichert ✓", "ok");
+    return true;
+  } catch (e) {
+    setHeatingMsg(String(e), "err");
+    return false;
+  }
+}
+
+function wireHeating() {
+  $("heating-enabled").addEventListener("change", (ev) => {
+    heatingDirty = true;
+    postHeating({ enabled: ev.target.checked }).then((ok) => {
+      if (ok) heatingDirty = false;
+    });
+  });
+  for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
+                    "heating-chamber-min", "heating-chamber-max", "heating-markers"]) {
+    $(id).addEventListener("input", () => { heatingDirty = true; });
+  }
+  $("heating-save").addEventListener("click", async () => {
+    const body = {
+      url_on: $("heating-url-on").value.trim(),
+      url_off: $("heating-url-off").value.trim(),
+      bed_temp: parseFloat($("heating-bed-temp").value),
+      chamber_min: parseFloat($("heating-chamber-min").value),
+      chamber_max: parseFloat($("heating-chamber-max").value),
+      material_markers: $("heating-markers").value,
+    };
+    const ok = await postHeating(body);
+    if (ok) heatingDirty = false;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Canvas multi-filament (CC2 only)
 
 let canvasControlEnabled = false;
@@ -1444,6 +1572,7 @@ function noteStatusForPoll(pstatus) {
   wireHistory();
   wireRtsp();
   wireDetect();
+  wireHeating();
   wireWebcam();
   await loadInfo();
   await loadCanvas();
@@ -1451,6 +1580,7 @@ function noteStatusForPoll(pstatus) {
   await loadHistory();
   await loadRtsp();
   await loadDetect();
+  await loadHeating();
   await pollOnce();
   connectSSE();
   setInterval(loadInfo, 60000);
@@ -1458,5 +1588,7 @@ function noteStatusForPoll(pstatus) {
   setInterval(loadRtsp, 8000);
   // Detection state too (processing flag, window, new evidence).
   setInterval(loadDetect, 5000);
+  // Heating state (armed session, heater, chamber temp).
+  setInterval(loadHeating, 5000);
   schedulePoll();
 })();

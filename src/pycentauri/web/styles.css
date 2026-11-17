@@ -1008,3 +1008,62 @@ body {
 }
 .threshold-hint { font-size: 11px; color: var(--dim, #9aa0a6); line-height: 1.35; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+/* --- Chamber heating (Shelly) ------------------------------------------ */
+
+.heating-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 2px;
+  cursor: pointer;
+  font-family: var(--f-label);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.heating-check input[type="checkbox"] {
+  accent-color: var(--amber);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.heating-check input[type="checkbox"]:disabled { cursor: not-allowed; }
+
+.heating-fields { margin-top: 4px; }
+
+.heating-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+  margin: 8px 0;
+}
+
+.heating-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--f-label);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.heating-grid input {
+  background: var(--bg-inset);
+  border: 1px solid var(--rule);
+  color: var(--fg);
+  font-family: var(--f-mono);
+  font-size: 12px;
+  padding: 5px 7px;
+  width: 100%;
+  outline: none;
+}
+
+.heating-grid input:focus { border-color: var(--amber); }
+
+.heating-grid input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.heating-save { padding: 6px 14px; font-size: 11px; }

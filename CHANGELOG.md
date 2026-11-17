@@ -4,6 +4,32 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.0] - 2026-11-17
+
+### Added
+- Chamber-heating automation (`centauri server --heating`, new
+  `pycentauri/heating.py`): armed at print start when the bed target
+  exceeds the threshold (default 90 °C) OR the filename contains a
+  configured material marker ("ABS", "ASA", ... — case-insensitive);
+  latched for the whole print. While armed, the printer's chamber sensor
+  (TempOfBox) drives an on/off hysteresis over two HTTP GET endpoints
+  (Shelly ON/OFF URLs): below chamber-min ON, above chamber-max OFF,
+  in between hold. At print end the heater goes off unconditionally —
+  a failed OFF command retries every push (backoff-paced) until it lands,
+  so the heater can never be left running. Paused prints keep being
+  controlled; a service restart mid-print re-evaluates the activation
+  from the first push; enabling the feature mid-print does the same.
+  Commands dedupe via the last *successfully* commanded state and back
+  off exponentially (2 s → 60 s) while the Shelly is unreachable.
+- Settings (enabled, ON/OFF URLs, bed threshold, chamber min/max,
+  markers) are editable in the web UI — the fields are only visible when
+  the "Innenraumheizung" master checkbox is on, and only editable with
+  --enable-control. They persist in `data/heating.json`, which wins over
+  the .conf/CLI defaults (same pattern as the detection threshold).
+- API: `GET /api/heating` (state + settings), `POST /api/heating/settings`
+  (partial update, requires control), `/api/info` reports
+  `heating_automation`.
+
 ## [0.16.4] - 2026-11-17
 
 ### Fixed

@@ -31,3 +31,18 @@ TELEGRAM_PASSWORD=
 # off once the nozzle cools below this threshold while idle. Consumed by the
 # service unit's ExecStart as --light-cool-temp ${LIGHT_COOL_TEMP}.
 LIGHT_COOL_TEMP=50
+
+# Chamber-heating automation (needs ENABLE_CONTROL=1): armed at print start
+# when the bed target exceeds HEATING_BED_TEMP or the filename contains one
+# of HEATING_MATERIALS (comma-separated, case-insensitive). While armed, the
+# printer's chamber sensor drives the Shelly-controlled heater between
+# HEATING_CHAMBER_MIN (ON) and HEATING_CHAMBER_MAX (OFF); the heater goes
+# off when the print ends. Settings edited in the web UI persist in
+# data/heating.json and win over these defaults.
+HEATING=0
+HEATING_URL_ON=
+HEATING_URL_OFF=
+HEATING_BED_TEMP=90
+HEATING_CHAMBER_MIN=40
+HEATING_CHAMBER_MAX=45
+HEATING_MATERIALS=ABS,ASA
