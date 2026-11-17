@@ -126,8 +126,9 @@
           <button class="btn adj-apply" data-target="temp-bed" type="button">Set</button>
         </div>
         <div class="adj-row">
-          <label class="adj-lbl">Chamber</label>
-          <span class="adj-readout"><span id="adj-temp-chamber-readout">—</span> °C</span>
+          <label class="adj-lbl" for="adj-temp-chamber">Chamber</label>
+          <input type="range" id="adj-temp-chamber-slider" min="0" max="60" step="1" value="0">
+          <input type="number" id="adj-temp-chamber" min="0" max="60" step="1" value="0" readonly title="Current chamber temperature (read-only)">
         </div>
 
         <div class="ctrl-msg" id="adj-msg" aria-live="polite"></div>
@@ -136,24 +137,29 @@
       <div class="panel heating-panel" id="heating-panel" hidden>
         <header class="panel-header">
           <span class="panel-tag">Chamber heating</span>
-          <span class="detect-badge" id="heating-badge">-</span>
+          <span class="detect-badge" id="heating-badge" hidden>-</span>
         </header>
         <div class="heater-state">
           <span class="heater-indicator" id="heater-indicator">—</span>
           <span class="heater-detail" id="heater-detail">-</span>
-        </div>
-        <div class="heating-controls">
-          <label class="heating-check"><input type="checkbox" id="heating-enabled" disabled> Enabled</label>
-          <button class="heating-settings-toggle" id="heating-settings-toggle" type="button" hidden>Settings ▾</button>
+          <button class="btn gear-btn" id="heating-settings-toggle" type="button" title="Chamber heating settings" hidden>⚙</button>
         </div>
         <div class="heating-fields" id="heating-fields" hidden>
+          <button class="heating-toggle" id="heating-enabled" type="button" disabled>off</button>
+          <div class="adj-sub">Turn on chamber heater when…</div>
+          <div class="heating-grid">
+            <label>Bed temp &gt; °C<input type="number" id="heating-bed-temp" min="0" max="110" step="1"></label>
+            <label>Filename markers<input type="text" id="heating-markers" placeholder="ABS,ASA" spellcheck="false"></label>
+          </div>
+          <div class="adj-sub">Temperature range</div>
+          <div class="heating-grid">
+            <label>min °C<input type="number" id="heating-chamber-min" min="0" max="60" step="1"></label>
+            <label>max °C<input type="number" id="heating-chamber-max" min="0" max="60" step="1"></label>
+          </div>
+          <div class="adj-sub">Heater switch (Shelly)</div>
           <div class="heating-grid">
             <label>URL ON<input type="text" id="heating-url-on" placeholder="http://shelly…/on" spellcheck="false"></label>
             <label>URL OFF<input type="text" id="heating-url-off" placeholder="http://shelly…/off" spellcheck="false"></label>
-            <label>Bed target ≥ °C<input type="number" id="heating-bed-temp" min="0" max="110" step="1"></label>
-            <label>Chamber min °C (ON)<input type="number" id="heating-chamber-min" min="0" max="60" step="1"></label>
-            <label>Chamber max °C (OFF)<input type="number" id="heating-chamber-max" min="0" max="60" step="1"></label>
-            <label>Filename markers<input type="text" id="heating-markers" placeholder="ABS,ASA" spellcheck="false"></label>
           </div>
           <div class="heating-save-row">
             <button class="btn heating-save" id="heating-save" type="button">Save</button>

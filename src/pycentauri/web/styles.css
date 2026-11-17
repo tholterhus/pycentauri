@@ -1011,26 +1011,6 @@ body {
 
 /* --- Chamber heating (Shelly) ------------------------------------------ */
 
-.heating-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0 2px;
-  cursor: pointer;
-  font-family: var(--f-label);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-}
-
-.heating-check input[type="checkbox"] {
-  accent-color: var(--amber);
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
-}
-
-.heating-check input[type="checkbox"]:disabled { cursor: not-allowed; }
-
 .heating-fields { margin-top: 4px; }
 
 .heating-grid {
@@ -1098,28 +1078,30 @@ body {
   white-space: nowrap;
 }
 
-.heating-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 6px;
-}
+.heater-state .gear-btn { margin-left: auto; align-self: center; }
 
-.heating-settings-toggle {
-  background: none;
-  border: none;
-  color: var(--cyan);
+.heating-toggle {
+  display: block;
+  margin: 4px 0 10px;
+  padding: 6px 18px;
   font-family: var(--f-label);
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  background: var(--bg-inset);
+  border: 1px solid var(--rule);
+  color: var(--fg);
   cursor: pointer;
-  padding: 4px 6px;
 }
 
-.heating-settings-toggle:hover { color: var(--fg); }
-.heating-settings-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+.heating-toggle.on {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #101014;
+}
+
+.heating-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .heating-save-row { display: flex; justify-content: flex-end; margin-top: 10px; }
 

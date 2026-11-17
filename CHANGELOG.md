@@ -4,6 +4,20 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.7] - 2026-11-18
+
+### Changed
+- Chamber heating panel, layout round: the ADJUST chamber row is back to
+  the familiar slider + field optics, showing the live chamber
+  temperature (read-only, no Set button — dragging snaps back to the
+  live value). The "Settings" word is replaced by the same gear icon the
+  Detect threshold uses; the enable control moved inside the unfolded
+  settings as an amber/white on-off button, so the collapsed panel has
+  exactly one affordance (the gear) and nothing to fat-finger. Settings
+  reordered: activation conditions (bed temp / filename markers, each
+  alone may arm the session) → temperature range (min/max) → Shelly
+  URLs → Save (right-aligned).
+
 ## [0.17.6] - 2026-11-18
 
 ### Changed

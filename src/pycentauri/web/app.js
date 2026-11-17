@@ -547,11 +547,16 @@ function hydrateAdjust(raw) {
     num.value = rounded;
     slider.value = rounded;
   }
-  // Chamber row is a readout of the current chamber temperature — the
-  // heater regulation lives in the Chamber heating panel (min/max or a
-  // set target), not in this slider section.
-  const readout = $("adj-temp-chamber-readout");
-  if (readout) readout.textContent = (raw.TempOfBox != null) ? (+raw.TempOfBox).toFixed(1) : "—";
+  // Chamber row is a read-only display of the current chamber temperature
+  // (no Set — the heater regulation lives in the Chamber heating panel).
+  // Always overwritten, without dirty/focus skips: dragging it snaps back
+  // to the live value, which is exactly the point of a display row.
+  const chNum = $("adj-temp-chamber");
+  const chSlider = $("adj-temp-chamber-slider");
+  if (chNum && chSlider && raw.TempOfBox != null) {
+    chNum.value = (+raw.TempOfBox).toFixed(1);
+    chSlider.value = String(Math.round(+raw.TempOfBox));
+  }
 }
 
 async function applySpeedMode(mode) {
@@ -885,8 +890,10 @@ function wireDetect() {
 let heatingControlEnabled = false;
 let heatingDirty = false;
 let heatingOpen = false;
+let heatingEnabledNow = false;
 
 function renderHeating(state) {
+  heatingEnabledNow = !!state.enabled;
   const badge = $("heating-badge");
   badge.classList.remove("on", "warn", "err");
   const on = state.heater_on === true;
@@ -940,16 +947,15 @@ function renderHeating(state) {
   }
   $("heater-detail").textContent = detail;
 
-  // Master checkbox (far left) and the settings toggle (far right) share
-  // one row with deliberate distance — no fat-finger crosstalk. The
-  // fields live in their own collapsible block below.
-  const editable = state.enabled && heatingControlEnabled;
-  $("heating-fields").hidden = !state.enabled || !heatingOpen;
-  const toggle = $("heating-settings-toggle");
-  toggle.hidden = !state.enabled;
-  toggle.disabled = !heatingControlEnabled;
-  toggle.textContent = heatingOpen ? "Settings ▴" : "Settings ▾";
-  $("heating-enabled").disabled = !heatingControlEnabled;
+  // The gear unfolds the settings; the on/off toggle lives inside them,
+  // so a collapsed panel has exactly one affordance (the gear).
+  const editable = heatingControlEnabled;
+  $("heating-fields").hidden = !heatingOpen;
+  $("heating-settings-toggle").hidden = false;
+  const en = $("heating-enabled");
+  en.disabled = !heatingControlEnabled;
+  en.textContent = state.enabled ? "on" : "off";
+  en.classList.toggle("on", !!state.enabled);
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
                     "heating-chamber-min", "heating-chamber-max", "heating-markers",
                     "heating-save"]) {
@@ -958,7 +964,6 @@ function renderHeating(state) {
 
   // Hydrate inputs — never while the user is typing in them.
   if (!heatingDirty) {
-    $("heating-enabled").checked = !!state.enabled;
     $("heating-url-on").value = s.url_on || "";
     $("heating-url-off").value = s.url_off || "";
     $("heating-bed-temp").value = s.bed_temp ?? "";
@@ -1009,13 +1014,10 @@ function wireHeating() {
   $("heating-settings-toggle").addEventListener("click", () => {
     heatingOpen = !heatingOpen;
     $("heating-fields").hidden = !heatingOpen;
-    $("heating-settings-toggle").textContent = heatingOpen ? "Settings ▴" : "Settings ▾";
   });
-  $("heating-enabled").addEventListener("change", (ev) => {
-    heatingDirty = true;
-    postHeating({ enabled: ev.target.checked }).then((ok) => {
-      if (ok) heatingDirty = false;
-    });
+  $("heating-enabled").addEventListener("click", async () => {
+    const ok = await postHeating({ enabled: !heatingEnabledNow });
+    if (!ok) $("heating-enabled").title = "toggle failed — see journal";
   });
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
                     "heating-chamber-min", "heating-chamber-max", "heating-markers"]) {
