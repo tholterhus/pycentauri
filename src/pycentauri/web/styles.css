@@ -1067,3 +1067,47 @@ body {
 .heating-grid input:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .heating-save { padding: 6px 14px; font-size: 11px; }
+
+/* --- Chamber heating: state line + collapsible settings ----------------- */
+
+.heater-state {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 6px 0 2px;
+}
+
+.heater-indicator {
+  font-family: var(--f-label);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.heater-indicator.on  { color: var(--ok); }
+.heater-indicator.off { color: var(--fg-dim); }
+.heater-indicator.warn { color: var(--warn); }
+
+.heater-detail {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heating-details summary {
+  cursor: pointer;
+  font-family: var(--f-label);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin: 6px 0 2px;
+  user-select: none;
+}
+
+.heating-details summary:hover { color: var(--fg); }
+.heating-details[open] summary { color: var(--fg); margin-bottom: 8px; }

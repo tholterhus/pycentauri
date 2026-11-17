@@ -4,6 +4,22 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.2] - 2026-11-17
+
+### Changed
+- Chamber heating panel, legibility round: a dedicated HEATER ON/OFF/?
+  indicator (relay-confirmed state, green/dim/warn) with the live chamber
+  temperature next to it — the panel previously showed neither, which made
+  the hysteresis impossible to follow. The blinking LED is gone, the
+  persistent "print start: … contains ABS" status line is gone (errors
+  live on the indicator's hover title and in the journal), and the
+  settings are a native collapsed-by-default <details> section.
+- The ADJUST fan row "Chamber" is relabelled "Chamber fan" — it is the
+  printer's chamber fan speed, unrelated to the Shelly heater.
+- The ADJUST chamber row (armed session) now shows the effective OFF
+  point (set target, else the configured chamber max) instead of a bare
+  0 when no target is set.
+
 ## [0.17.1] - 2026-11-17
 
 ### Changed

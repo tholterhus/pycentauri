@@ -483,7 +483,6 @@ async function applyAdjust(target, getters) {
     }
     return;
   }
-
   const confirmMsg = spec.confirm ? spec.confirm(get) : null;
   if (confirmMsg && !confirm(confirmMsg)) return;
 
@@ -518,9 +517,10 @@ function hydrateAdjust(raw) {
     ["fan-chamber",  fans.BoxFan],
     ["temp-nozzle",  raw.TempTargetNozzle],
     ["temp-bed",     raw.TempTargetHotbed],
-    // Armed heating session: the chamber row shows the heating setpoint
-    // (0 = no target, min/max band governs), not the printer's placeholder.
-    ["temp-chamber", heatingArmed ? (heatingTarget ?? 0) : raw.TempTargetBox],
+    // Armed heating session: the chamber row shows the effective OFF point
+    // (set target, or the configured max) — 0 clears back to the min/max
+    // band. Not armed: the printer's own placeholder target.
+    ["temp-chamber", heatingArmed ? (heatingEffMax ?? 0) : raw.TempTargetBox],
   ];
   for (const [base, v] of targets) {
     if (v == null) continue;
@@ -866,30 +866,23 @@ function wireDetect() {
 let heatingControlEnabled = false;
 let heatingDirty = false;
 // Mirrored for the ADJUST chamber row: while a session is armed, its Set
-// slider targets the chamber-heating setpoint instead of the printer's
-// (heater-less) chamber target.
+// slider targets the chamber-heating setpoint (the effective OFF point)
+// instead of the printer's (heater-less) chamber target.
 let heatingArmed = false;
 let heatingTarget = null;
-
-function setHeatingMsg(text, kind) {
-  const el = $("heating-msg");
-  el.classList.remove("ok", "warn", "err");
-  if (kind) el.classList.add(kind);
-  el.textContent = text || "";
-}
+let heatingEffMax = null;
 
 function renderHeating(state) {
   const badge = $("heating-badge");
-  const led = $("heating-led");
   badge.classList.remove("on", "warn", "err");
-  led.hidden = true;
+  const on = state.heater_on === true;
+  const off = state.heater_on === false;
   if (!state.enabled) {
     badge.textContent = "OFF";
-  } else if (state.heater_on === true) {
-    badge.textContent = "HEAT";
+  } else if (on) {
+    badge.textContent = "ON";
     badge.classList.add("on");
-    led.hidden = false;
-  } else if (state.heater_on === false) {
+  } else if (off) {
     badge.textContent = "IDLE";
   } else {
     badge.textContent = "—";
@@ -897,22 +890,43 @@ function renderHeating(state) {
 
   heatingArmed = !!state.armed;
   heatingTarget = (state.settings && state.settings.chamber_target) || null;
+  heatingEffMax = heatingTarget ?? (state.settings ? state.settings.chamber_max : null);
 
-  $("heating-state").textContent =
-    state.enabled ? (state.armed ? "ACTIVE" : "READY") : "OFF";
-  const session = state.armed
-    ? (state.armed_reason || "armed")
-    : "no print needs chamber heat";
-  $("heating-session").textContent =
-    state.armed && heatingTarget != null
-      ? `${session} · target ${Math.round(+heatingTarget)}°C`
-      : session;
+  // The one indicator that answers "is the heater running right now?".
+  const ind = $("heater-indicator");
+  ind.classList.remove("on", "off", "warn");
+  if (!state.enabled) {
+    ind.textContent = "HEATER —";
+    ind.classList.add("off");
+    ind.title = "chamber heating disabled";
+  } else if (on) {
+    ind.textContent = "HEATER ON";
+    ind.classList.add("on");
+    ind.title = state.last_error || "Shelly relay confirmed ON";
+  } else if (off) {
+    ind.textContent = "HEATER OFF";
+    ind.classList.add("off");
+    ind.title = state.last_error || "Shelly relay confirmed OFF";
+  } else {
+    ind.textContent = "HEATER ?";
+    ind.classList.add("warn");
+    ind.title = state.last_error || "heater state unknown (no successful command yet)";
+  }
 
-  if (state.last_error) setHeatingMsg(state.last_error, "err");
-  else setHeatingMsg(state.last_action || "", "ok");
+  const s = state.settings || {};
+  const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
+  let detail;
+  if (heatingTarget != null) {
+    detail = `chamber ${chamber} · hold ${Math.round(heatingTarget - 2)}–${Math.round(+heatingTarget)}°`;
+  } else if (state.armed) {
+    detail = `chamber ${chamber} · hold ${Math.round(s.chamber_min ?? 0)}–${Math.round(s.chamber_max ?? 0)}°`;
+  } else {
+    detail = `chamber ${chamber} · idle`;
+  }
+  $("heater-detail").textContent = detail;
 
-  // Master checkbox always visible; the fields only when enabled — and
-  // only editable when the server runs with --enable-control.
+  // Master checkbox always visible; settings collapsed by default (native
+  // <details>) — fields only editable when the server runs with control.
   const editable = state.enabled && heatingControlEnabled;
   $("heating-fields").hidden = !state.enabled;
   $("heating-enabled").disabled = !heatingControlEnabled;
@@ -925,7 +939,6 @@ function renderHeating(state) {
   // Hydrate inputs — never while the user is typing in them.
   if (!heatingDirty) {
     $("heating-enabled").checked = !!state.enabled;
-    const s = state.settings || {};
     $("heating-url-on").value = s.url_on || "";
     $("heating-url-off").value = s.url_off || "";
     $("heating-bed-temp").value = s.bed_temp ?? "";
@@ -952,7 +965,9 @@ async function loadHeating() {
   }
 }
 
-async function postHeating(body) {
+async function postHeating(body, btn) {
+  const original = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "…"; }
   try {
     const r = await fetch("/api/heating/settings", {
       method: "POST",
@@ -961,15 +976,17 @@ async function postHeating(body) {
     });
     if (!r.ok) {
       const detail = (await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`;
-      setHeatingMsg(detail, "err");
+      if (btn) btn.textContent = "✗ failed";
       return false;
     }
     renderHeating(await r.json());
-    setHeatingMsg("saved ✓", "ok");
+    if (btn) btn.textContent = "✓ saved";
     return true;
   } catch (e) {
-    setHeatingMsg(String(e), "err");
+    if (btn) btn.textContent = "✗ failed";
     return false;
+  } finally {
+    if (btn) setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
   }
 }
 
@@ -985,6 +1002,7 @@ function wireHeating() {
     $(id).addEventListener("input", () => { heatingDirty = true; });
   }
   $("heating-save").addEventListener("click", async () => {
+    const btn = $("heating-save");
     const body = {
       url_on: $("heating-url-on").value.trim(),
       url_off: $("heating-url-off").value.trim(),
@@ -993,7 +1011,7 @@ function wireHeating() {
       chamber_max: parseFloat($("heating-chamber-max").value),
       material_markers: $("heating-markers").value,
     };
-    const ok = await postHeating(body);
+    const ok = await postHeating(body, btn);
     if (ok) heatingDirty = false;
   });
 }
