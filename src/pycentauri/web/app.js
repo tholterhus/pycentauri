@@ -412,9 +412,22 @@ function setAdjMsg(text, kind) {
 // `${base}-slider` for slider). Returns a getter for the current value.
 // Every user edit marks the row dirty: the background hydration then leaves
 // it alone until the value is applied (or the page reloads) — otherwise the
-// ~1/s status push would yank the control back mid-edit.
+// ~1/s status push would yank the control back mid-edit. The row's Set
+// button glows amber while dirty so "press Set" is obvious.
 const adjustDirty = new Set();
 let liveNozzleTarget = null;
+
+function markAdjustDirty(base) {
+  adjustDirty.add(base);
+  const btn = document.querySelector(`.adj-apply[data-target="${base}"]`);
+  if (btn) btn.classList.add("dirty");
+}
+
+function clearAdjustDirty(base) {
+  adjustDirty.delete(base);
+  const btn = document.querySelector(`.adj-apply[data-target="${base}"]`);
+  if (btn) btn.classList.remove("dirty");
+}
 
 function bindPair(base) {
   const num = $(`adj-${base}`);
@@ -423,11 +436,11 @@ function bindPair(base) {
   const clamp = (v) =>
     Math.max(+num.min, Math.min(+num.max, Number.isFinite(+v) ? +v : 0));
   slider.addEventListener("input", () => {
-    adjustDirty.add(base);
+    markAdjustDirty(base);
     num.value = String(clamp(slider.value));
   });
   num.addEventListener("input", () => {
-    adjustDirty.add(base);
+    markAdjustDirty(base);
     slider.value = String(clamp(num.value));
   });
   return () => clamp(num.value);
@@ -497,7 +510,7 @@ async function applyAdjust(target, getters) {
     try {
       const ok = await postHeating({ chamber_target: v });
       if (ok) {
-        adjustDirty.delete(target);  // confirmed — the live value may re-hydrate
+        clearAdjustDirty(target);  // confirmed — the live value may re-hydrate
         setAdjMsg(`✓ CHAMBER HEATING TARGET → ${v || "off (min/max band)"} acknowledged`, "ok");
       }
     } catch (e) {
@@ -508,7 +521,12 @@ async function applyAdjust(target, getters) {
     return;
   }
   const confirmMsg = spec.confirm ? spec.confirm(get) : null;
-  if (confirmMsg && !confirm(confirmMsg)) return;
+  if (confirmMsg && !confirm(confirmMsg)) {
+    // Declined: the edit is abandoned — the control returns to the live
+    // value on the next push instead of staying dirty forever.
+    clearAdjustDirty(target);
+    return;
+  }
 
   setAdjMsg(`» ${spec.label}…`);
   const btns = document.querySelectorAll("#adjust .btn");
@@ -521,7 +539,7 @@ async function applyAdjust(target, getters) {
       body: JSON.stringify(spec.build(get)),
     });
     if (!r.ok) throw new Error(`HTTP ${r.status} — ${await r.text()}`);
-    adjustDirty.delete(target);  // confirmed — the live value may re-hydrate
+    clearAdjustDirty(target);  // confirmed — the live value may re-hydrate
     setAdjMsg(`✓ ${spec.label} acknowledged`, "ok");
   } catch (e) {
     setAdjMsg(`✗ ${spec.label}: ${e.message}`, "err");
@@ -898,6 +916,7 @@ let heatingDirty = false;
 let heatingArmed = false;
 let heatingTarget = null;
 let heatingEffMax = null;
+let heatingArmedPrev = false;
 
 function renderHeating(state) {
   const badge = $("heating-badge");
@@ -918,6 +937,10 @@ function renderHeating(state) {
   heatingArmed = !!state.armed;
   heatingTarget = (state.settings && state.settings.chamber_target) || null;
   heatingEffMax = heatingTarget ?? (state.settings ? state.settings.chamber_max : null);
+  // An armed-state flip changes the chamber row's semantics — any pending
+  // edit there belongs to the old mode and must not linger.
+  if (heatingArmed !== heatingArmedPrev) clearAdjustDirty("temp-chamber");
+  heatingArmedPrev = heatingArmed;
 
   // The one indicator that answers "is the heater running right now?".
   const ind = $("heater-indicator");
@@ -951,6 +974,19 @@ function renderHeating(state) {
     detail = `chamber ${chamber} · idle`;
   }
   $("heater-detail").textContent = detail;
+
+  // Show the consequence of the chamber Set at the control itself.
+  const hint = $("adj-chamber-hint");
+  if (hint) {
+    if (state.armed && heatingControlEnabled) {
+      const lo = heatingTarget != null ? Math.round(heatingTarget - 2) : Math.round(s.chamber_min ?? 0);
+      const hi = heatingTarget != null ? Math.round(+heatingTarget) : Math.round(s.chamber_max ?? 0);
+      hint.textContent = `heater holds ${lo}–${hi}° · Set sets the target (0 = min/max band)`;
+      hint.hidden = false;
+    } else {
+      hint.hidden = true;
+    }
+  }
 
   // Master checkbox always visible; settings collapsed by default (native
   // <details>) — fields only editable when the server runs with control.

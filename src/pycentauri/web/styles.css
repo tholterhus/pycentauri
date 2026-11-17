@@ -1111,3 +1111,19 @@ body {
 
 .heating-details summary:hover { color: var(--fg); }
 .heating-details[open] summary { color: var(--fg); margin-bottom: 8px; }
+
+/* --- ADJUST: dirty-row affordance + chamber hint ------------------------ */
+
+.adj-apply.dirty {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #101014;
+  font-weight: 700;
+}
+
+.adj-hint {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--fg-dim);
+  margin: -2px 0 8px 8px;
+}

@@ -4,6 +4,19 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.4] - 2026-11-17
+
+### Changed
+- ADJUST rows now show what they need: the row's Set button glows amber
+  while it carries an unapplied edit and reverts once the value is
+  confirmed — declining a confirm dialog also clears the edit (the
+  control returns to the live value instead of staying dirty forever),
+  and an armed-state flip of the chamber row does the same.
+- Armed heating session: the chamber row shows an inline hint ("heater
+  holds 27–29° · Set sets the target (0 = min/max band)") so the
+  consequence of a setpoint below the current chamber temperature is
+  visible at the control.
+
 ## [0.17.3] - 2026-11-17
 
 ### Fixed
