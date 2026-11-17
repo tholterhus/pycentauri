@@ -4,6 +4,22 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.1] - 2026-11-17
+
+### Changed
+- Chamber heating, UI round: all web-UI strings back to English; the
+  heating panel moved directly below the ADJUST sliders (was three panels
+  down); its redundant Chamber/Bed-target readouts removed — the panel
+  starts straight with the "Chamber heating" checkbox.
+- New chamber target (web UI): while a heating session is armed, the
+  ADJUST "Chamber" row's Set slider drives the desired chamber temperature
+  (POST /api/heating/settings {chamber_target}); the row is relabelled
+  "Chamber target" and hydrates from the heating state instead of the
+  printer's placeholder chamber target. The heater then holds the chamber
+  in a 2° band below the target (ON at target-2, OFF at target); setting
+  0 clears the target and falls back to the configured chamber_min/max
+  pair. Persisted in data/heating.json like the other settings.
+
 ## [0.17.0] - 2026-11-17
 
 ### Added

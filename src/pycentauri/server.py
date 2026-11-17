@@ -323,6 +323,9 @@ class HeatingSettingsBody(BaseModel):
     chamber_max: float | None = Field(
         None, ge=0, le=60, description="Chamber °C above which the heater switches off."
     )
+    chamber_target: float | None = Field(
+        None, ge=0, le=60, description="Desired chamber °C (overrides min/max; 0 clears it)."
+    )
     material_markers: list[str] | str | None = Field(
         None,
         description="Filename markers (list or comma string, e.g. ABS,ASA) that arm a session.",

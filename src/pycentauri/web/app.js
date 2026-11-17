@@ -464,6 +464,26 @@ async function applyAdjust(target, getters) {
   const spec = ADJUST_TARGETS[target];
   if (!spec) return;
   const get = (k) => getters[k] ? getters[k]() : 0;
+
+  // While a heating session is armed, the CHAMBER TEMP row drives the
+  // chamber-heating setpoint (the printer itself has no chamber heater);
+  // 0 clears the target and falls back to the configured min/max band.
+  if (target === "temp-chamber" && heatingArmed) {
+    const v = get("temp-chamber");
+    setAdjMsg(`» CHAMBER HEATING TARGET…`);
+    const btns = document.querySelectorAll("#adjust .btn");
+    for (const b of btns) b.disabled = true;
+    try {
+      const ok = await postHeating({ chamber_target: v });
+      if (ok) setAdjMsg(`✓ CHAMBER HEATING TARGET → ${v || "off (min/max band)"} acknowledged`, "ok");
+    } catch (e) {
+      setAdjMsg(`✗ CHAMBER HEATING TARGET: ${e.message}`, "err");
+    } finally {
+      setTimeout(() => { for (const b of btns) b.disabled = false; }, 600);
+    }
+    return;
+  }
+
   const confirmMsg = spec.confirm ? spec.confirm(get) : null;
   if (confirmMsg && !confirm(confirmMsg)) return;
 
@@ -498,7 +518,9 @@ function hydrateAdjust(raw) {
     ["fan-chamber",  fans.BoxFan],
     ["temp-nozzle",  raw.TempTargetNozzle],
     ["temp-bed",     raw.TempTargetHotbed],
-    ["temp-chamber", raw.TempTargetBox],
+    // Armed heating session: the chamber row shows the heating setpoint
+    // (0 = no target, min/max band governs), not the printer's placeholder.
+    ["temp-chamber", heatingArmed ? (heatingTarget ?? 0) : raw.TempTargetBox],
   ];
   for (const [base, v] of targets) {
     if (v == null) continue;
@@ -843,6 +865,11 @@ function wireDetect() {
 
 let heatingControlEnabled = false;
 let heatingDirty = false;
+// Mirrored for the ADJUST chamber row: while a session is armed, its Set
+// slider targets the chamber-heating setpoint instead of the printer's
+// (heater-less) chamber target.
+let heatingArmed = false;
+let heatingTarget = null;
 
 function setHeatingMsg(text, kind) {
   const el = $("heating-msg");
@@ -868,14 +895,18 @@ function renderHeating(state) {
     badge.textContent = "—";
   }
 
+  heatingArmed = !!state.armed;
+  heatingTarget = (state.settings && state.settings.chamber_target) || null;
+
   $("heating-state").textContent =
-    state.enabled ? (state.armed ? "REGELT" : "BEREIT") : "AUS";
-  $("heating-session").textContent = state.armed
+    state.enabled ? (state.armed ? "ACTIVE" : "READY") : "OFF";
+  const session = state.armed
     ? (state.armed_reason || "armed")
-    : "kein heizbedürftiger Druck";
-  $("heating-chamber").textContent = fmtTemp(state.chamber_temp);
-  $("heating-bed").textContent =
-    (state.bed_target != null) ? `${Math.round(+state.bed_target)} °C` : "—";
+    : "no print needs chamber heat";
+  $("heating-session").textContent =
+    state.armed && heatingTarget != null
+      ? `${session} · target ${Math.round(+heatingTarget)}°C`
+      : session;
 
   if (state.last_error) setHeatingMsg(state.last_error, "err");
   else setHeatingMsg(state.last_action || "", "ok");
@@ -902,6 +933,11 @@ function renderHeating(state) {
     $("heating-chamber-max").value = s.chamber_max ?? "";
     $("heating-markers").value = (s.material_markers || []).join(",");
   }
+
+  // While a session is armed, the ADJUST chamber row is the heating
+  // setpoint — relabel it so the semantics are visible.
+  const lbl = $("adj-temp-chamber-lbl");
+  if (lbl) lbl.textContent = state.armed ? "Chamber target" : "Chamber";
 }
 
 async function loadHeating() {
@@ -929,7 +965,7 @@ async function postHeating(body) {
       return false;
     }
     renderHeating(await r.json());
-    setHeatingMsg("gespeichert ✓", "ok");
+    setHeatingMsg("saved ✓", "ok");
     return true;
   } catch (e) {
     setHeatingMsg(String(e), "err");

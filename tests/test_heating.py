@@ -104,7 +104,7 @@ async def test_bed_target_arms_and_turns_heater_on(tmp_path: Path) -> None:
     await _push(auto, _status(code=0, chamber=25.0))
     await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, filename="hook.gcode"))
     assert rec.calls == [URL_ON]
-    assert auto._armed and "Bett-Ziel" in auto._armed_reason
+    assert auto._armed and "bed target" in auto._armed_reason
 
 
 async def test_no_activation_below_threshold(tmp_path: Path) -> None:
@@ -208,6 +208,48 @@ async def test_end_without_session_never_touches_heater(tmp_path: Path) -> None:
     await _push(auto, _status(code=13, bed_target=80.0, chamber=25.0, filename="hook.gcode"))
     await _push(auto, _status(code=9, chamber=25.0))
     assert rec.calls == []
+
+
+# --- chamber target (web UI slider) -------------------------------------------
+
+
+async def test_chamber_target_overrides_min_max(tmp_path: Path) -> None:
+    """A target set from the ADJUST slider replaces the min/max pair: the
+    heater holds the chamber in a 2° band below the target."""
+    rec = Recorder()
+    auto = HeatingAutomation(
+        _config(tmp_path, chamber_target=50.0),
+        get_printer=lambda: FakePrinter([]),
+        request_fn=rec,
+    )
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0))  # armed → ON
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=49.0))  # band → hold
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=50.5))  # ≥ target → OFF
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=47.5))  # < 48 → ON
+    assert rec.calls == [URL_ON, URL_OFF, URL_ON]
+
+
+async def test_chamber_target_zero_clears_to_min_max_band(tmp_path: Path) -> None:
+    rec = Recorder()
+    auto = HeatingAutomation(
+        _config(tmp_path, chamber_target=50.0, chamber_min=40.0, chamber_max=45.0),
+        get_printer=lambda: FakePrinter([]),
+        request_fn=rec,
+    )
+    auto.apply_settings(chamber_target=0)
+    assert auto.cfg.chamber_target is None
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=46.0))  # above max → no ON
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=39.0))  # < min 40 → ON
+    assert rec.calls == [URL_ON]  # min/max band governs again
+
+
+def test_chamber_target_validation(tmp_path: Path) -> None:
+    auto = HeatingAutomation(
+        _config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=Recorder()
+    )
+    with pytest.raises(ValueError):
+        auto.apply_settings(chamber_target=70.0)  # out of 0..60
+    assert auto.cfg.chamber_target is None
 
 
 # --- master switch ---------------------------------------------------------------

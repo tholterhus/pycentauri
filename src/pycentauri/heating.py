@@ -49,8 +49,13 @@ STATE_FIELDS = (
     "bed_temp",
     "chamber_min",
     "chamber_max",
+    "chamber_target",
     "material_markers",
 )
+
+#: When a chamber target is set (web UI slider), the hysteresis holds the
+#: chamber in a fixed band below the target instead of chamber_min/max.
+CHAMBER_TARGET_BAND = 2.0
 
 
 class HeatingError(RuntimeError):
@@ -79,6 +84,10 @@ class HeatingConfig:
     bed_temp: float = 90.0
     chamber_min: float = 40.0
     chamber_max: float = 45.0
+    # Desired chamber temperature (web UI slider). When set, it overrides
+    # the min/max pair: ON below target-2°, OFF at/above the target.
+    # 0/None = no target, fall back to chamber_min/chamber_max.
+    chamber_target: float | None = None
     material_markers: list[str] = dataclasses.field(default_factory=list)
     # Where the UI-persisted settings live (wins over .conf/CLI defaults).
     state_path: Path = Path("data/heating.json")
@@ -94,6 +103,8 @@ class HeatingConfig:
             raise ValueError(f"bed_temp {self.bed_temp}°C out of range 0..110")
         if not 0 <= self.chamber_min <= 60 or not 0 <= self.chamber_max <= 60:
             raise ValueError("chamber thresholds must be within 0..60 °C")
+        if self.chamber_target is not None and not 0 < self.chamber_target <= 60:
+            raise ValueError(f"chamber_target {self.chamber_target}°C out of range 0..60")
         for name in ("url_on", "url_off"):
             url = getattr(self, name)
             if url and not url.startswith(("http://", "https://")):
@@ -107,7 +118,7 @@ def load_state(cfg: HeatingConfig) -> None:
     except FileNotFoundError:
         return
     except (OSError, ValueError) as err:
-        log.warning("heating: state file %s unlesbar: %r", cfg.state_path, err)
+        log.warning("heating: state file %s unreadable: %r", cfg.state_path, err)
         return
     if not isinstance(raw, dict):
         return
@@ -119,14 +130,17 @@ def load_state(cfg: HeatingConfig) -> None:
             cfg.material_markers = _coerce_markers(value)
         elif field == "enabled":
             cfg.enabled = bool(value)
-        elif field == "bed_temp" or field == "chamber_min" or field == "chamber_max":
+        elif field == "chamber_target":
+            with contextlib.suppress(TypeError, ValueError):
+                cfg.chamber_target = float(value) if value else None
+        elif field in ("bed_temp", "chamber_min", "chamber_max"):
             with contextlib.suppress(TypeError, ValueError):
                 setattr(cfg, field, float(value))
         elif field == "url_on":
             cfg.url_on = str(value)
         elif field == "url_off":
             cfg.url_off = str(value)
-    log.info("heating: Einstellungen aus %s geladen", cfg.state_path)
+    log.info("heating: settings loaded from %s", cfg.state_path)
 
 
 def save_state(cfg: HeatingConfig) -> None:
@@ -139,7 +153,7 @@ def save_state(cfg: HeatingConfig) -> None:
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         tmp.replace(path)
     except OSError as err:
-        log.error("heating: state file %s nicht schreibbar: %r", path, err)
+        log.error("heating: state file %s not writable: %r", path, err)
 
 
 def _coerce_markers(value: Any) -> list[str]:
@@ -230,13 +244,22 @@ class HeatingAutomation:
 
         Only the provided keys change; a ValueError (bad ranges/URLs)
         leaves the configuration untouched so the API can answer 400.
+        ``chamber_target`` 0/None explicitly clears the target (fall back
+        to chamber_min/chamber_max).
         """
         field_names = {f.name for f in dataclasses.fields(HeatingConfig)}
-        staged = {
-            key: _coerce_markers(value) if key == "material_markers" else value
-            for key, value in changes.items()
-            if key in field_names and key != "state_path" and value is not None
-        }
+        staged: dict[str, Any] = {}
+        for key, value in changes.items():
+            if key not in field_names or key == "state_path":
+                continue
+            if key == "chamber_target":
+                staged[key] = float(value) if value else None
+            elif value is None:
+                continue
+            elif key == "material_markers":
+                staged[key] = _coerce_markers(value)
+            else:
+                staged[key] = value
         # Validate against a candidate copy so a bad value never lands.
         candidate = dataclasses.replace(
             self.cfg,
@@ -250,8 +273,9 @@ class HeatingAutomation:
             setattr(self.cfg, key, value)
         save_state(self.cfg)
         log.info(
-            "heating: Einstellungen aktualisiert (enabled=%s markers=%s)",
+            "heating: settings updated (enabled=%s target=%s markers=%s)",
             self.cfg.enabled,
+            self.cfg.chamber_target,
             self.cfg.material_markers,
         )
         return self.state()
@@ -273,6 +297,7 @@ class HeatingAutomation:
                 "bed_temp": self.cfg.bed_temp,
                 "chamber_min": self.cfg.chamber_min,
                 "chamber_max": self.cfg.chamber_max,
+                "chamber_target": self.cfg.chamber_target,
                 "material_markers": self.cfg.material_markers,
             },
         }
@@ -309,7 +334,7 @@ class HeatingAutomation:
             self._armed_reason = ""
             self._release_pending = False
             if self._applied is True:
-                self._fire(False, "Innenraumheizung deaktiviert")
+                self._fire(False, "chamber heating disabled")
             self._was_enabled = False
             return
 
@@ -333,8 +358,8 @@ class HeatingAutomation:
             if self._armed and not was_armed:
                 armed_now = True
                 chamber = st.temp_chamber
-                if chamber is None or chamber < self.cfg.chamber_max:
-                    self._set(True, f"Druckstart: {self._armed_reason}")
+                if chamber is None or chamber < self._effective_max():
+                    self._set(True, f"print start: {self._armed_reason}")
         elif not active and was_active:
             was_armed = self._armed
             self._armed = False
@@ -348,32 +373,45 @@ class HeatingAutomation:
             if self._applied is False:
                 self._release_pending = False
             else:
-                self._fire(False, "Druck beendet")
+                self._fire(False, "print finished")
 
-        # Hysteresis while the session is armed: below min ON, above max
-        # OFF, in between keep the current state. Skipped on the arming
-        # push itself — the arm already set the initial state (an extra
-        # dispatch there would fire the same command twice).
+        # Hysteresis while the session is armed: below the ON point ON,
+        # above the OFF point OFF, in between keep the current state.
+        # Skipped on the arming push itself — the arm already set the
+        # initial state (an extra dispatch there would fire the same
+        # command twice).
         if self._armed and not armed_now:
             chamber = st.temp_chamber
             if chamber is not None:
-                if chamber > self.cfg.chamber_max:
-                    self._set(False, f"Kammer {chamber:.1f}° > {self.cfg.chamber_max:.0f}°")
-                elif chamber < self.cfg.chamber_min:
-                    self._set(True, f"Kammer {chamber:.1f}° < {self.cfg.chamber_min:.0f}°")
+                if chamber > self._effective_max():
+                    self._set(False, f"chamber {chamber:.1f}° > {self._effective_max():.0f}°")
+                elif chamber < self._effective_min():
+                    self._set(True, f"chamber {chamber:.1f}° < {self._effective_min():.0f}°")
+
+    def _effective_max(self) -> float:
+        """The OFF point: the chamber target when set, else chamber_max."""
+        if self.cfg.chamber_target is not None:
+            return self.cfg.chamber_target
+        return self.cfg.chamber_max
+
+    def _effective_min(self) -> float:
+        """The ON point: a fixed band below a set target, else chamber_min."""
+        if self.cfg.chamber_target is not None:
+            return self.cfg.chamber_target - CHAMBER_TARGET_BAND
+        return self.cfg.chamber_min
 
     def _evaluate_activation(self, st: Status) -> tuple[bool, str]:
         """Decide whether the current print wants chamber heat (latched)."""
         bed_target = st.temp_bed_target
         if bed_target is not None and bed_target > self.cfg.bed_temp:
-            return True, f"Bett-Ziel {bed_target:.0f}° > {self.cfg.bed_temp:.0f}°"
+            return True, f"bed target {bed_target:.0f}° > {self.cfg.bed_temp:.0f}°"
         filename = st.filename or ""
         if filename:
             lowered = filename.lower()
             for marker in self.cfg.material_markers:
                 needle = marker.strip().lower()
                 if needle and needle in lowered:
-                    return True, f'"{filename}" enthält "{marker.strip()}"'
+                    return True, f'"{filename}" contains "{marker.strip()}"'
         return False, ""
 
     # --- command path -------------------------------------------------------
@@ -400,23 +438,22 @@ class HeatingAutomation:
         try:
             url = self.cfg.url_on if on else self.cfg.url_off
             if not url:
-                raise HeatingError("keine Shelly-URL konfiguriert")
+                raise HeatingError("no Shelly URL configured")
             await self._request_fn(url)
             self._applied = on
             self._retry_backoff = RETRY_BACKOFF_START
             self._retry_not_before = 0.0
             self._last_error = ""
             self._last_action = f"{'ON' if on else 'OFF'} — {reason}"
-            log.info("heating: Heizung %s — %s", "AN" if on else "AUS", reason)
+            log.info("heating: heater %s — %s", "ON" if on else "OFF", reason)
         except asyncio.CancelledError:
             raise
         except Exception as err:
             self._retry_not_before = loop.time() + self._retry_backoff
             self._retry_backoff = min(self._retry_backoff * 2, RETRY_BACKOFF_MAX)
-            self._last_error = f"{'ON' if on else 'OFF'} fehlgeschlagen: {err}"
+            self._last_error = f"{'ON' if on else 'OFF'} failed: {err}"
             log.warning(
-                "heating: Shelly-Aufruf (%s) fehlgeschlagen: %r — nächster "
-                "Versuch nach %.0fs Backoff",
+                "heating: Shelly call (%s) failed: %r — retrying after %.0fs backoff",
                 "ON" if on else "OFF",
                 err,
                 self._retry_backoff,
