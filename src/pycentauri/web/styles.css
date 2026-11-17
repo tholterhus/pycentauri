@@ -1098,19 +1098,30 @@ body {
   white-space: nowrap;
 }
 
-.heating-details summary {
-  cursor: pointer;
+.heating-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.heating-settings-toggle {
+  background: none;
+  border: none;
+  color: var(--cyan);
   font-family: var(--f-label);
   font-size: 11px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--fg-dim);
-  margin: 6px 0 2px;
-  user-select: none;
+  cursor: pointer;
+  padding: 4px 6px;
 }
 
-.heating-details summary:hover { color: var(--fg); }
-.heating-details[open] summary { color: var(--fg); margin-bottom: 8px; }
+.heating-settings-toggle:hover { color: var(--fg); }
+.heating-settings-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.heating-save-row { display: flex; justify-content: flex-end; margin-top: 10px; }
 
 /* --- ADJUST: dirty-row affordance + chamber hint ------------------------ */
 

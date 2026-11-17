@@ -4,6 +4,17 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.5] - 2026-11-17
+
+### Changed
+- Chamber heating panel layout, usability round: the master switch
+  ("Enabled", far left) and the "Settings ▾" toggle (far right) share one
+  row with deliberate distance — unfolding the settings can no longer
+  hit the enable checkbox by accident. Settings stay collapsed by
+  default; the Save button sits right-aligned under the field grid. The
+  word pairs "Chamber heating / Chamber Heating / HEATER" are reduced to
+  one panel title, one HEATER state and one "Enabled" label.
+
 ## [0.17.4] - 2026-11-17
 
 ### Changed

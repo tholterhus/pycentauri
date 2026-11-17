@@ -910,6 +910,7 @@ function wireDetect() {
 
 let heatingControlEnabled = false;
 let heatingDirty = false;
+let heatingOpen = false;
 // Mirrored for the ADJUST chamber row: while a session is armed, its Set
 // slider targets the chamber-heating setpoint (the effective OFF point)
 // instead of the printer's (heater-less) chamber target.
@@ -988,10 +989,15 @@ function renderHeating(state) {
     }
   }
 
-  // Master checkbox always visible; settings collapsed by default (native
-  // <details>) — fields only editable when the server runs with control.
+  // Master checkbox (far left) and the settings toggle (far right) share
+  // one row with deliberate distance — no fat-finger crosstalk. The
+  // fields live in their own collapsible block below.
   const editable = state.enabled && heatingControlEnabled;
-  $("heating-fields").hidden = !state.enabled;
+  $("heating-fields").hidden = !state.enabled || !heatingOpen;
+  const toggle = $("heating-settings-toggle");
+  toggle.hidden = !state.enabled;
+  toggle.disabled = !heatingControlEnabled;
+  toggle.textContent = heatingOpen ? "Settings ▴" : "Settings ▾";
   $("heating-enabled").disabled = !heatingControlEnabled;
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
                     "heating-chamber-min", "heating-chamber-max", "heating-markers",
@@ -1052,6 +1058,11 @@ async function postHeating(body, btn) {
 }
 
 function wireHeating() {
+  $("heating-settings-toggle").addEventListener("click", () => {
+    heatingOpen = !heatingOpen;
+    $("heating-fields").hidden = !heatingOpen;
+    $("heating-settings-toggle").textContent = heatingOpen ? "Settings ▴" : "Settings ▾";
+  });
   $("heating-enabled").addEventListener("change", (ev) => {
     heatingDirty = true;
     postHeating({ enabled: ev.target.checked }).then((ok) => {
