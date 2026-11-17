@@ -4,6 +4,17 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.8] - 2026-11-18
+
+### Changed
+- The chamber-heating on/off button now uses the same active look as the
+  Light and Speed-mode buttons (amber border + text, faint fill) instead
+  of a solid amber block, and the gear icon is a borderless glyph — no
+  more yellow boxes around either.
+- "Heater switch (Shelly)" is just "Heater switch" again; the chamber
+  number field sits in the same grid column as the other rows' numbers,
+  with the Set-button area left empty.
+
 ## [0.17.7] - 2026-11-18
 
 ### Changed

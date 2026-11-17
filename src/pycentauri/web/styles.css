@@ -1078,17 +1078,22 @@ body {
   white-space: nowrap;
 }
 
-.heater-state .gear-btn { margin-left: auto; align-self: center; }
+.heater-state .gear-btn {
+  margin-left: auto;
+  align-self: center;
+  background: none;
+  border: none;
+  font-size: 14px;
+  padding: 2px 6px;
+}
 
 .heating-toggle {
   display: block;
   margin: 4px 0 10px;
-  padding: 6px 18px;
+  padding: 8px 18px;
+  text-align: center;
   font-family: var(--f-label);
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: lowercase;
+  font-size: 11px;
   background: var(--bg-inset);
   border: 1px solid var(--rule);
   color: var(--fg);
@@ -1096,9 +1101,9 @@ body {
 }
 
 .heating-toggle.on {
-  background: var(--amber);
   border-color: var(--amber);
-  color: #101014;
+  color: var(--amber);
+  background: rgba(255, 179, 71, 0.06);
 }
 
 .heating-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
