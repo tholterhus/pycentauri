@@ -4,6 +4,21 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.3] - 2026-11-17
+
+### Fixed
+- ADJUST sliders were unusable mid-print: the ~1/s status push re-hydrated
+  every row, wiping unapplied edits the moment the control lost focus
+  (fan speeds could not be changed at all). Rows now carry a dirty flag —
+  set on any edit, cleared on a confirmed apply — and the hydration hands
+  off until then. Also fixes a latent ReferenceError in the >240° nozzle
+  confirm.
+- Nozzle target now warns when the new value deviates more than 10% from
+  the current target (260° printing, slider lands on 120°) instead of
+  only checking the absolute 240° limit.
+- The heaters' chamber row is labelled simply "Chamber" again (was
+  dynamically "Chamber target").
+
 ## [0.17.2] - 2026-11-17
 
 ### Changed

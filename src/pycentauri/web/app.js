@@ -410,14 +410,26 @@ function setAdjMsg(text, kind) {
 
 // Two-way bind a slider/number pair sharing a base id (`${base}` for number,
 // `${base}-slider` for slider). Returns a getter for the current value.
+// Every user edit marks the row dirty: the background hydration then leaves
+// it alone until the value is applied (or the page reloads) — otherwise the
+// ~1/s status push would yank the control back mid-edit.
+const adjustDirty = new Set();
+let liveNozzleTarget = null;
+
 function bindPair(base) {
   const num = $(`adj-${base}`);
   const slider = $(`adj-${base}-slider`);
   if (!num || !slider) return () => 0;
   const clamp = (v) =>
     Math.max(+num.min, Math.min(+num.max, Number.isFinite(+v) ? +v : 0));
-  slider.addEventListener("input", () => { num.value = String(clamp(slider.value)); });
-  num.addEventListener("input", () => { slider.value = String(clamp(num.value)); });
+  slider.addEventListener("input", () => {
+    adjustDirty.add(base);
+    num.value = String(clamp(slider.value));
+  });
+  num.addEventListener("input", () => {
+    adjustDirty.add(base);
+    slider.value = String(clamp(num.value));
+  });
   return () => clamp(num.value);
 }
 
@@ -441,9 +453,18 @@ const ADJUST_TARGETS = {
     label: "NOZZLE TEMP",
     path: "/print/temperature",
     build: (g) => ({ nozzle: g("temp-nozzle") }),
-    confirm: (g) => g("temp-nozzle") > 240
-      ? `Set nozzle target to ${g("temp-nozzle")}°C ? High-temp; check filament rating.`
-      : null,
+    confirm: (g) => {
+      const v = g("temp-nozzle");
+      if (v > 240) return `Set nozzle target to ${v}°C ? High-temp; check filament rating.`;
+      // A big jump against the current target mid-print is almost always a
+      // slip (260° printing, slider lands on 120°) — ask before wrecking
+      // the material.
+      const cur = liveNozzleTarget;
+      if (cur > 0 && Math.abs(v - cur) / cur > 0.10) {
+        return `Set nozzle target to ${v}°C ? Current target is ${Math.round(cur)}°C — that is more than 10% off.`;
+      }
+      return null;
+    },
   },
   "temp-bed": {
     label: "BED TEMP",
@@ -475,7 +496,10 @@ async function applyAdjust(target, getters) {
     for (const b of btns) b.disabled = true;
     try {
       const ok = await postHeating({ chamber_target: v });
-      if (ok) setAdjMsg(`✓ CHAMBER HEATING TARGET → ${v || "off (min/max band)"} acknowledged`, "ok");
+      if (ok) {
+        adjustDirty.delete(target);  // confirmed — the live value may re-hydrate
+        setAdjMsg(`✓ CHAMBER HEATING TARGET → ${v || "off (min/max band)"} acknowledged`, "ok");
+      }
     } catch (e) {
       setAdjMsg(`✗ CHAMBER HEATING TARGET: ${e.message}`, "err");
     } finally {
@@ -497,6 +521,7 @@ async function applyAdjust(target, getters) {
       body: JSON.stringify(spec.build(get)),
     });
     if (!r.ok) throw new Error(`HTTP ${r.status} — ${await r.text()}`);
+    adjustDirty.delete(target);  // confirmed — the live value may re-hydrate
     setAdjMsg(`✓ ${spec.label} acknowledged`, "ok");
   } catch (e) {
     setAdjMsg(`✗ ${spec.label}: ${e.message}`, "err");
@@ -505,11 +530,12 @@ async function applyAdjust(target, getters) {
   }
 }
 
-// Hydrate the ADJUST sliders/inputs from a status push. Skips any control
-// that currently has focus (so a live SSE update doesn't yank a value out
-// from under the user mid-drag or mid-type).
+// Hydrate the ADJUST sliders/inputs from a status push. Skips controls that
+// have focus OR carry an unapplied user edit (dirty) — the ~1/s push must
+// never yank a value out from under the user mid-drag or mid-type.
 function hydrateAdjust(raw) {
   if (!$("adjust")) return;
+  liveNozzleTarget = raw.TempTargetNozzle ?? null;
   const fans = raw.CurrentFanSpeed || {};
   const targets = [
     ["fan-model",    fans.ModelFan],
@@ -524,6 +550,7 @@ function hydrateAdjust(raw) {
   ];
   for (const [base, v] of targets) {
     if (v == null) continue;
+    if (adjustDirty.has(base)) continue;  // unapplied user edit — hands off
     const num = $(`adj-${base}`);
     const slider = $(`adj-${base}-slider`);
     if (!num || !slider) continue;
@@ -948,9 +975,7 @@ function renderHeating(state) {
   }
 
   // While a session is armed, the ADJUST chamber row is the heating
-  // setpoint — relabel it so the semantics are visible.
-  const lbl = $("adj-temp-chamber-lbl");
-  if (lbl) lbl.textContent = state.armed ? "Chamber target" : "Chamber";
+  // setpoint — its hydration source switches with heatingArmed above.
 }
 
 async function loadHeating() {
