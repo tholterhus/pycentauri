@@ -4,6 +4,19 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.4] - 2026-11-17
+
+### Fixed
+- False alarm at print end (17.11. 09:47): finished curtain-rod hooks,
+  revealed by the end-gcode moves (bed drops, head parks) 2 s before the
+  recorded print end, read as spaghetti at score 0.69 — the session was
+  still legitimately running (status PRINTING, layer counter at total),
+  so the earlier re-arm race fix did not apply. New end-guard:
+  `--detect-stop-last-layer` (default on) stops evaluation once the print
+  reaches its last layer, through the whole end-gcode phase. Training-
+  frame collection keeps running — the end phase is valuable material.
+  Without layer info the guard cannot apply and detection runs unchanged.
+
 ## [0.16.3] - 2026-11-13
 
 ### Fixed

@@ -113,6 +113,15 @@ class DetectConfig:
     shift_max_gap_s: float = 120.0  # ältere Baseline wird verworfen (Pause)
     min_frame_interval_s: float = 1.0
     grace_s: float = 90.0
+    # End-Guard (Tim 17.11.): ab dem letzten Layer keine Auswertung mehr —
+    # in der End-GCode-Phase senkt sich das Bett und der Kopf parkt, das
+    # fertige Teil wird freigegeben, und kleine Overhangs/Haken lesen sich
+    # als Spaghetti (Fehlalarm 17.11. 09:47: fertige Vorhangstangen-Haken,
+    # Score 0.69, 2 s vor dem registrierten Druckende — Status war noch
+    # PRINTING, der Layer-Zähler stand auf total). Das Collect von
+    # Trainingsframes läuft weiter: genau diese End-Phase ist wertvolles
+    # Material.
+    stop_at_last_layer: bool = True
     action: str = "notify"
     webhook_url: str | None = None
     # Optional Telegram push (photo + caption); both must be set.
@@ -814,6 +823,8 @@ class DetectionController:
                     self._last_collect_layer = self._layer
                     await self._save_collect_frame(jpeg)
                     await self._enforce_collect_fifo()
+                if self._at_last_layer():
+                    continue  # End-Guard: nicht mehr auswerten — DetectConfig.stop_at_last_layer
                 if self._backend is None or now - started < self.cfg.grace_s:
                     continue
                 if now - last_infer < self.cfg.min_frame_interval_s:
@@ -821,6 +832,19 @@ class DetectionController:
                 last_infer = now
                 self._last_look = time.time()
                 await self._evaluate(jpeg)
+
+    def _at_last_layer(self) -> bool:
+        """True from the moment the print reaches its last layer — and
+        through the whole end-gcode phase, where the layer counter sits at
+        ``total`` while the bed drops and the head parks. Detection stops
+        there (see :attr:`DetectConfig.stop_at_last_layer`); without layer
+        info the guard cannot apply and detection runs to the end.
+        """
+        if not self.cfg.stop_at_last_layer:
+            return False
+        if self._layer is None or self._total_layers is None:
+            return False
+        return self._layer >= self._total_layers
 
     def _collect_interval(self) -> float:
         """Adaptive Cadence (Tim 4.11.): 1 Bild/MINUTE im stillen Normalbetrieb,

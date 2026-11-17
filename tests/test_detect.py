@@ -126,16 +126,18 @@ class FakeCamera:
 
 
 class FakePrinter:
-    """Yields one Status per configured print_status code."""
+    """Yields one Status per configured entry — an int is the print_status
+    code, a dict becomes the PrintInfo payload (layer-aware tests)."""
 
-    def __init__(self, statuses: list[int], delay: float = 0.01) -> None:
+    def __init__(self, statuses: list[int | dict[str, Any]], delay: float = 0.01) -> None:
         self._statuses = statuses
         self._delay = delay
 
     async def watch(self) -> AsyncIterator[Status]:
         for code in self._statuses:
             await asyncio.sleep(self._delay)
-            yield Status.from_payload({"PrintInfo": {"Status": code, "Filename": "job.gcode"}})
+            info = code if isinstance(code, dict) else {"Status": code}
+            yield Status.from_payload({"PrintInfo": {"Filename": "job.gcode", **info}})
 
 
 def _jpeg(color: tuple[int, int, int] = (120, 120, 120)) -> bytes:
@@ -1006,6 +1008,79 @@ async def test_controller_sends_telegram_on_status_changes(
     # one alert per printing segment — pause/resume re-arms by design
     assert len(detections) == 2
     assert all(d["event"]["evidence"] for d in detections)
+
+
+async def _run_layer_sequence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, stop_at_last_layer: bool
+) -> list[dict[str, Any]]:
+    """One always-positive detector, a print that pauses at layer 2/3 and
+    resumes INTO the last layer (plus the end-gcode phase at layer == total).
+    Returns everything posted to Telegram."""
+    monkeypatch.setattr(
+        detect_backend.Detector,
+        "from_model",
+        staticmethod(lambda path, force_cpu=False: FakeDetector()),
+    )
+    cfg = DetectConfig(
+        model_path=tmp_path / "m_edgetpu.tflite",
+        grace_s=0.0,
+        min_frame_interval_s=0.0,
+        window_size=3,
+        window_needed=2,
+        stop_at_last_layer=stop_at_last_layer,
+        action="notify",
+        evidence_dir=tmp_path / "ev",
+    )
+    tg: list[dict[str, Any]] = []
+
+    async def telegram_poster(payload: dict[str, Any]) -> None:
+        tg.append(payload)
+
+    from pycentauri.detect.pipeline import COMPLETED, PAUSED
+
+    statuses: list[int | dict[str, Any]] = [
+        0,
+        *([{"Status": PRINTING, "CurrentLayer": 1, "TotalLayer": 3}] * 6),
+        *([{"Status": PRINTING, "CurrentLayer": 2, "TotalLayer": 3}] * 6),
+        PAUSED,
+        PAUSED,  # job-end re-arm: fired flag + window reset
+        *([{"Status": PRINTING, "CurrentLayer": 3, "TotalLayer": 3}] * 12),
+        COMPLETED,
+        COMPLETED,
+    ]
+    controller = DetectionController(
+        cfg,
+        camera=FakeCamera([_jpeg()] * 60),
+        get_printer=lambda: FakePrinter(statuses, delay=0.05),
+        telegram_poster=telegram_poster,
+    )
+    await controller.start()
+    await _wait_for(lambda: controller._last_code == COMPLETED)
+    await asyncio.sleep(0.2)  # let any post-completion alert fire
+    await controller.stop()
+    return tg
+
+
+async def test_no_detection_once_last_layer_reached(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """End-Guard (false alarm 17.11. 09:47): once the print reaches its
+    last layer, the bed drops and the head parks — the finished object
+    becomes fully visible and reads as spaghetti. Detection stops there;
+    the alert that fired during layer 2 stays the only one."""
+    tg = await _run_layer_sequence(monkeypatch, tmp_path, stop_at_last_layer=True)
+    detections = [p for p in tg if p["type"] == "spaghetti_detected"]
+    assert len(detections) == 1
+
+
+async def test_last_layer_guard_can_be_disabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--no-detect-stop-last-layer: the same sequence fires again after the
+    resume, because the last layer is evaluated as before."""
+    tg = await _run_layer_sequence(monkeypatch, tmp_path, stop_at_last_layer=False)
+    detections = [p for p in tg if p["type"] == "spaghetti_detected"]
+    assert len(detections) == 2
 
 
 async def test_controller_abort_alert_sent_once(

@@ -844,6 +844,16 @@ def cmd_server(
         "--detect-shift",
         help="Alarm when the printed object moves on the bed (position tracked across looks).",
     ),
+    detect_stop_last_layer: bool = typer.Option(
+        True,
+        "--detect-stop-last-layer/--no-detect-stop-last-layer",
+        help=(
+            "Stop detection once the print reaches its last layer, through "
+            "the whole end-gcode phase (bed drops, head parks, finished "
+            "object becomes fully visible — small overhangs read as "
+            "spaghetti). Training-frame collection keeps running."
+        ),
+    ),
     light_automation: bool = typer.Option(
         False,
         "--light-automation/--no-light-automation",
@@ -926,6 +936,7 @@ def cmd_server(
             collect_max_files=detect_collect_max_files,
             force_cpu=detect_cpu,
             shift_enabled=detect_shift,
+            stop_at_last_layer=detect_stop_last_layer,
         )
 
     light_cfg = None
