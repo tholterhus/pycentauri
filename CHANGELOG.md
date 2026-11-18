@@ -24,6 +24,19 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   and an epoch-seconds/ms unit bug in the session start made the curve
   bunch up at the right edge.
 
+## [0.18.4] - 2026-11-18
+
+### Added
+- Chamber-heating graph data is collected server-side now: one chamber-
+  temperature sample per 5 s during an armed session (cap 20 000 points,
+  ~27.8 h), heater phases recorded from the confirmed Shelly commands,
+  persisted to `data/heating-session.json` (atomic writes; an open
+  session resumes across service restarts, a cleanly ended print starts
+  a fresh graph on the next arm) and served via `GET /api/heating/history`.
+  The web UI renders that session — identical on every device, surviving
+  reloads and restarts — with light-red phase shading; the client-side
+  localStorage machinery is removed.
+
 ## [0.18.2] - 2026-11-18
 
 ### Fixed
