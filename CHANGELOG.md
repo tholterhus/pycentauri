@@ -4,6 +4,24 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.9] - 2026-11-18
+
+### Changed
+- Chamber heating panel, state language round: the OFF badge is gone —
+  one word says whether the mechanism is regulating this print
+  ("active" green / "off" dim / "disabled"), and the line below reads
+  "Status: heating" (amber) or "Status: standby" (dim) with the live
+  chamber temperature and the hold band. The gear is back to the exact
+  Detect-threshold look (bordered .btn box — the earlier borderless
+  variant rendered invisible).
+
+### Added
+- A small chamber-temperature graph in the panel (only while chamber
+  heating is enabled): one amber line per the theme, dashed lines for
+  the hold band, client-side trend of the last ~1 h at the 5 s poll
+  cadence (a page reload starts it fresh — deliberately no backend
+  history surface).
+
 ## [0.17.8] - 2026-11-18
 
 ### Changed

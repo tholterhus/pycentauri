@@ -891,61 +891,109 @@ let heatingControlEnabled = false;
 let heatingDirty = false;
 let heatingOpen = false;
 let heatingEnabledNow = false;
+// Client-side chamber-temperature trend for the panel graph — one sample
+// per loadHeating poll (5 s), capped at ~1 h. A page reload starts fresh.
+let heatingHistory = [];
+
+function updateHeaterGraph(state) {
+  const canvas = $("heater-graph");
+  if (!canvas) return;
+  canvas.hidden = !state.enabled;
+  if (!state.enabled) { heatingHistory = []; return; }
+  if (state.chamber_temp != null) {
+    heatingHistory.push({ t: Date.now(), v: +state.chamber_temp });
+    if (heatingHistory.length > 720) heatingHistory.shift();
+  }
+  if (heatingHistory.length < 2) { canvas.hidden = true; return; }
+
+  const s = state.settings || {};
+  const target = s.chamber_target || null;
+  const bandLo = target != null ? target - 2 : s.chamber_min;
+  const bandHi = target != null ? target : s.chamber_max;
+  const bands = [bandLo, bandHi].filter((b) => b != null);
+
+  const w = canvas.clientWidth || 220;
+  const h = 48;
+  const dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  let lo = Math.min(...heatingHistory.map((p) => p.v));
+  let hi = Math.max(...heatingHistory.map((p) => p.v));
+  for (const b of bands) { lo = Math.min(lo, b); hi = Math.max(hi, b); }
+  const pad = Math.max(1, (hi - lo) * 0.15);
+  lo -= pad;
+  hi += pad;
+  const x = (i) => (i / (heatingHistory.length - 1)) * (w - 2) + 1;
+  const y = (v) => h - 3 - ((v - lo) / (hi - lo)) * (h - 6);
+
+  const css = getComputedStyle(document.documentElement);
+  const colLine = (css.getPropertyValue("--amber") || "#ffb347").trim();
+  const colBand = (css.getPropertyValue("--fg-faint") || "#504a42").trim();
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = colBand;
+  ctx.setLineDash([3, 3]);
+  for (const b of bands) {
+    if (b < lo || b > hi) continue;
+    ctx.beginPath();
+    ctx.moveTo(0, y(b));
+    ctx.lineTo(w, y(b));
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.strokeStyle = colLine;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  heatingHistory.forEach((p, i) => {
+    const px = x(i);
+    const py = y(p.v);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+}
 
 function renderHeating(state) {
   heatingEnabledNow = !!state.enabled;
-  const badge = $("heating-badge");
-  badge.classList.remove("on", "warn", "err");
   const on = state.heater_on === true;
-  const off = state.heater_on === false;
-  // The badge only carries meaning while a session is armed (ON/OFF) — an
-  // idle dash-box says nothing and disappears entirely.
-  badge.hidden = !state.armed;
-  if (state.armed) {
-    badge.textContent = on ? "ON" : off ? "OFF" : "…";
-    if (on) badge.classList.add("on");
-  }
+  const s = state.settings || {};
+  const heatingTarget = s.chamber_target || null;
 
-  // One line that answers "is the heater running right now?" — with an
-  // idle printer it simply says "idle" instead of a cryptic HEATER ?
-  // (an idle heater is definitionally off; the automation guarantees a
-  // confirmed OFF at every session end).
-  const heatingTarget = (state.settings && state.settings.chamber_target) || null;
+  // Line 1 — the mechanism word: is the automation regulating this print?
   const ind = $("heater-indicator");
   ind.classList.remove("on", "off", "warn");
   if (!state.enabled) {
     ind.textContent = "disabled";
     ind.classList.add("off");
     ind.title = "chamber heating disabled";
-  } else if (!state.armed) {
-    ind.textContent = "idle";
+  } else if (state.armed) {
+    ind.textContent = "active";
+    ind.classList.add("on");
+    ind.title = state.last_error || "a print needs chamber heat";
+  } else {
+    ind.textContent = "off";
     ind.classList.add("off");
     ind.title = "no print needs chamber heat";
-  } else if (on) {
-    ind.textContent = "HEATER ON";
-    ind.classList.add("on");
-    ind.title = state.last_error || "Shelly relay confirmed ON";
-  } else if (off) {
-    ind.textContent = "HEATER OFF";
-    ind.classList.add("off");
-    ind.title = state.last_error || "Shelly relay confirmed OFF";
-  } else {
-    ind.textContent = "HEATER ?";
-    ind.classList.add("warn");
-    ind.title = state.last_error || "heater state unknown (no successful command yet)";
   }
 
-  const s = state.settings || {};
+  // Line 2 — the heater itself: heating (relay on) or standby, with the
+  // live chamber temperature and the band it holds.
   const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
-  let detail;
-  if (heatingTarget != null) {
-    detail = `hold ${Math.round(heatingTarget - 2)}–${Math.round(+heatingTarget)}°`;
-  } else if (state.armed) {
-    detail = `hold ${Math.round(s.chamber_min ?? 0)}–${Math.round(s.chamber_max ?? 0)}°`;
-  } else {
-    detail = "";
-  }
-  $("heater-detail").textContent = detail;
+  const band = heatingTarget != null
+    ? `hold ${Math.round(heatingTarget - 2)}–${Math.round(+heatingTarget)}°`
+    : `hold ${Math.round(s.chamber_min ?? 0)}–${Math.round(s.chamber_max ?? 0)}°`;
+  const statusWord = on
+    ? '<span class="st-heating">heating</span>'
+    : '<span class="st-standby">standby</span>';
+  $("heater-detail").innerHTML = `Status: ${statusWord} · ${chamber} · ${band}`;
+
+  updateHeaterGraph(state);
 
   // The gear unfolds the settings; the on/off toggle lives inside them,
   // so a collapsed panel has exactly one affordance (the gear).
