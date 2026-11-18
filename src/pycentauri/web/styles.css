@@ -1078,8 +1078,6 @@ body {
   white-space: nowrap;
 }
 
-.heater-state .gear-btn { margin-left: auto; align-self: center; }
-
 .heating-toggle {
   display: block;
   margin: 4px 0 10px;
@@ -1107,6 +1105,13 @@ body {
   height: 48px;
   margin: 4px 0 2px;
 }
+
+/* explicit display rules must not defeat the [hidden] attribute — a hidden
+   graph/state line collapses instead of reserving blank space */
+.heater-graph[hidden],
+.heater-state[hidden] { display: none; }
+
+.heating-panel .panel-header { justify-content: space-between; }
 
 .st-heating { color: var(--amber); }
 .st-standby { color: var(--fg-dim); }

@@ -1012,39 +1012,30 @@ function renderHeating(state) {
   }
   heatingLastOn = state.heater_on;
 
-  // Line 1 — the mechanism word: is the automation regulating this print?
-  const ind = $("heater-indicator");
-  ind.classList.remove("on", "off", "warn");
+  // One line — the heater itself: "Status: heating" (relay on) or
+  // "Status: standby", with the live chamber temperature and the band it
+  // holds. Disabled: no line at all — the gear (in the header) is the
+  // only affordance.
+  const stateLine = $("heater-state");
   if (!state.enabled) {
-    ind.textContent = "disabled";
-    ind.classList.add("off");
-    ind.title = "chamber heating disabled";
-  } else if (state.armed) {
-    ind.textContent = "active";
-    ind.classList.add("on");
-    ind.title = state.last_error || "a print needs chamber heat";
+    stateLine.hidden = true;
+    $("heater-detail").textContent = "";
   } else {
-    ind.textContent = "off";
-    ind.classList.add("off");
-    ind.title = "no print needs chamber heat";
+    stateLine.hidden = false;
+    const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
+    const eff = liveTarget ?? heatingTarget;
+    const bandTxt = eff != null
+      ? `hold ${Math.round(eff - half)}–${Math.round(eff + half)}°`
+      : "";
+    const statusWord = on
+      ? '<span class="st-heating">heating</span>'
+      : '<span class="st-standby">standby</span>';
+    $("heater-detail").innerHTML = `Status: ${statusWord} · ${chamber}${bandTxt ? ` · ${bandTxt}` : ""}`;
   }
-
-  // Line 2 — the heater itself: heating (relay on) or standby, with the
-  // live chamber temperature and the band it holds.
-  const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
-  const eff = liveTarget ?? heatingTarget;
-  const bandTxt = eff != null
-    ? `hold ${Math.round(eff - half)}–${Math.round(eff + half)}°`
-    : "";
-  const statusWord = on
-    ? '<span class="st-heating">heating</span>'
-    : '<span class="st-standby">standby</span>';
-  $("heater-detail").innerHTML = `Status: ${statusWord} · ${chamber}${bandTxt ? ` · ${bandTxt}` : ""}`;
 
   updateHeaterGraph(state);
 
-  // The gear unfolds the settings; the on/off toggle lives inside them,
-  // so a collapsed panel has exactly one affordance (the gear).
+  // The gear unfolds the settings; the on/off toggle lives inside them.
   const editable = heatingControlEnabled;
   $("heating-fields").hidden = !heatingOpen;
   $("heating-settings-toggle").hidden = false;

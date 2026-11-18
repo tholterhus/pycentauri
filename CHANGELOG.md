@@ -4,6 +4,18 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.1] - 2026-11-18
+
+### Changed
+- Chamber heating panel, whitespace round: a hidden graph or status line
+  now collapses (an explicit display rule was defeating the [hidden]
+  attribute and reserving blank space below the panel title). The
+  mechanism word ("off"/"disabled"/"active") is gone — the single line
+  reads "Status: heating"/"Status: standby" with the chamber temperature
+  and band, and disappears entirely while chamber heating is disabled.
+  The settings gear moved into the panel header, right-aligned behind
+  the "Chamber heating" title.
+
 ## [0.18.0] - 2026-11-18
 
 ### Changed
