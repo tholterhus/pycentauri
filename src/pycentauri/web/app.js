@@ -889,7 +889,10 @@ let heatingDirty = false;
 let heatingOpen = false;
 let heatingEnabledNow = false;
 let heatingArmedSince = null;  // epoch ms of the armed session (graph domain start)
-let heatingLastOn = null;  // last observed heater state (relay flip detection)
+// The armed session (samples + heater phases) persists in localStorage so
+// a page reload keeps the full graph. A new session (different
+// armed_since) clears it and starts fresh.
+const HEATING_SESSION_KEY = "chamber-heating-session-v1";
 // Client-side chamber-temperature trend for the panel graph — one sample
 // per loadHeating poll (5 s), timestamped so the graph can span the whole
 // session duration. A page reload starts fresh.
@@ -950,7 +953,6 @@ function updateHeaterGraph(state) {
   const css = getComputedStyle(document.documentElement);
   const colLine = (css.getPropertyValue("--amber") || "#ffb347").trim();
   const colBand = (css.getPropertyValue("--fg-faint") || "#504a42").trim();
-  const colOk = (css.getPropertyValue("--ok") || "#8ed19a").trim();
   const colDanger = (css.getPropertyValue("--danger") || "#eb5c4e").trim();
 
   // Hold band: dashed min/max lines the curve must stay inside.
@@ -966,15 +968,20 @@ function updateHeaterGraph(state) {
   }
   ctx.setLineDash([]);
 
-  // Heater events: fine green line where it switched ON, red where OFF.
+  // Heating phases: a very light transparent red over each ON span (from
+  // the ON event to the OFF event, or up to now while still heating).
+  ctx.fillStyle = "rgba(235, 92, 78, 0.10)";
+  let open = null;
+  const spans = [];
   for (const ev of heaterEvents) {
-    if (ev.t < t0 || ev.t > t1) continue;
-    ctx.strokeStyle = ev.on ? colOk : colDanger;
-    const px = x(ev.t);
-    ctx.beginPath();
-    ctx.moveTo(px, 1);
-    ctx.lineTo(px, h - 1);
-    ctx.stroke();
+    if (ev.on && open === null) open = ev.t;
+    else if (!ev.on && open !== null) { spans.push([open, ev.t]); open = null; }
+  }
+  if (open !== null) spans.push([open, Date.now()]);
+  for (const [a, b] of spans) {
+    const xa = Math.max(0, x(a));
+    const xb = Math.min(w, x(b));
+    if (xb > xa) ctx.fillRect(xa, 0, xb - xa, h);
   }
 
   ctx.strokeStyle = colLine;
@@ -999,6 +1006,39 @@ function updateHeaterGraph(state) {
   ctx.textAlign = "left";
 }
 
+function loadPersistedSession(state) {
+  // Restore the persisted session when it matches the current one; a
+  // different armed_since means a new print - stale storage is dropped.
+  if (!state.armed_since) return;
+  const sinceMs = state.armed_since * 1000;
+  try {
+    const raw = JSON.parse(localStorage.getItem(HEATING_SESSION_KEY) || "null");
+    if (raw && raw.armed_since === sinceMs) {
+      heatingHistory = raw.samples || [];
+      heaterEvents = raw.events || [];
+      return;
+    }
+    localStorage.removeItem(HEATING_SESSION_KEY);
+  } catch (_) {
+    // corrupted storage - start fresh
+  }
+}
+
+function persistSession() {
+  try {
+    localStorage.setItem(
+      HEATING_SESSION_KEY,
+      JSON.stringify({
+        armed_since: heatingArmedSince,
+        samples: heatingHistory,
+        events: heaterEvents,
+      }),
+    );
+  } catch (_) {
+    // quota exceeded - the graph degrades to live-only, keep going
+  }
+}
+
 function renderHeating(state) {
   heatingEnabledNow = !!state.enabled;
   const on = state.heater_on === true;
@@ -1007,20 +1047,22 @@ function renderHeating(state) {
   const half = (s.chamber_factor ?? 5) / 2;
   const liveTarget = state.target ?? (state.armed ? heatingTarget : null);
 
-  // A new armed session resets the graph history and the event markers.
-  const armedSince = state.armed_since ? new Date(state.armed_since).getTime() : null;
+  // Session bookkeeping: an armed_since change means a new print - the
+  // persisted session is restored when it matches, dropped otherwise.
+  const armedSince = state.armed_since ? state.armed_since * 1000 : null;
   if (armedSince !== heatingArmedSince) {
     heatingArmedSince = armedSince;
     heatingHistory = [];
     heaterEvents = [];
+    loadPersistedSession(state);
   }
 
-  // Heater relay flips seen while polling become event lines in the graph.
-  const heaterWasOn = heatingLastOn;
-  if (heaterWasOn !== null && on !== heaterWasOn && state.armed) {
-    heaterEvents.push({ t: Date.now(), on });
+  // Heater state changes become phase events. The last recorded state
+  // dedupes: a reload while heating must not re-open the running phase.
+  if (state.armed && state.heater_on !== null) {
+    const last = heaterEvents[heaterEvents.length - 1];
+    if (!last || last.on !== on) heaterEvents.push({ t: Date.now(), on });
   }
-  heatingLastOn = state.heater_on;
 
   // One line — the heater itself: "Status: heating" (relay on) or
   // "Status: standby", with the live chamber temperature and the band it
@@ -1044,6 +1086,7 @@ function renderHeating(state) {
   }
 
   updateHeaterGraph(state);
+  if (state.enabled && state.armed) persistSession();
 
   // The header dot mirrors the heater state: red while heating, gray
   // while standby (blink pattern from the detect LED). Hidden when the
