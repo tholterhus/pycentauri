@@ -895,10 +895,10 @@ def cmd_server(
         "--heating-chamber-target",
         help="Fallback chamber target °C (used when the slicer sets none).",
     ),
-    heating_chamber_factor: float = typer.Option(
+    heating_chamber_hysteresis: float = typer.Option(
         5.0,
-        "--heating-chamber-factor",
-        help="Full swing °C around the target (heater off at target+factor/2).",
+        "--heating-chamber-hysteresis",
+        help="Hysteresis band °C around the target (heater off at target+hysteresis/2).",
     ),
     heating_chamber_overshoot: float = typer.Option(
         0.0,
@@ -940,8 +940,8 @@ def cmd_server(
     if heating and not enable_control:
         _echo_err("--heating requires --enable-control (it drives the heater).")
         raise typer.Exit(code=2)
-    if heating and not 1 <= heating_chamber_factor <= 30:
-        _echo_err("--heating-chamber-factor must be within 1..30.")
+    if heating and not 1 <= heating_chamber_hysteresis <= 30:
+        _echo_err("--heating-chamber-hysteresis must be within 1..30.")
         raise typer.Exit(code=2)
     if heating and not 0 <= heating_chamber_target <= 60:
         _echo_err("--heating-chamber-target must be within 0..60 °C.")
@@ -955,7 +955,7 @@ def cmd_server(
         or heating_materials
         or heating_bed_temp != 90.0
         or heating_chamber_target != 42.5
-        or heating_chamber_factor != 5.0
+        or heating_chamber_hysteresis != 5.0
         or heating_chamber_overshoot != 0.0
     ):
         _echo_err("--heating-* options require --heating.")
@@ -1019,7 +1019,7 @@ def cmd_server(
             url_off=heating_url_off.strip(),
             bed_temp=heating_bed_temp,
             chamber_target=heating_chamber_target,
-            chamber_factor=heating_chamber_factor,
+            chamber_hysteresis=heating_chamber_hysteresis,
             chamber_overshoot=heating_chamber_overshoot,
             material_markers=[m.strip() for m in heating_materials.split(",") if m.strip()],
         )

@@ -323,11 +323,11 @@ class HeatingSettingsBody(BaseModel):
         le=60,
         description="Fallback chamber target °C (used when the slicer sets none).",
     )
-    chamber_factor: float | None = Field(
+    chamber_hysteresis: float | None = Field(
         None,
         ge=1,
         le=30,
-        description="Full swing °C around the target (heater off at target+factor/2).",
+        description="Hysteresis band °C around the target (heater off at target+hysteresis/2).",
     )
     chamber_overshoot: float | None = Field(
         None, ge=0, le=60, description="Learned overshoot °C that lowers the OFF point (editable)."

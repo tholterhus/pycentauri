@@ -5,8 +5,8 @@ reports a chamber target (``TempTargetBox``) above zero, the heater
 regulates toward it. Otherwise — a print armed via bed target above the
 threshold or a filename marker — the configured fallback target applies.
 
-Around the target the heater holds a band (``chamber_factor``, full
-swing): ON below ``target - factor/2``, OFF above ``target + factor/2 -
+Around the target the heater holds a switching band (the
+``chamber_hysteresis``): ON below ``target - hysteresis/2``, OFF above ``target + hysteresis/2 -
 overshoot``. The **overshoot is learned**: after every heater-OFF the
 temperature keeps rising for a while (thermal inertia); the automation
 tracks the peak of each phase and folds it into an exponential average
@@ -83,7 +83,7 @@ STATE_FIELDS = (
     "url_off",
     "bed_temp",
     "chamber_target",
-    "chamber_factor",
+    "chamber_hysteresis",
     "chamber_overshoot",
     "material_markers",
 )
@@ -115,12 +115,12 @@ class HeatingConfig:
     bed_temp: float = 90.0
     # Fallback chamber target when the slicer passes none (TempTargetBox 0).
     chamber_target: float = 42.5
-    # Full swing around the target (the ON point sits factor/2 below it).
-    chamber_factor: float = 5.0
+    # Hysteresis band around the target (the ON point sits hysteresis/2 below it).
+    chamber_hysteresis: float = 5.0
     # Learned overshoot: how far the chamber rises past the OFF point after
     # the heater switches off (thermal inertia). The OFF point is lowered
     # by this value; starts at 0 and is folded in after every heating
-    # phase (EMA), clamped to the factor. Editable in the web UI.
+    # phase (EMA), clamped to the hysteresis. Editable in the web UI.
     chamber_overshoot: float = 0.0
     material_markers: list[str] = dataclasses.field(default_factory=list)
     # Where the UI-persisted settings live (wins over .conf/CLI defaults).
@@ -133,10 +133,10 @@ class HeatingConfig:
         """Raise ValueError on settings the hysteresis cannot honor."""
         if not 0 <= self.chamber_target <= 60:
             raise ValueError(f"chamber_target {self.chamber_target}°C out of range 0..60")
-        if not 1 <= self.chamber_factor <= 30:
+        if not 1 <= self.chamber_hysteresis <= 30:
             raise ValueError(
-                f"chamber_factor {self.chamber_factor} out of range 1..30 "
-                "(it is the full swing around the target)"
+                f"chamber_hysteresis {self.chamber_hysteresis} out of range 1..30 "
+                "(it is the hysteresis band around the target)"
             )
         if not 0 <= self.chamber_overshoot <= 60:
             raise ValueError(f"chamber_overshoot {self.chamber_overshoot}°C out of range 0..60")
@@ -169,9 +169,9 @@ def load_state(cfg: HeatingConfig) -> None:
             hi = float(raw["chamber_max"])
             if hi > lo:
                 cfg.chamber_target = round((lo + hi) / 2, 2)
-                cfg.chamber_factor = round(hi - lo, 2)
+                cfg.chamber_hysteresis = round(hi - lo, 2)
                 log.info(
-                    "heating: migrated chamber_min/max (%s/%s) to target %s ± factor/2",
+                    "heating: migrated chamber_min/max (%s/%s) to target %s ± hysteresis/2",
                     lo,
                     hi,
                     cfg.chamber_target,
@@ -179,12 +179,16 @@ def load_state(cfg: HeatingConfig) -> None:
     if raw.get("chamber_target"):
         with contextlib.suppress(TypeError, ValueError):
             cfg.chamber_target = float(raw["chamber_target"])
+    if raw.get("chamber_factor") is not None and "chamber_hysteresis" not in raw:
+        # pre-0.18.7 key rename: same value, new name
+        with contextlib.suppress(TypeError, ValueError):
+            cfg.chamber_hysteresis = float(raw["chamber_factor"])
     for field in (
         "enabled",
         "url_on",
         "url_off",
         "bed_temp",
-        "chamber_factor",
+        "chamber_hysteresis",
         "chamber_overshoot",
     ):
         if field not in raw:
@@ -192,7 +196,7 @@ def load_state(cfg: HeatingConfig) -> None:
         value = raw[field]
         if field == "enabled":
             cfg.enabled = bool(value)
-        elif field in ("bed_temp", "chamber_factor", "chamber_overshoot"):
+        elif field in ("bed_temp", "chamber_hysteresis", "chamber_overshoot"):
             with contextlib.suppress(TypeError, ValueError):
                 setattr(cfg, field, float(value))
         elif field == "url_on":
@@ -232,7 +236,7 @@ class HeatingAutomation:
     """Drive the chamber heater from the printer's status stream.
 
     Target resolution per push, slicer first (see module docstring); the
-    heater holds the chamber inside ±factor/2 around the target, with the
+    heater holds the chamber inside ±hysteresis/2 around the target, with the
     learned overshoot lowering the OFF point so the thermal inertia peaks
     inside the band. At print end the heater goes off unconditionally.
     """
@@ -340,7 +344,7 @@ class HeatingAutomation:
             "heating: settings updated (enabled=%s target=%s factor=%s overshoot=%s markers=%s)",
             self.cfg.enabled,
             self.cfg.chamber_target,
-            self.cfg.chamber_factor,
+            self.cfg.chamber_hysteresis,
             self.cfg.chamber_overshoot,
             self.cfg.material_markers,
         )
@@ -366,7 +370,7 @@ class HeatingAutomation:
                 "url_off": self.cfg.url_off,
                 "bed_temp": self.cfg.bed_temp,
                 "chamber_target": self.cfg.chamber_target,
-                "chamber_factor": self.cfg.chamber_factor,
+                "chamber_hysteresis": self.cfg.chamber_hysteresis,
                 "chamber_overshoot": self.cfg.chamber_overshoot,
                 "material_markers": self.cfg.material_markers,
             },
@@ -445,7 +449,7 @@ class HeatingAutomation:
                     armed_now = True
                     self._start_session()
                     chamber = st.temp_chamber
-                    if chamber is None or chamber < target + self.cfg.chamber_factor / 2:
+                    if chamber is None or chamber < target + self.cfg.chamber_hysteresis / 2:
                         self._set(True, f"print start: {reason}")
         elif not active and was_active:
             self._armed = False
@@ -478,7 +482,7 @@ class HeatingAutomation:
             if chamber is not None:
                 target = self._effective_target(st)
                 self._last_target = target
-                half = self.cfg.chamber_factor / 2
+                half = self.cfg.chamber_hysteresis / 2
                 on_point = target - half
                 off_point = max(on_point, target + half - self.cfg.chamber_overshoot)
 
@@ -674,7 +678,7 @@ class HeatingAutomation:
         sample = max(0.0, learn["peak"] - learn["off"])
         old = self.cfg.chamber_overshoot
         new = round(old * (1 - OVERSHOOT_EMA_ALPHA) + sample * OVERSHOOT_EMA_ALPHA, 2)
-        new = min(new, self.cfg.chamber_factor)  # OFF point stays ≥ ON point
+        new = min(new, self.cfg.chamber_hysteresis)  # OFF point stays ≥ ON point
         self.cfg.chamber_overshoot = new
         self._learn = None
         save_state(self.cfg)

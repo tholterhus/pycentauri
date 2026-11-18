@@ -904,7 +904,7 @@ function updateHeaterGraph(state) {
   if (!state.enabled || !state.armed || !heatingSession) return;
 
   const s = state.settings || {};
-  const half = (s.chamber_factor ?? 5) / 2;
+  const half = (s.chamber_hysteresis ?? 5) / 2;
   const target = state.target ?? s.chamber_target ?? null;
   const bandLo = target != null ? target - half : null;
   const bandHi = target != null ? target + half : null;
@@ -1012,7 +1012,7 @@ function renderHeating(state) {
   const on = state.heater_on === true;
   const s = state.settings || {};
   const heatingTarget = s.chamber_target || null;
-  const half = (s.chamber_factor ?? 5) / 2;
+  const half = (s.chamber_hysteresis ?? 5) / 2;
   const liveTarget = state.target ?? (state.armed ? heatingTarget : null);
 
   // One line — the heater itself: "Status: heating" (relay on, red) or
@@ -1065,7 +1065,7 @@ function renderHeating(state) {
   en.textContent = state.enabled ? "on" : "off";
   en.classList.toggle("on", !!state.enabled);
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
-                    "heating-chamber-target", "heating-chamber-factor", "heating-chamber-overshoot",
+                    "heating-chamber-target", "heating-chamber-hysteresis", "heating-chamber-overshoot",
                     "heating-markers", "heating-save"]) {
     $(id).disabled = !editable;
   }
@@ -1076,7 +1076,7 @@ function renderHeating(state) {
     $("heating-url-off").value = s.url_off || "";
     $("heating-bed-temp").value = s.bed_temp ?? "";
     $("heating-chamber-target").value = s.chamber_target ?? "";
-    $("heating-chamber-factor").value = s.chamber_factor ?? "";
+    $("heating-chamber-hysteresis").value = s.chamber_hysteresis ?? "";
     $("heating-chamber-overshoot").value = s.chamber_overshoot ?? "";
     $("heating-markers").value = (s.material_markers || []).join(",");
   }
@@ -1140,7 +1140,7 @@ function wireHeating() {
     if (!ok) $("heating-enabled").title = "toggle failed — see journal";
   });
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
-                    "heating-chamber-target", "heating-chamber-factor", "heating-chamber-overshoot",
+                    "heating-chamber-target", "heating-chamber-hysteresis", "heating-chamber-overshoot",
                     "heating-markers"]) {
     $(id).addEventListener("input", () => { heatingDirty = true; });
   }
@@ -1151,7 +1151,7 @@ function wireHeating() {
       url_off: $("heating-url-off").value.trim(),
       bed_temp: parseFloat($("heating-bed-temp").value),
       chamber_target: parseFloat($("heating-chamber-target").value),
-      chamber_factor: parseFloat($("heating-chamber-factor").value),
+      chamber_hysteresis: parseFloat($("heating-chamber-hysteresis").value),
       chamber_overshoot: parseFloat($("heating-chamber-overshoot").value),
       material_markers: $("heating-markers").value,
     };

@@ -4,25 +4,16 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.18.3] - 2026-11-18
+## [0.18.7] - 2026-11-18
 
 ### Changed
-- "Status: heating" is red, and a small blinking dot sits behind the
-  "Chamber heating" title — red while the heater is running, gray while
-  it holds in standby (blink pattern of the detect LED); hidden when no
-  session is armed.
-- Scrollbars are dark and slim everywhere: the white browser-default
-  track glared in the Print history / Files lists. No scrollbar styling
-  existed before (nothing to revert — git-verified) — the sudden change
-  came from the browser side, this makes it deterministic.
-- The chamber-temperature graph spans the armed session: left = print
-  start (with a small HH:MM scale, left start / right now), the curve
-  compresses as the print grows — nothing scrolls out, however long the
-  print runs. The dashed min/max band lines are back (the curve must
-  stay inside them — with the left-to-right reading they finally make
-  sense), the canvas is taller on desktop (96 px vs 48 px on phones),
-  and an epoch-seconds/ms unit bug in the session start made the curve
-  bunch up at the right edge.
+- Proper control-theory terms in the UI and code: "Faktor" is the
+  **hysteresis** (the switching band of the two-position controller -
+  ON below target - hysteresis/2, OFF above target + hysteresis/2
+  minus the learned overshoot), and the learned value compensates the
+  overshoot (the transient rise past the OFF point from thermal
+  inertia). Config/CLI/API field renamed chamber_factor ->
+  chamber_hysteresis (heating.json key migrates automatically).
 
 ## [0.18.5] - 2026-11-18
 
@@ -57,6 +48,26 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   The web UI renders that session — identical on every device, surviving
   reloads and restarts — with light-red phase shading; the client-side
   localStorage machinery is removed.
+
+## [0.18.3] - 2026-11-18
+
+### Changed
+- "Status: heating" is red, and a small blinking dot sits behind the
+  "Chamber heating" title — red while the heater is running, gray while
+  it holds in standby (blink pattern of the detect LED); hidden when no
+  session is armed.
+- Scrollbars are dark and slim everywhere: the white browser-default
+  track glared in the Print history / Files lists. No scrollbar styling
+  existed before (nothing to revert — git-verified) — the sudden change
+  came from the browser side, this makes it deterministic.
+- The chamber-temperature graph spans the armed session: left = print
+  start (with a small HH:MM scale, left start / right now), the curve
+  compresses as the print grows — nothing scrolls out, however long the
+  print runs. The dashed min/max band lines are back (the curve must
+  stay inside them — with the left-to-right reading they finally make
+  sense), the canvas is taller on desktop (96 px vs 48 px on phones),
+  and an epoch-seconds/ms unit bug in the session start made the curve
+  bunch up at the right edge.
 
 ## [0.18.2] - 2026-11-18
 
@@ -755,7 +766,6 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   frames for 15 s) and reconnects automatically, instead of silently
   hanging forever (observed 2026-07-09 on CC1).
 
-
 ### Added
 - **File management (CC2, firmware 02.01.00.00+).** Four new MQTT methods
   reverse-engineered from Orca's live wire traffic (2026-07-10):
@@ -790,7 +800,6 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   `POST /files/upload` (multipart), MCP `upload_file`, and a web UI
   upload control. Requires `enable_control`. Verified live on CC2.
 
-
 ## [0.6.5] - 2026-07-06
 
 ### Fixed
@@ -809,7 +818,6 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   02.00.02.00 is a lockdown release (removes SSH, blocks downgrades)
   with a community repacked v01.03.02.51 available if needed.
 
-
 ## [0.6.4] - 2026-07-05
 
 ### Fixed
@@ -820,7 +828,6 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   resolved at schema-generation time (request validation still worked,
   which is why nothing else surfaced it). Moved it to module scope with
   the other request-body models; added a test that renders the schema.
-
 
 ## [0.6.3] - 2026-07-05
 
@@ -841,7 +848,6 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   release the pin for the touchscreen-balanced case, which is now
   detected automatically. `speed auto`, `{"mode": "auto"}`, and the web
   UI Auto button are gone.
-
 
 ## [0.6.2] - 2026-07-05
 

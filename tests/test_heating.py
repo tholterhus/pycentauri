@@ -78,7 +78,7 @@ def _config(tmp_path: Path, **overrides: Any) -> HeatingConfig:
         "url_off": URL_OFF,
         "bed_temp": 90.0,
         "chamber_target": 42.5,
-        "chamber_factor": 5.0,
+        "chamber_hysteresis": 5.0,
         "material_markers": [],
         "state_path": tmp_path / "heating.json",
         "session_path": tmp_path / "heating-session.json",
@@ -209,7 +209,7 @@ async def test_hysteresis_slicer_target_with_factor(tmp_path: Path) -> None:
     OFF above 47.5, in between keep the current state."""
     rec = Recorder()
     auto = HeatingAutomation(
-        _config(tmp_path, chamber_target=42.5, chamber_factor=5.0),
+        _config(tmp_path, chamber_target=42.5, chamber_hysteresis=5.0),
         get_printer=lambda: FakePrinter([]),
         request_fn=rec,
     )
@@ -274,7 +274,7 @@ async def test_overshoot_learned_from_first_phase(tmp_path: Path) -> None:
     next OFF point."""
     rec = Recorder()
     auto = HeatingAutomation(
-        _config(tmp_path, chamber_target=45.0, chamber_factor=5.0, chamber_overshoot=0.0),
+        _config(tmp_path, chamber_target=45.0, chamber_hysteresis=5.0, chamber_overshoot=0.0),
         get_printer=lambda: FakePrinter([]),
         request_fn=rec,
     )
@@ -299,10 +299,10 @@ async def test_overshoot_learned_from_first_phase(tmp_path: Path) -> None:
 
 async def test_overshoot_is_clamped_to_the_factor(tmp_path: Path) -> None:
     """A huge overshoot may never push the OFF point below the ON point —
-    clamped to the factor."""
+    clamped to the hysteresis."""
     rec = Recorder()
     auto = HeatingAutomation(
-        _config(tmp_path, chamber_target=45.0, chamber_factor=2.0, chamber_overshoot=2.5),
+        _config(tmp_path, chamber_target=45.0, chamber_hysteresis=2.0, chamber_overshoot=2.5),
         get_printer=lambda: FakePrinter([]),
         request_fn=rec,
     )
@@ -496,20 +496,20 @@ def test_settings_persist_and_precede(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     auto = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
     auto.apply_settings(
-        bed_temp=70.0, material_markers="ABS, ASA", chamber_target=45.0, chamber_factor=6.0
+        bed_temp=70.0, material_markers="ABS, ASA", chamber_target=45.0, chamber_hysteresis=6.0
     )
     raw = json.loads((tmp_path / "heating.json").read_text(encoding="utf-8"))
     assert raw["bed_temp"] == 70.0
     assert raw["material_markers"] == ["ABS", "ASA"]
     assert raw["chamber_target"] == 45.0
-    assert raw["chamber_factor"] == 6.0
+    assert raw["chamber_hysteresis"] == 6.0
 
     fresh = HeatingConfig(state_path=tmp_path / "heating.json", chamber_target=42.5)
     HeatingAutomation(fresh, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
     assert fresh.bed_temp == 70.0
     assert fresh.material_markers == ["ABS", "ASA"]
     assert fresh.chamber_target == 45.0  # JSON wins over the conf default
-    assert fresh.chamber_factor == 6.0
+    assert fresh.chamber_hysteresis == 6.0
     assert fresh.enabled is True  # the JSON stores the full set — it IS the truth
 
 
@@ -529,7 +529,7 @@ def test_old_min_max_state_migrates_to_target_and_factor(tmp_path: Path) -> None
     cfg = HeatingConfig(state_path=tmp_path / "heating.json")
     HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
     assert cfg.chamber_target == 42.5
-    assert cfg.chamber_factor == 5.0
+    assert cfg.chamber_hysteresis == 5.0
     assert cfg.enabled is True
     assert cfg.material_markers == ["ABS"]
 
@@ -538,7 +538,7 @@ def test_apply_settings_validation_rejects_bad_values(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     auto = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
     with pytest.raises(ValueError):
-        auto.apply_settings(chamber_factor=0.5)  # degenerate band
+        auto.apply_settings(chamber_hysteresis=0.5)  # degenerate band
     with pytest.raises(ValueError):
         auto.apply_settings(chamber_target=70.0)  # out of 0..60
     with pytest.raises(ValueError):
@@ -546,7 +546,7 @@ def test_apply_settings_validation_rejects_bad_values(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         auto.apply_settings(bed_temp=200.0)
     # rejected values never landed
-    assert cfg.chamber_factor == 5.0
+    assert cfg.chamber_hysteresis == 5.0
     assert cfg.chamber_target == 42.5
     assert cfg.url_on == URL_ON
     assert cfg.bed_temp == 90.0
