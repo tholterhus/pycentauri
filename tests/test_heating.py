@@ -144,7 +144,9 @@ async def test_marker_in_filename_activates(tmp_path: Path) -> None:
     )
     await _push(
         auto,
-        _status(code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="hook_ABS_v2.gcode"),
+        _status(
+            code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="hook_ABS_v2.gcode"
+        ),
     )
     assert rec.calls == [URL_ON]
     assert "ABS" in auto._armed_reason
@@ -159,7 +161,9 @@ async def test_marker_match_is_case_insensitive(tmp_path: Path) -> None:
     )
     await _push(
         auto,
-        _status(code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="HOOK-asa-x.gcode"),
+        _status(
+            code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="HOOK-asa-x.gcode"
+        ),
     )
     assert rec.calls == [URL_ON]
 
@@ -233,10 +237,10 @@ async def test_attach_above_max_stays_off_until_cold(tmp_path: Path) -> None:
     rec = Recorder()
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
     await _push(auto, _status(code=13, bed_target=100.0, chamber=50.0, chamber_target=0.0))
-    assert rec.calls == []
+    assert rec.calls == [URL_OFF]  # attach hot: the OFF pins the known state
     assert auto._armed
     await _push(auto, _status(code=13, bed_target=100.0, chamber=39.0, chamber_target=0.0))
-    assert rec.calls == [URL_ON]
+    assert rec.calls == [URL_OFF, URL_ON]
 
 
 # --- session end ----------------------------------------------------------------
@@ -273,7 +277,9 @@ async def test_marker_with_underscores_matches(tmp_path: Path) -> None:
     )
     await _push(
         auto,
-        _status(code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="hook_ABS_v2.gcode"),
+        _status(
+            code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="hook_ABS_v2.gcode"
+        ),
     )
     assert rec.calls == [URL_ON]
 
@@ -290,12 +296,24 @@ async def test_bare_marker_does_not_match_inside_words(tmp_path: Path) -> None:
     )
     await _push(
         auto,
-        _status(code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="ABSchneide_jig.gcode"),
+        _status(
+            code=13,
+            bed_target=60.0,
+            chamber=25.0,
+            chamber_target=0.0,
+            filename="ABSchneide_jig.gcode",
+        ),
     )
     assert rec.calls == []
     await _push(
         auto,
-        _status(code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="rod ABS 1h48m.gcode"),
+        _status(
+            code=13,
+            bed_target=60.0,
+            chamber=25.0,
+            chamber_target=0.0,
+            filename="rod ABS 1h48m.gcode",
+        ),
     )
     assert rec.calls == [URL_ON]
 
@@ -313,10 +331,16 @@ async def test_overshoot_learned_from_first_phase(tmp_path: Path) -> None:
         get_printer=lambda: FakePrinter([]),
         request_fn=rec,
     )
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))  # arm + ON
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=47.6, chamber_target=45.0))  # OFF (47.5)
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0)
+    )  # arm + ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=47.6, chamber_target=45.0)
+    )  # OFF (47.5)
     await _push(auto, _status(code=13, bed_target=100.0, chamber=48.5, chamber_target=45.0))  # peak
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=48.0, chamber_target=45.0))  # falling → bank
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=48.0, chamber_target=45.0)
+    )  # falling → bank
     # sample = 48.5 - 47.5 = 1.0; EMA(0, 1.0, alpha 0.4) = 0.4
     assert auto.cfg.chamber_overshoot == pytest.approx(0.4)
     # The learned overshoot shows in the NEXT heating phase: re-heat below
@@ -335,9 +359,13 @@ async def test_overshoot_is_clamped_to_the_factor(tmp_path: Path) -> None:
         get_printer=lambda: FakePrinter([]),
         request_fn=rec,
     )
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=44.1, chamber_target=45.0))  # OFF (44)
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=44.1, chamber_target=45.0)
+    )  # OFF (44)
     await _push(auto, _status(code=13, bed_target=100.0, chamber=50.0, chamber_target=45.0))  # peak
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=49.5, chamber_target=45.0))  # fall → bank
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=49.5, chamber_target=45.0)
+    )  # fall → bank
     # sample = 50 - 44 = 6; EMA(2.5, 6, alpha 0.4) = 3.9 → clamped to factor 2
     assert auto.cfg.chamber_overshoot == 2.0
 
@@ -363,10 +391,16 @@ async def test_safety_trip_on_flat_temperature(tmp_path: Path) -> None:
     rec = Recorder()
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
     auto._safety_window = 0.0  # trip on the first push after ON
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # arm + ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0)
+    )  # arm + ON
     assert rec.calls == [URL_ON]
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0))  # watch baseline
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0))  # flat → trip
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0)
+    )  # watch baseline
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0)
+    )  # flat → trip
     assert rec.calls == [URL_ON, URL_OFF]
     assert auto._safety_stop is True
     assert "no temperature rise" in auto._safety_message
@@ -383,8 +417,12 @@ async def test_rising_temperature_does_not_trip(tmp_path: Path) -> None:
     auto._safety_window = 0.0
     auto._safety_rise = 1.0
     await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=27.0, chamber_target=0.0))  # +2°: fine
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=29.0, chamber_target=0.0))  # still fine
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=27.0, chamber_target=0.0)
+    )  # +2°: fine
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=29.0, chamber_target=0.0)
+    )  # still fine
     assert rec.calls == [URL_ON]
     assert auto._safety_stop is False
 
@@ -394,10 +432,14 @@ async def test_safety_stop_clears_at_session_end_and_retries(tmp_path: Path) -> 
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
     auto._safety_window = 0.0
     await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0))  # trip → OFF
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0)
+    )  # trip → OFF
     await _push(auto, _status(code=9, chamber=25.0, chamber_target=0.0))  # print ends
     assert auto._safety_stop is False  # cleared
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # new print
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0)
+    )  # new print
     assert rec.calls == [URL_ON, URL_OFF, URL_ON]  # the next print tries again
 
 
@@ -406,8 +448,12 @@ async def test_safety_trip_without_chamber_readings(tmp_path: Path) -> None:
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
     auto._safety_window = 0.0
     await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=None, chamber_target=0.0))  # watch baseline
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=None, chamber_target=0.0))  # dead sensor → trip
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=None, chamber_target=0.0)
+    )  # watch baseline
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=None, chamber_target=0.0)
+    )  # dead sensor → trip
     assert rec.calls == [URL_ON, URL_OFF]
     assert "no chamber temperature readings" in auto._safety_message
 
@@ -421,21 +467,31 @@ async def test_downtime_phase_is_not_learned(tmp_path: Path) -> None:
     rec = Recorder()
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
     auto._sample_interval = 0.0
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))  # arm + ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0)
+    )  # arm + ON
     # simulate: the service went down, the chamber climbed to 52.5 during
     # the gap, then the service resumed (session file already open).
     data = auto.session_data()
     auto._session_samples.append([data["phases"][0][0] + 330, 52.5])
     auto._resume_open_phase = True  # what the restart-resume would set
     await _push(auto, _status(code=13, bed_target=100.0, chamber=52.5, chamber_target=45.0))  # OFF
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=51.5, chamber_target=45.0))  # falling
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=51.5, chamber_target=45.0)
+    )  # falling
     await _push(auto, _status(code=13, bed_target=100.0, chamber=51.0, chamber_target=45.0))
     # the downtime overshoot (52.5 - 47.5 = 5°) was NOT banked
     assert auto.cfg.chamber_overshoot == 0.0
     assert auto._resume_open_phase is True  # still flagged: no fresh ON yet
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=42.0, chamber_target=45.0))  # below ON point → re-heat
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=47.6, chamber_target=45.0))  # new phase OFF
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=47.3, chamber_target=45.0))  # fall → bank
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=42.0, chamber_target=45.0)
+    )  # below ON point → re-heat
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=47.6, chamber_target=45.0)
+    )  # new phase OFF
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=47.3, chamber_target=45.0)
+    )  # fall → bank
     # the fresh phase (peak 47.6 over off-point 47.5 = 0.1) banks normally
     assert auto.cfg.chamber_overshoot == pytest.approx(0.1 * 0.4)
 
@@ -514,7 +570,9 @@ async def test_new_print_starts_a_fresh_session(tmp_path: Path) -> None:
     assert first["open"] is False
     n_samples = len(first["samples"])
 
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))  # new print
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0)
+    )  # new print
     data = auto.session_data()
     assert data["open"] is True
     assert len(data["samples"]) < n_samples + 5  # fresh, not appended
@@ -532,7 +590,9 @@ async def test_target_cap_clamps_slicer_target(tmp_path: Path) -> None:
         get_printer=lambda: FakePrinter([]),
         request_fn=rec,
     )
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=55.0))  # arm + ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=55.0)
+    )  # arm + ON
     data = auto.session_data()
     assert data["open"] is True
     assert auto._last_target == 50.0  # clamped
@@ -565,7 +625,9 @@ def test_settings_persist_and_precede(tmp_path: Path) -> None:
     over the .conf/CLI defaults."""
     cfg = _config(tmp_path)
     auto = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
-    auto.apply_settings(bed_temp=70.0, material_markers="ABS, ASA", chamber_target=45.0, chamber_hysteresis=6.0)
+    auto.apply_settings(
+        bed_temp=70.0, material_markers="ABS, ASA", chamber_target=45.0, chamber_hysteresis=6.0
+    )
     raw = json.loads((tmp_path / "heating.json").read_text(encoding="utf-8"))
     assert raw["bed_temp"] == 70.0
     assert raw["material_markers"] == ["ABS", "ASA"]
@@ -629,12 +691,18 @@ async def test_send_failure_backs_off_then_retries(
     monkeypatch.setattr(heating, "RETRY_BACKOFF_START", 0.01)
     rec = Recorder(fail_left=1)
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON → fails
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0)
+    )  # ON → fails
     assert rec.calls == []
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # backoff: skip
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0)
+    )  # backoff: skip
     assert rec.calls == []
     await asyncio.sleep(0.02)  # backoff elapses
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # retry → OK
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0)
+    )  # retry → OK
     assert rec.calls == [URL_ON]
 
 
@@ -646,7 +714,9 @@ async def test_print_end_sends_off_after_failed_on(
     monkeypatch.setattr(heating, "RETRY_BACKOFF_START", 0.01)
     rec = Recorder(fail_left=1)
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
-    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON → fails
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0)
+    )  # ON → fails
     assert rec.calls == []
     await _push(auto, _status(code=9, chamber=25.0))  # end → OFF attempt (within backoff)
     assert rec.calls == []

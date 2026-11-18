@@ -314,18 +314,27 @@ class HeatingSettingsBody(BaseModel):
     enabled: bool | None = None
     url_on: str | None = Field(None, description="HTTP GET for heater ON (Shelly).")
     url_off: str | None = Field(None, description="HTTP GET for heater OFF (Shelly).")
-    bed_temp: float | None = Field(None, ge=0, le=110, description="Bed target °C that arms a session.")
+    bed_temp: float | None = Field(
+        None, ge=0, le=110, description="Bed target °C that arms a session."
+    )
     chamber_target: float | None = Field(
-        None, ge=0, le=60, description="Fallback chamber target °C (used when the slicer sets none)."
+        None,
+        ge=0,
+        le=60,
+        description="Fallback chamber target °C (used when the slicer sets none).",
     )
     chamber_hysteresis: float | None = Field(
-        None, ge=1, le=30, description="Hysteresis band °C around the target (heater off at target+hysteresis/2)."
+        None,
+        ge=1,
+        le=30,
+        description="Hysteresis band °C around the target (heater off at target+hysteresis/2).",
     )
     chamber_overshoot: float | None = Field(
         None, ge=0, le=60, description="Learned overshoot °C that lowers the OFF point (editable)."
     )
     material_markers: list[str] | str | None = Field(
-        None, description="Filename markers (list or comma string, e.g. ABS,ASA) that arm a session."
+        None,
+        description="Filename markers (list or comma string, e.g. ABS,ASA) that arm a session.",
     )
 
 

@@ -193,7 +193,14 @@ def load_state(cfg: HeatingConfig) -> None:
         # pre-0.18.7 key rename: same value, new name
         with contextlib.suppress(TypeError, ValueError):
             cfg.chamber_hysteresis = float(raw["chamber_factor"])
-    for field in ("enabled", "url_on", "url_off", "bed_temp", "chamber_hysteresis", "chamber_overshoot"):
+    for field in (
+        "enabled",
+        "url_on",
+        "url_off",
+        "bed_temp",
+        "chamber_hysteresis",
+        "chamber_overshoot",
+    ):
         if field not in raw:
             continue
         value = raw[field]
@@ -552,7 +559,10 @@ class HeatingAutomation:
                     self._watch_baseline = chamber_now  # first reading starts the clock
                 else:
                     risen = chamber_now - self._watch_baseline
-                    if now - self._watch_started >= self._safety_window and risen < self._safety_rise:
+                    if (
+                        now - self._watch_started >= self._safety_window
+                        and risen < self._safety_rise
+                    ):
                         self._safety_trip(
                             f"no temperature rise ({risen:+.1f}° in "
                             f"{self._safety_window / 60:.0f} min)"
@@ -591,12 +601,9 @@ class HeatingAutomation:
         armed_since = raw.get("armed_since")
         if not isinstance(armed_since, (int, float)) or time.time() - armed_since > 12 * 3600:
             return  # stale beyond any plausible print - start fresh
-        self._session_samples = [
-            [float(t), float(v)] for t, v in raw.get("samples", [])
-        ]
+        self._session_samples = [[float(t), float(v)] for t, v in raw.get("samples", [])]
         self._session_phases = [
-            [float(a), float(b) if b is not None else None]
-            for a, b in raw.get("phases", [])
+            [float(a), float(b) if b is not None else None] for a, b in raw.get("phases", [])
         ]
         self._armed_at = float(armed_since)
         self._session_open = True
@@ -699,7 +706,10 @@ class HeatingAutomation:
         if learn is None:
             return
         learn["peak"] = max(learn["peak"], chamber)
-        if chamber <= learn["peak"] - OVERSHOOT_PEAK_FALL_C or now - learn["t"] > OVERSHOOT_MEASURE_MAX_S:
+        if (
+            chamber <= learn["peak"] - OVERSHOOT_PEAK_FALL_C
+            or now - learn["t"] > OVERSHOOT_MEASURE_MAX_S
+        ):
             self._learn_finish()
 
     def _learn_finish(self) -> None:
