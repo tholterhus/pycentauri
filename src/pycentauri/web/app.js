@@ -1053,7 +1053,7 @@ function renderHeating(state) {
   en.textContent = state.enabled ? "on" : "off";
   en.classList.toggle("on", !!state.enabled);
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
-                    "heating-chamber-min", "heating-chamber-max", "heating-markers",
+                    "heating-chamber-target", "heating-chamber-factor", "heating-markers",
                     "heating-save"]) {
     $(id).disabled = !editable;
   }
