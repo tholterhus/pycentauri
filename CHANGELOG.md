@@ -4,6 +4,23 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.8] - 2026-11-18
+
+### Changed
+- Material markers match with soft word boundaries now: a bare ABS no
+  longer arms on "ABSchneide" (the characters flanking the match must
+  not be alphanumeric), while "_ABS_" and " ABS " style entries carry
+  their own delimiters and match verbatim - exactly the delimiter
+  semantics requested for the marker list.
+- The learned overshoot sample is capped at the hysteresis: a
+  pathological phase (service downtime with the heater unattended - the
+  52.5° climb today) can no longer dominate the learned value.
+- A heating phase that was already open when the session resumed spans
+  a service downtime and stays unlearnable until a fresh ON phase.
+- The chamber-heating on/off control shows On/Off as two full-width
+  buttons with the Light-section active look, and the settings block
+  gained breathing room towards the graph.
+
 ## [0.18.7] - 2026-11-18
 
 ### Changed

@@ -232,6 +232,31 @@ def _coerce_markers(value: Any) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def _marker_match(filename: str, marker: str) -> bool:
+    """Case-insensitive marker match with soft word boundaries.
+
+    A bare marker (ABS) must not sit inside a larger word (ABSchneide):
+    the characters flanking the match may not be alphanumeric - unless the
+    marker carries its own delimiter ("_ABS_", " ABS "), which satisfies
+    the check by itself. Underscore-delimited markers (hook_ABS_v2) match.
+    """
+    hay = filename.lower()
+    needle = marker.strip().lower()
+    if not needle:
+        return False
+    start = 0
+    while True:
+        i = hay.find(needle, start)
+        if i < 0:
+            return False
+        j = i + len(needle)
+        before_ok = i == 0 or not hay[i - 1].isalnum() or not needle[0].isalnum()
+        after_ok = j == len(hay) or not hay[j].isalnum() or not needle[-1].isalnum()
+        if before_ok and after_ok:
+            return True
+        start = i + 1
+
+
 class HeatingAutomation:
     """Drive the chamber heater from the printer's status stream.
 
@@ -287,6 +312,9 @@ class HeatingAutomation:
         # Overshoot learning (see chamber_overshoot): peak tracking after an
         # OFF command. {"off": off-point °C, "peak": °C, "t": epoch s}
         self._learn: dict[str, float] | None = None
+        # A phase already open when the session resumed spans a service
+        # downtime - its overshoot reading is garbage and stays unlearned.
+        self._resume_open_phase = False
         load_state(cfg)
         self._load_session_file()
 
@@ -493,8 +521,9 @@ class HeatingAutomation:
                     if chamber > off_point:
                         # Learn-start only when the OFF command actually
                         # dispatches — a re-start on every push above the
-                        # off-point would reset the peak tracker.
-                        if self._applied is not False:
+                        # off-point would reset the peak tracker. A phase
+                        # spanning a service downtime stays unlearnable.
+                        if self._applied is not False and not self._resume_open_phase:
                             self._learn_start(off_point, chamber)
                         self._set(False, f"chamber {chamber:.1f}° > off {off_point:.1f}°")
                     elif chamber < on_point:
@@ -570,6 +599,10 @@ class HeatingAutomation:
         self._session_open = True
         self._last_sample_s = time.time()
         self._last_session_write = time.time()
+        # A phase that was already open at resume spans a service downtime -
+        # its overshoot reading is garbage and stays unlearned.
+        if any(ph[1] is None for ph in self._session_phases):
+            self._resume_open_phase = True
         log.info(
             "heating: session resumed from %s (%d samples, %d phases)",
             self.cfg.session_path,
@@ -642,10 +675,8 @@ class HeatingAutomation:
             )
         filename = st.filename or ""
         if filename:
-            lowered = filename.lower()
             for marker in self.cfg.material_markers:
-                needle = marker.strip().lower()
-                if needle and needle in lowered:
+                if _marker_match(filename, marker):
                     return (
                         True,
                         self.cfg.chamber_target,
@@ -675,7 +706,10 @@ class HeatingAutomation:
         learn = self._learn
         if learn is None:
             return
-        sample = max(0.0, learn["peak"] - learn["off"])
+        # Cap the banked sample at the hysteresis: a pathological phase
+        # (service downtime with the heater unattended) must not dominate
+        # the learned value.
+        sample = min(max(0.0, learn["peak"] - learn["off"]), self.cfg.chamber_hysteresis)
         old = self.cfg.chamber_overshoot
         new = round(old * (1 - OVERSHOOT_EMA_ALPHA) + sample * OVERSHOOT_EMA_ALPHA, 2)
         new = min(new, self.cfg.chamber_hysteresis)  # OFF point stays ≥ ON point
@@ -734,6 +768,7 @@ class HeatingAutomation:
             now = time.time()
             if on:
                 self._session_phases.append([now, None])
+                self._resume_open_phase = False  # fresh phase: learnable again
             else:
                 for ph in reversed(self._session_phases):
                     if ph[1] is None:

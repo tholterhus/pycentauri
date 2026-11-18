@@ -265,6 +265,59 @@ async def test_end_without_session_never_touches_heater(tmp_path: Path) -> None:
     assert rec.calls == []
 
 
+# --- marker boundaries ----------------------------------------------------------
+
+
+async def test_marker_with_underscores_matches(tmp_path: Path) -> None:
+    rec = Recorder()
+    auto = HeatingAutomation(
+        _config(tmp_path, material_markers=["_ABS_"]),
+        get_printer=lambda: FakePrinter([]),
+        request_fn=rec,
+    )
+    await _push(
+        auto,
+        _status(
+            code=13, bed_target=60.0, chamber=25.0, chamber_target=0.0, filename="hook_ABS_v2.gcode"
+        ),
+    )
+    assert rec.calls == [URL_ON]
+
+
+async def test_bare_marker_does_not_match_inside_words(tmp_path: Path) -> None:
+    """A bare ABS marker must not arm on 'ABSchneide' — but ' ABS ' with a
+    space delimiter does, and ' ABS ' typed with edges behaves like a bare
+    marker with the same boundary semantics (edges get trimmed)."""
+    rec = Recorder()
+    auto = HeatingAutomation(
+        _config(tmp_path, material_markers=[" ABS "]),
+        get_printer=lambda: FakePrinter([]),
+        request_fn=rec,
+    )
+    await _push(
+        auto,
+        _status(
+            code=13,
+            bed_target=60.0,
+            chamber=25.0,
+            chamber_target=0.0,
+            filename="ABSchneide_jig.gcode",
+        ),
+    )
+    assert rec.calls == []
+    await _push(
+        auto,
+        _status(
+            code=13,
+            bed_target=60.0,
+            chamber=25.0,
+            chamber_target=0.0,
+            filename="rod ABS 1h48m.gcode",
+        ),
+    )
+    assert rec.calls == [URL_ON]
+
+
 # --- overshoot learning -------------------------------------------------------
 
 
@@ -403,6 +456,44 @@ async def test_safety_trip_without_chamber_readings(tmp_path: Path) -> None:
     )  # dead sensor → trip
     assert rec.calls == [URL_ON, URL_OFF]
     assert "no chamber temperature readings" in auto._safety_message
+
+
+# --- downtime phase: unlearnable -------------------------------------------------
+
+
+async def test_downtime_phase_is_not_learned(tmp_path: Path) -> None:
+    """A phase already open when the session resumed (service downtime with
+    the heater unattended) has a garbage overshoot - it must not be banked."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._sample_interval = 0.0
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0)
+    )  # arm + ON
+    # simulate: the service went down, the chamber climbed to 52.5 during
+    # the gap, then the service resumed (session file already open).
+    data = auto.session_data()
+    auto._session_samples.append([data["phases"][0][0] + 330, 52.5])
+    auto._resume_open_phase = True  # what the restart-resume would set
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=52.5, chamber_target=45.0))  # OFF
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=51.5, chamber_target=45.0)
+    )  # falling
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=51.0, chamber_target=45.0))
+    # the downtime overshoot (52.5 - 47.5 = 5°) was NOT banked
+    assert auto.cfg.chamber_overshoot == 0.0
+    assert auto._resume_open_phase is True  # still flagged: no fresh ON yet
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=42.0, chamber_target=45.0)
+    )  # below ON point → re-heat
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=47.6, chamber_target=45.0)
+    )  # new phase OFF
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=47.3, chamber_target=45.0)
+    )  # fall → bank
+    # the fresh phase (peak 47.6 over off-point 47.5 = 0.1) banks normally
+    assert auto.cfg.chamber_overshoot == pytest.approx(0.1 * 0.4)
 
 
 # --- master switch ---------------------------------------------------------------
