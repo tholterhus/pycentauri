@@ -900,6 +900,11 @@ def cmd_server(
         "--heating-chamber-factor",
         help="Full swing °C around the target (heater off at target+factor/2).",
     ),
+    heating_chamber_overshoot: float = typer.Option(
+        0.0,
+        "--heating-chamber-overshoot",
+        help="Learned overshoot °C lowering the OFF point (auto-learned, editable).",
+    ),
     heating_materials: str = typer.Option(
         "",
         "--heating-materials",
@@ -941,6 +946,9 @@ def cmd_server(
     if heating and not 0 <= heating_chamber_target <= 60:
         _echo_err("--heating-chamber-target must be within 0..60 °C.")
         raise typer.Exit(code=2)
+    if heating and not 0 <= heating_chamber_overshoot <= 60:
+        _echo_err("--heating-chamber-overshoot must be within 0..60 °C.")
+        raise typer.Exit(code=2)
     if not heating and (
         heating_url_on
         or heating_url_off
@@ -948,6 +956,7 @@ def cmd_server(
         or heating_bed_temp != 90.0
         or heating_chamber_target != 42.5
         or heating_chamber_factor != 5.0
+        or heating_chamber_overshoot != 0.0
     ):
         _echo_err("--heating-* options require --heating.")
         raise typer.Exit(code=2)
@@ -1011,6 +1020,7 @@ def cmd_server(
             bed_temp=heating_bed_temp,
             chamber_target=heating_chamber_target,
             chamber_factor=heating_chamber_factor,
+            chamber_overshoot=heating_chamber_overshoot,
             material_markers=[m.strip() for m in heating_materials.split(",") if m.strip()],
         )
         if not heating_cfg.url_on or not heating_cfg.url_off:

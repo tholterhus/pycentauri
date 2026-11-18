@@ -1,18 +1,32 @@
 """Chamber-heating automation: a Shelly-controlled heater for the print room.
 
-The chamber target is resolved per status push, and the slicer wins: when
-the printer reports a chamber target (``TempTargetBox``) above zero, the
-heater regulates toward it. Otherwise — a print armed via bed target above
-the threshold or a filename marker — the configured fallback target
-applies. The heater holds the chamber inside the swing the "Faktor"
-allows: ±factor/2 around the target (factor 5 at a 45° target = 42.5-47.5).
-At print end the heater goes off unconditionally and the session disarms;
-a paused print keeps being controlled; attaching mid-print re-evaluates
-the activation from the first status push.
+Target resolution per status push, and the slicer wins: when the printer
+reports a chamber target (``TempTargetBox``) above zero, the heater
+regulates toward it. Otherwise — a print armed via bed target above the
+threshold or a filename marker — the configured fallback target applies.
 
-Settings persist in a data JSON file that wins over the .conf/CLI defaults
-(the same pattern as the detection threshold): the web UI edits them live
-via ``POST /api/heating/settings``.
+Around the target the heater holds a band (``chamber_factor``, full
+swing): ON below ``target - factor/2``, OFF above ``target + factor/2 -
+overshoot``. The **overshoot is learned**: after every heater-OFF the
+temperature keeps rising for a while (thermal inertia); the automation
+tracks the peak of each phase and folds it into an exponential average
+that lowers the OFF point, so the peak lands inside the band instead of
+overshooting it. The learned value starts at 0, persists in the settings
+file and is editable in the web UI.
+
+A safety watchdog guards every heating phase: when the heater is ON but
+the chamber temperature does not rise by ``SAFETY_RISE_C`` within
+``SAFETY_WINDOW_S``, something is wrong (heater not switching, Shelly
+offline, door/lid open) — the heater goes off for the rest of the
+session and the panel shows a red SAFETY STOP warning. At print end (or
+when the feature is toggled off/on) the stop clears and the next print
+tries again.
+
+At print end the heater goes off unconditionally and the session
+disarms; a paused print keeps being controlled; attaching mid-print
+re-evaluates the activation from the first status push. Commands dedupe
+through the last *successfully* commanded state and back off
+exponentially (2 s → 60 s) while the Shelly is unreachable.
 """
 
 from __future__ import annotations
@@ -48,7 +62,21 @@ SAMPLE_INTERVAL_S = 5.0
 #: How often the session file is rewritten while samples accumulate.
 SESSION_WRITE_INTERVAL_S = 60.0
 
-#: Fields persisted in the state JSON (everything the web UI can edit).
+#: Safety watchdog: a heating phase must raise the chamber temperature by
+#: at least SAFETY_RISE_C within SAFETY_WINDOW_S — otherwise the heater is
+#: faulty, miswired, the Shelly offline, or a door/lid is open (fire risk).
+SAFETY_WINDOW_S = 300.0
+SAFETY_RISE_C = 1.0
+
+#: Overshoot learning: EMA weight of the new peak measurement, the
+#: drop-confirmed threshold (the temperature has fallen this much below
+#: the observed peak → the peak is in), and the measurement cap (a heating
+#: phase whose off-point is not passed within 15 min banks what it has).
+OVERSHOOT_EMA_ALPHA = 0.4
+OVERSHOOT_PEAK_FALL_C = 0.3
+OVERSHOOT_MEASURE_MAX_S = 900.0
+
+#: Fields persisted in the settings JSON (everything the web UI can edit).
 STATE_FIELDS = (
     "enabled",
     "url_on",
@@ -56,6 +84,7 @@ STATE_FIELDS = (
     "bed_temp",
     "chamber_target",
     "chamber_factor",
+    "chamber_overshoot",
     "material_markers",
 )
 
@@ -86,10 +115,13 @@ class HeatingConfig:
     bed_temp: float = 90.0
     # Fallback chamber target when the slicer passes none (TempTargetBox 0).
     chamber_target: float = 42.5
-    # Full swing around the target: the heater switches off at
-    # target + factor/2 and on at target - factor/2 (factor 5 at 45° =
-    # 42.5..47.5).
+    # Full swing around the target (the ON point sits factor/2 below it).
     chamber_factor: float = 5.0
+    # Learned overshoot: how far the chamber rises past the OFF point after
+    # the heater switches off (thermal inertia). The OFF point is lowered
+    # by this value; starts at 0 and is folded in after every heating
+    # phase (EMA), clamped to the factor. Editable in the web UI.
+    chamber_overshoot: float = 0.0
     material_markers: list[str] = dataclasses.field(default_factory=list)
     # Where the UI-persisted settings live (wins over .conf/CLI defaults).
     state_path: Path = Path("data/heating.json")
@@ -106,6 +138,8 @@ class HeatingConfig:
                 f"chamber_factor {self.chamber_factor} out of range 1..30 "
                 "(it is the full swing around the target)"
             )
+        if not 0 <= self.chamber_overshoot <= 60:
+            raise ValueError(f"chamber_overshoot {self.chamber_overshoot}°C out of range 0..60")
         if not 0 <= self.bed_temp <= 110:
             raise ValueError(f"bed_temp {self.bed_temp}°C out of range 0..110")
         for name in ("url_on", "url_off"):
@@ -145,13 +179,20 @@ def load_state(cfg: HeatingConfig) -> None:
     if raw.get("chamber_target"):
         with contextlib.suppress(TypeError, ValueError):
             cfg.chamber_target = float(raw["chamber_target"])
-    for field in ("enabled", "url_on", "url_off", "bed_temp", "chamber_factor"):
+    for field in (
+        "enabled",
+        "url_on",
+        "url_off",
+        "bed_temp",
+        "chamber_factor",
+        "chamber_overshoot",
+    ):
         if field not in raw:
             continue
         value = raw[field]
         if field == "enabled":
             cfg.enabled = bool(value)
-        elif field in ("bed_temp", "chamber_factor"):
+        elif field in ("bed_temp", "chamber_factor", "chamber_overshoot"):
             with contextlib.suppress(TypeError, ValueError):
                 setattr(cfg, field, float(value))
         elif field == "url_on":
@@ -190,17 +231,10 @@ def _coerce_markers(value: Any) -> list[str]:
 class HeatingAutomation:
     """Drive the chamber heater from the printer's status stream.
 
-    The target is resolved per push and the slicer wins: a printer chamber
-    target above zero (``TempTargetBox``) is the setpoint; when it is zero,
-    an armed session uses the configured fallback target. Arming happens at
-    print start (or attach mid-print / feature enabled mid-print) when the
-    slicer target is set, the bed target exceeds ``bed_temp``, or the
-    filename contains a material marker — latched for the whole print. The
-    heater holds the chamber inside ±factor/2 around the target (ON below,
-    OFF above, in between keep the current state); at print end it goes
-    off unconditionally. Commands dedupe through the last *successfully*
-    commanded state and back off exponentially (2 s → 60 s) while the
-    Shelly is unreachable.
+    Target resolution per push, slicer first (see module docstring); the
+    heater holds the chamber inside ±factor/2 around the target, with the
+    learned overshoot lowering the OFF point so the thermal inertia peaks
+    inside the band. At print end the heater goes off unconditionally.
     """
 
     def __init__(
@@ -221,32 +255,36 @@ class HeatingAutomation:
         self._armed_reason = ""
         self._armed_at: float | None = None  # epoch s of the last session arm
         self._last_target: float | None = None  # effective target of the last push
-        # Armed-session graph data, served via /api/heating/history and
-        # persisted to session_path so reloads, other devices and service
-        # restarts all see the same complete graph.
         self._session_open = False
         self._session_samples: list[list[float]] = []  # [[epoch s, °C], ...]
         self._session_phases: list[list[float | None]] = []  # [[ON s, OFF s | None], ...]
         self._last_sample_s = 0.0
         self._last_session_write = 0.0
         self._sample_interval = SAMPLE_INTERVAL_S
-        self._load_session_file()
         # Set when an armed session ends while the heater is not confirmed
         # off: the OFF command retries every push (backoff-paced) until the
-        # call lands — a failed end-OFF must never leave the heater running.
+        # call lands - a failed end-OFF must never leave the heater running.
         self._release_pending = False
-        # Light state we last observed (report is truth) or commanded
-        # (assumed success). ``None`` = never seen; the first push or
-        # command pins it, and every deviation from the temperature target
-        # fires exactly one correction.
-        self._applied: bool | None = None
+        self._applied: bool | None = None  # last *successfully* commanded state
         self._chamber: float | None = None
         self._bed_target: float | None = None
         self._retry_not_before = 0.0
         self._retry_backoff = RETRY_BACKOFF_START
         self._last_error = ""
         self._last_action = ""
+        # Safety watchdog / stop (see SAFETY_WINDOW_S). Instance copies so
+        # tests can shrink the window without monkeypatching.
+        self._safety_stop = False
+        self._safety_message = ""
+        self._safety_window = SAFETY_WINDOW_S
+        self._safety_rise = SAFETY_RISE_C
+        self._watch_started: float | None = None  # epoch s when the ON phase began
+        self._watch_baseline: float | None = None  # chamber reading the rise is measured from
+        # Overshoot learning (see chamber_overshoot): peak tracking after an
+        # OFF command. {"off": off-point °C, "peak": °C, "t": epoch s}
+        self._learn: dict[str, float] | None = None
         load_state(cfg)
+        self._load_session_file()
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -278,7 +316,7 @@ class HeatingAutomation:
         field_names = {f.name for f in dataclasses.fields(HeatingConfig)}
         staged: dict[str, Any] = {}
         for key, value in changes.items():
-            if key not in field_names or key == "state_path":
+            if key not in field_names or key == "state_path" or key == "session_path":
                 continue
             if key == "material_markers":
                 staged[key] = _coerce_markers(value)
@@ -299,10 +337,11 @@ class HeatingAutomation:
             setattr(self.cfg, key, value)
         save_state(self.cfg)
         log.info(
-            "heating: settings updated (enabled=%s target=%s factor=%s markers=%s)",
+            "heating: settings updated (enabled=%s target=%s factor=%s overshoot=%s markers=%s)",
             self.cfg.enabled,
             self.cfg.chamber_target,
             self.cfg.chamber_factor,
+            self.cfg.chamber_overshoot,
             self.cfg.material_markers,
         )
         return self.state()
@@ -318,6 +357,8 @@ class HeatingAutomation:
             "target": self._last_target,
             "chamber_temp": self._chamber,
             "bed_target": self._bed_target,
+            "safety_stop": self._safety_stop,
+            "safety_message": self._safety_message,
             "last_error": self._last_error,
             "last_action": self._last_action,
             "settings": {
@@ -326,6 +367,7 @@ class HeatingAutomation:
                 "bed_temp": self.cfg.bed_temp,
                 "chamber_target": self.cfg.chamber_target,
                 "chamber_factor": self.cfg.chamber_factor,
+                "chamber_overshoot": self.cfg.chamber_overshoot,
                 "material_markers": self.cfg.material_markers,
             },
             "history": "/api/heating/history",
@@ -363,14 +405,22 @@ class HeatingAutomation:
             backoff = min(backoff * 2, 30.0)
 
     def _on_status(self, st: Status) -> None:
+        now = time.time()
+
         # Master switch off: release control (heater off — but only if we
         # ever successfully commanded it; a heater we never touched stays
-        # untouched).
+        # untouched). A manual off→on toggle clears a safety stop: the user
+        # explicitly wants to try again.
         if not self.cfg.enabled:
             self._armed = False
             self._armed_reason = ""
+            self._armed_at = None
             if self._session_open:
                 self._end_session()
+            self._safety_stop = False
+            self._safety_message = ""
+            self._watch_started = None
+            self._watch_baseline = None
             if self._applied is True:
                 self._fire(False, "chamber heating disabled")
             return
@@ -384,7 +434,7 @@ class HeatingAutomation:
 
         was_armed = self._armed
         armed_now = False
-        if active:
+        if active and not self._safety_stop:
             # Armed state is re-checked on every push: the slicer can set a
             # chamber target mid-print, which arms the session by itself.
             if not was_armed:
@@ -402,12 +452,14 @@ class HeatingAutomation:
             self._armed_reason = ""
             if was_armed:
                 self._end_session()
+                self._learn = None
+                self._watch_started = None
+                self._watch_baseline = None
+            if self._safety_stop:
+                self._safety_stop = False
+                self._safety_message = ""
             if was_armed and self._applied is not False:
                 self._release_pending = True
-
-        # Graph samples: one every sample interval while a session is armed.
-        if self._armed:
-            self._collect_sample(st, time.time())
 
         # Session-end release: state-driven so a failed OFF command retries
         # on every push (backoff-paced) until the heater is confirmed off.
@@ -417,28 +469,70 @@ class HeatingAutomation:
             else:
                 self._fire(False, "print finished")
 
-        # Hysteresis while the session is armed: the target follows the
-        # slicer's chamber target when set, else the configured fallback.
-        # Skipped on the arming push itself — the arm already set the
-        # initial state (an extra dispatch there would fire the same
-        # command twice).
-        self._last_target = None
-        if self._armed and not armed_now:
+        # Graph samples: one every sample interval while a session is armed.
+        if self._armed:
+            self._collect_sample(st, now)
+
+        if self._armed and not self._safety_stop:
             chamber = st.temp_chamber
             if chamber is not None:
                 target = self._effective_target(st)
                 self._last_target = target
                 half = self.cfg.chamber_factor / 2
-                if chamber > target + half:
-                    self._set(
-                        False,
-                        f"chamber {chamber:.1f}° > target {target:.1f}° + {half:.1f}°",
-                    )
-                elif chamber < target - half:
-                    self._set(
-                        True,
-                        f"chamber {chamber:.1f}° < target {target:.1f}° - {half:.1f}°",
-                    )
+                on_point = target - half
+                off_point = max(on_point, target + half - self.cfg.chamber_overshoot)
+
+                # Hysteresis (skipped on the arming push — the arm already
+                # set the initial state). Learning banks the peak before an
+                # early re-heat.
+                if not armed_now:
+                    if chamber > off_point:
+                        # Learn-start only when the OFF command actually
+                        # dispatches — a re-start on every push above the
+                        # off-point would reset the peak tracker.
+                        if self._applied is not False:
+                            self._learn_start(off_point, chamber)
+                        self._set(False, f"chamber {chamber:.1f}° > off {off_point:.1f}°")
+                    elif chamber < on_point:
+                        self._learn_finish()
+                        self._set(True, f"chamber {chamber:.1f}° < on {on_point:.1f}°")
+
+                self._learn_track(chamber, now)
+
+            # Safety watchdog: an ON phase must lift the chamber temperature
+            # within the window — otherwise heater/Shelly/door trouble. The
+            # trip stops heating for the rest of the session and surfaces a
+            # fat red warning in the panel.
+            if self._applied is True:
+                chamber_now = st.temp_chamber
+                if self._watch_started is None:
+                    self._watch_started = now
+                    self._watch_baseline = chamber_now  # may be None until a reading arrives
+                elif chamber_now is None:
+                    if now - self._watch_started >= self._safety_window:
+                        self._safety_trip("no chamber temperature readings while heating")
+                elif self._watch_baseline is None:
+                    self._watch_started = now
+                    self._watch_baseline = chamber_now  # first reading starts the clock
+                else:
+                    risen = chamber_now - self._watch_baseline
+                    if (
+                        now - self._watch_started >= self._safety_window
+                        and risen < self._safety_rise
+                    ):
+                        self._safety_trip(
+                            f"no temperature rise ({risen:+.1f}° in "
+                            f"{self._safety_window / 60:.0f} min)"
+                        )
+            else:
+                self._watch_started = None
+                self._watch_baseline = None
+
+            if self._safety_stop and self._applied is not False:
+                self._fire(False, f"safety stop: {self._safety_message}")
+        else:
+            self._watch_started = None
+            self._watch_baseline = None
 
     def _effective_target(self, st: Status) -> float:
         """The chamber target for this push: the slicer's chamber target
@@ -554,6 +648,57 @@ class HeatingAutomation:
                         f'"{filename}" contains "{marker.strip()}"',
                     )
         return False, self.cfg.chamber_target, ""
+
+    # --- overshoot learning ---------------------------------------------------
+
+    def _learn_start(self, off_point: float, chamber: float) -> None:
+        self._learn = {"off": off_point, "peak": chamber, "t": time.time()}
+
+    def _learn_track(self, chamber: float, now: float) -> None:
+        """Track the post-OFF peak; a confirmed fall below it (or the
+        measurement cap) banks the overshoot sample into the EMA."""
+        learn = self._learn
+        if learn is None:
+            return
+        learn["peak"] = max(learn["peak"], chamber)
+        if (
+            chamber <= learn["peak"] - OVERSHOOT_PEAK_FALL_C
+            or now - learn["t"] > OVERSHOOT_MEASURE_MAX_S
+        ):
+            self._learn_finish()
+
+    def _learn_finish(self) -> None:
+        learn = self._learn
+        if learn is None:
+            return
+        sample = max(0.0, learn["peak"] - learn["off"])
+        old = self.cfg.chamber_overshoot
+        new = round(old * (1 - OVERSHOOT_EMA_ALPHA) + sample * OVERSHOOT_EMA_ALPHA, 2)
+        new = min(new, self.cfg.chamber_factor)  # OFF point stays ≥ ON point
+        self.cfg.chamber_overshoot = new
+        self._learn = None
+        save_state(self.cfg)
+        log.info(
+            "heating: overshoot learned — peak %.1f° over off-point %.1f° → "
+            "sample %.1f°, EMA %.1f° → %.1f°",
+            learn["peak"],
+            learn["off"],
+            sample,
+            old,
+            new,
+        )
+        self._persist_session(force=True)
+
+    # --- safety watchdog ------------------------------------------------------
+
+    def _safety_trip(self, message: str) -> None:
+        """Stop heating for the rest of the session with a fat red warning."""
+        self._safety_stop = True
+        self._safety_message = message
+        self._watch_started = None
+        self._watch_baseline = None
+        self._learn = None
+        log.warning("heating: SAFETY STOP — %s", message)
 
     # --- command path -------------------------------------------------------
 

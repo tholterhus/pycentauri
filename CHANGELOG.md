@@ -24,6 +24,27 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   and an epoch-seconds/ms unit bug in the session start made the curve
   bunch up at the right edge.
 
+## [0.18.5] - 2026-11-18
+
+### Added
+- Overshoot learning: after every heater-OFF the chamber temperature
+  keeps rising (thermal inertia); the automation tracks the peak of each
+  phase, banks `peak - OFF-point` into an exponential average (alpha 0.4,
+  banked when the temperature has fallen 0.3° below the observed peak or
+  after 15 min) and lowers the OFF point by the learned value - the peak
+  lands inside the band instead of overshooting it. Starts at 0,
+  persists in heating.json, editable in the web UI ("Overshift °C" is
+  spelled "Overshoot °C", clamped to the factor so the OFF point never
+  drops below the ON point).
+
+### Changed
+- Safety watchdog on every heating phase: when the heater is ON but the
+  chamber temperature does not rise by at least 1 degree within 5
+  minutes, the heater goes off for the rest of the session and the panel
+  shows a fat red "SAFETY STOP" warning (covers Shelly offline/miswired
+  and door or lid open - fire risk). A print end or an off-to-on toggle
+  of the feature clears the stop and the next print tries again.
+
 ## [0.18.4] - 2026-11-18
 
 ### Added

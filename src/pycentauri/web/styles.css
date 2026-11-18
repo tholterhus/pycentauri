@@ -1118,6 +1118,7 @@ body {
 .heating-panel .panel-header { justify-content: space-between; }
 
 .st-heating { color: var(--danger); }
+.st-danger { color: var(--danger); font-weight: 700; }
 .st-standby { color: var(--fg-dim); }
 
 .heater-dot {

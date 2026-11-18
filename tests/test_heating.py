@@ -265,6 +265,146 @@ async def test_end_without_session_never_touches_heater(tmp_path: Path) -> None:
     assert rec.calls == []
 
 
+# --- overshoot learning -------------------------------------------------------
+
+
+async def test_overshoot_learned_from_first_phase(tmp_path: Path) -> None:
+    """OFF at the band top; the temperature keeps rising (thermal inertia),
+    peaks, falls — the measured overshoot folds into the EMA and lowers the
+    next OFF point."""
+    rec = Recorder()
+    auto = HeatingAutomation(
+        _config(tmp_path, chamber_target=45.0, chamber_factor=5.0, chamber_overshoot=0.0),
+        get_printer=lambda: FakePrinter([]),
+        request_fn=rec,
+    )
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0)
+    )  # arm + ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=47.6, chamber_target=45.0)
+    )  # OFF (47.5)
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=48.5, chamber_target=45.0))  # peak
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=48.0, chamber_target=45.0)
+    )  # falling → bank
+    # sample = 48.5 - 47.5 = 1.0; EMA(0, 1.0, alpha 0.4) = 0.4
+    assert auto.cfg.chamber_overshoot == pytest.approx(0.4)
+    # The learned overshoot shows in the NEXT heating phase: re-heat below
+    # the ON point → ON, then the climb trips the OFF at 47.1 (was 47.5).
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=40.0, chamber_target=45.0))
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=47.2, chamber_target=45.0))
+    assert rec.calls == [URL_ON, URL_OFF, URL_ON, URL_OFF]
+
+
+async def test_overshoot_is_clamped_to_the_factor(tmp_path: Path) -> None:
+    """A huge overshoot may never push the OFF point below the ON point —
+    clamped to the factor."""
+    rec = Recorder()
+    auto = HeatingAutomation(
+        _config(tmp_path, chamber_target=45.0, chamber_factor=2.0, chamber_overshoot=2.5),
+        get_printer=lambda: FakePrinter([]),
+        request_fn=rec,
+    )
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=44.1, chamber_target=45.0)
+    )  # OFF (44)
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=50.0, chamber_target=45.0))  # peak
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=49.5, chamber_target=45.0)
+    )  # fall → bank
+    # sample = 50 - 44 = 6; EMA(2.5, 6, alpha 0.4) = 3.9 → clamped to factor 2
+    assert auto.cfg.chamber_overshoot == 2.0
+
+
+def test_overshoot_persists_in_settings(tmp_path: Path) -> None:
+    cfg = _config(tmp_path)
+    auto = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
+    auto.apply_settings(chamber_overshoot=1.2)
+    raw = json.loads((tmp_path / "heating.json").read_text(encoding="utf-8"))
+    assert raw["chamber_overshoot"] == 1.2
+    with pytest.raises(ValueError):
+        auto.apply_settings(chamber_overshoot=-1.0)
+    with pytest.raises(ValueError):
+        auto.apply_settings(chamber_overshoot=80.0)
+
+
+# --- safety watchdog ------------------------------------------------------------
+
+
+async def test_safety_trip_on_flat_temperature(tmp_path: Path) -> None:
+    """Heater ON but the chamber temperature stays flat for the whole
+    window → heater off, safety stop, fat red warning in the state."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._safety_window = 0.0  # trip on the first push after ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0)
+    )  # arm + ON
+    assert rec.calls == [URL_ON]
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0)
+    )  # watch baseline
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0)
+    )  # flat → trip
+    assert rec.calls == [URL_ON, URL_OFF]
+    assert auto._safety_stop is True
+    assert "no temperature rise" in auto._safety_message
+    st = auto.state()
+    assert st["safety_stop"] is True
+    # the hysteresis stays suppressed: a cold chamber does NOT re-fire ON
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=39.0, chamber_target=0.0))
+    assert rec.calls == [URL_ON, URL_OFF]
+
+
+async def test_rising_temperature_does_not_trip(tmp_path: Path) -> None:
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._safety_window = 0.0
+    auto._safety_rise = 1.0
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=27.0, chamber_target=0.0)
+    )  # +2°: fine
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=29.0, chamber_target=0.0)
+    )  # still fine
+    assert rec.calls == [URL_ON]
+    assert auto._safety_stop is False
+
+
+async def test_safety_stop_clears_at_session_end_and_retries(tmp_path: Path) -> None:
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._safety_window = 0.0
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0)
+    )  # trip → OFF
+    await _push(auto, _status(code=9, chamber=25.0, chamber_target=0.0))  # print ends
+    assert auto._safety_stop is False  # cleared
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0)
+    )  # new print
+    assert rec.calls == [URL_ON, URL_OFF, URL_ON]  # the next print tries again
+
+
+async def test_safety_trip_without_chamber_readings(tmp_path: Path) -> None:
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._safety_window = 0.0
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=None, chamber_target=0.0)
+    )  # watch baseline
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=None, chamber_target=0.0)
+    )  # dead sensor → trip
+    assert rec.calls == [URL_ON, URL_OFF]
+    assert "no chamber temperature readings" in auto._safety_message
+
+
 # --- master switch ---------------------------------------------------------------
 
 

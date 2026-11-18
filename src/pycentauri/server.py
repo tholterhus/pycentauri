@@ -329,6 +329,9 @@ class HeatingSettingsBody(BaseModel):
         le=30,
         description="Full swing °C around the target (heater off at target+factor/2).",
     )
+    chamber_overshoot: float | None = Field(
+        None, ge=0, le=60, description="Learned overshoot °C that lowers the OFF point (editable)."
+    )
     material_markers: list[str] | str | None = Field(
         None,
         description="Filename markers (list or comma string, e.g. ABS,ASA) that arm a session.",
