@@ -135,41 +135,41 @@
         <div class="ctrl-msg" id="adj-msg" aria-live="polite"></div>
       </div>
 
-      <div class="panel heating-panel" id="heating-panel" hidden>
+      <div class="panel detect-panel" id="detect-panel" hidden>
         <header class="panel-header">
-          <span class="panel-tag">Chamber heating<span class="heater-dot" id="heater-dot" hidden></span></span>
-          <button class="btn gear-btn" id="heating-settings-toggle" type="button" title="Chamber heating settings">⚙</button>
+          <span class="panel-tag">Detect<span class="detect-led" id="detect-led" hidden title="blinks while the detector analyzes frames"></span></span>
+          <span class="detect-badge" id="detect-badge">-</span>
         </header>
-        <div class="heater-state" id="heater-state" hidden>
-          <span class="heater-detail" id="heater-detail">-</span>
+        <div class="detect-live">
+          <span class="detect-state" id="detect-state">-</span>
+          <span class="detect-window" id="detect-window" title="How many of the last N analyzed frames showed a detection; the alert fires at K positives (not necessarily consecutive).">-</span>
         </div>
-        <canvas class="heater-graph" id="heater-graph" height="48" hidden></canvas>
-        <div class="heating-fields" id="heating-fields" hidden>
-          <div class="adj-modes light-row" id="heating-enabled-row">
-            <button class="btn adj-light" id="heating-enabled-on" type="button" disabled>On</button>
-            <button class="btn adj-light" id="heating-enabled-off" type="button" disabled>Off</button>
-          </div>
-          <div class="adj-sub">Turn on chamber heater when…</div>
-          <div class="heating-grid">
-            <label>Bed temp &gt; °C<input type="number" id="heating-bed-temp" min="0" max="110" step="1"></label>
-            <label>Filename markers<input type="text" id="heating-markers" placeholder="ABS,ASA" spellcheck="false"></label>
-          </div>
-          <div class="adj-sub">Temperature</div>
-          <div class="heating-grid three">
-            <label>Target °C<input type="number" id="heating-chamber-target" min="0" step="0.5"></label>
-            <label>Hysteresis °C<input type="number" id="heating-chamber-hysteresis" min="1" max="30" step="1"></label>
-            <label>Overshoot °C<input type="number" id="heating-chamber-overshoot" min="0" max="60" step="0.1"></label>
-          </div>
-          <div class="adj-sub">Heater switch</div>
-          <div class="heating-grid">
-            <label>URL ON<input type="text" id="heating-url-on" placeholder="http://shelly…/on" spellcheck="false"></label>
-            <label>URL OFF<input type="text" id="heating-url-off" placeholder="http://shelly…/off" spellcheck="false"></label>
-          </div>
-          <div class="heating-save-row">
-            <button class="btn heating-save" id="heating-save" type="button">Save</button>
+        <dl class="tele-dl detect-cfg">
+          <div><dt>Model</dt><dd class="mono-xs" id="detect-model">-</dd></div>
+          <div><dt>Threshold</dt><dd><span id="detect-threshold">-</span> <button id="btn-threshold" class="btn gear-btn" type="button" title="Adjust detection threshold">⚙</button></dd></div>
+        </dl>
+        <div class="detect-arm" id="detect-arm" hidden>
+          <div class="adj-sub">Response on detection</div>
+          <div class="adj-modes detect-action-modes" id="detect-actions">
+            <button class="btn detect-action-btn" data-action="notify" type="button">Notify</button>
+            <button class="btn detect-action-btn" data-action="pause" type="button">Pause</button>
+            <button class="btn detect-action-btn" data-action="stop" type="button">Stop</button>
           </div>
         </div>
+        <div class="detect-event" id="detect-event" hidden>
+          <div class="detect-event-head">
+            <span class="detect-event-score" id="detect-event-score">-</span>
+            <span class="detect-event-label" id="detect-event-label">-</span>
+          </div>
+          <a class="detect-event-link" id="detect-event-link" href="#" target="_blank" rel="noopener">
+            <img class="detect-event-thumb" id="detect-event-thumb" alt="detection evidence" loading="lazy">
+          </a>
+          <span class="detect-event-when" id="detect-event-when">-</span>
+        </div>
+        <div class="detect-strip" id="detect-strip" hidden></div>
+        <div class="ctrl-msg" id="detect-msg" aria-live="polite"></div>
       </div>
+
     </section>
 
     <aside class="instruments-col">
@@ -228,41 +228,41 @@
         <div class="rtsp-msg" id="rtsp-msg" aria-live="polite"></div>
       </div>
 
-      <div class="panel detect-panel" id="detect-panel" hidden>
+      <div class="panel heating-panel" id="heating-panel" hidden>
         <header class="panel-header">
-          <span class="panel-tag">Detect<span class="detect-led" id="detect-led" hidden title="blinks while the detector analyzes frames"></span></span>
-          <span class="detect-badge" id="detect-badge">-</span>
+          <span class="panel-tag">Chamber heating<span class="heater-dot" id="heater-dot" hidden></span></span>
+          <button class="btn gear-btn" id="heating-settings-toggle" type="button" title="Chamber heating settings">⚙</button>
         </header>
-        <div class="detect-live">
-          <span class="detect-state" id="detect-state">-</span>
-          <span class="detect-window" id="detect-window" title="How many of the last N analyzed frames showed a detection; the alert fires at K positives (not necessarily consecutive).">-</span>
+        <div class="heater-state" id="heater-state" hidden>
+          <span class="heater-detail" id="heater-detail">-</span>
         </div>
-        <dl class="tele-dl detect-cfg">
-          <div><dt>Model</dt><dd class="mono-xs" id="detect-model">-</dd></div>
-          <div><dt>Threshold</dt><dd><span id="detect-threshold">-</span> <button id="btn-threshold" class="btn gear-btn" type="button" title="Adjust detection threshold">⚙</button></dd></div>
-        </dl>
-        <div class="detect-arm" id="detect-arm" hidden>
-          <div class="adj-sub">Response on detection</div>
-          <div class="adj-modes detect-action-modes" id="detect-actions">
-            <button class="btn detect-action-btn" data-action="notify" type="button">Notify</button>
-            <button class="btn detect-action-btn" data-action="pause" type="button">Pause</button>
-            <button class="btn detect-action-btn" data-action="stop" type="button">Stop</button>
+        <canvas class="heater-graph" id="heater-graph" height="48" hidden></canvas>
+        <div class="heating-fields" id="heating-fields" hidden>
+          <div class="adj-modes light-row" id="heating-enabled-row">
+            <button class="btn adj-light" id="heating-enabled-on" type="button" disabled>On</button>
+            <button class="btn adj-light" id="heating-enabled-off" type="button" disabled>Off</button>
+          </div>
+          <div class="adj-sub">Turn on chamber heater when…</div>
+          <div class="heating-grid">
+            <label>Bed temp &gt; °C<input type="number" id="heating-bed-temp" min="0" max="110" step="1"></label>
+            <label>Filename markers<input type="text" id="heating-markers" placeholder="ABS,ASA" spellcheck="false"></label>
+          </div>
+          <div class="adj-sub">Temperature</div>
+          <div class="heating-grid three">
+            <label>Target °C<input type="number" id="heating-chamber-target" min="0" step="0.5"></label>
+            <label>Hysteresis °C<input type="number" id="heating-chamber-hysteresis" min="1" max="30" step="1"></label>
+            <label>Overshoot °C<input type="number" id="heating-chamber-overshoot" min="0" max="60" step="0.1"></label>
+          </div>
+          <div class="adj-sub">Heater switch</div>
+          <div class="heating-grid">
+            <label>URL ON<input type="text" id="heating-url-on" placeholder="http://shelly…/on" spellcheck="false"></label>
+            <label>URL OFF<input type="text" id="heating-url-off" placeholder="http://shelly…/off" spellcheck="false"></label>
+          </div>
+          <div class="heating-save-row">
+            <button class="btn heating-save" id="heating-save" type="button">Save</button>
           </div>
         </div>
-        <div class="detect-event" id="detect-event" hidden>
-          <div class="detect-event-head">
-            <span class="detect-event-score" id="detect-event-score">-</span>
-            <span class="detect-event-label" id="detect-event-label">-</span>
-          </div>
-          <a class="detect-event-link" id="detect-event-link" href="#" target="_blank" rel="noopener">
-            <img class="detect-event-thumb" id="detect-event-thumb" alt="detection evidence" loading="lazy">
-          </a>
-          <span class="detect-event-when" id="detect-event-when">-</span>
-        </div>
-        <div class="detect-strip" id="detect-strip" hidden></div>
-        <div class="ctrl-msg" id="detect-msg" aria-live="polite"></div>
       </div>
-
       <div class="panel tele-panel">
         <header class="panel-header"><span class="panel-tag">Kinematics</span></header>
         <div class="coords">

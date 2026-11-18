@@ -898,10 +898,10 @@ function updateHeaterGraph(state) {
   const canvas = $("heater-graph");
   if (!canvas) return;
   // The graph spans the armed session: left = print start (session arm),
-  // right = now. The curve compresses as the print grows — nothing ever
-  // scrolls out, however long the print runs.
-  canvas.hidden = !(state.enabled && state.armed && heatingSession);
-  if (!state.enabled || !state.armed || !heatingSession) return;
+  // right = the newest sample. After the print ends it freezes and stays
+  // visible until the next armed session replaces it.
+  canvas.hidden = !(state.enabled && heatingSession);
+  if (!state.enabled || !heatingSession) return;
 
   const s = state.settings || {};
   const half = (s.chamber_hysteresis ?? 5) / 2;
@@ -927,7 +927,9 @@ function updateHeaterGraph(state) {
   const lastSample = heatingSession.samples.length
     ? heatingSession.samples[heatingSession.samples.length - 1][0] * 1000
     : t0;
-  const t1 = Math.max(Date.now(), lastSample);
+  // While the print runs the right edge is "now" (the domain stretches);
+  // after it ends the domain freezes at the last sample.
+  const t1 = state.armed ? Math.max(Date.now(), lastSample) : lastSample;
   const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
 
   let lo = Infinity;
@@ -966,11 +968,12 @@ function updateHeaterGraph(state) {
   ctx.setLineDash([]);
 
   // Heating phases: a very light transparent red over each ON span (from
-  // the ON event to the OFF event, or up to now while still heating).
+  // the ON event to the OFF event, or up to the last sample while still
+  // heating).
   ctx.fillStyle = "rgba(235, 92, 78, 0.10)";
   for (const [a, b] of heatingSession.phases) {
     const ta = a * 1000;
-    const tb = (b != null ? b : Date.now() / 1000) * 1000;
+    const tb = (b != null ? b : lastSample / 1000) * 1000;
     const xa = Math.max(0, x(ta));
     const xb = Math.min(w, x(Math.max(tb, ta)));
     if (xb > xa) ctx.fillRect(xa, 0, xb - xa, h);
@@ -1026,19 +1029,22 @@ function renderHeating(state) {
     $("heater-detail").textContent = "";
   } else {
     stateLine.hidden = false;
-    const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
-    const eff = liveTarget ?? heatingTarget;
-    const bandTxt = eff != null
-      ? `hold ${Math.round(eff - half)}–${Math.round(eff + half)}°`
-      : "";
     if (state.safety_stop) {
+      const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
       $("heater-detail").innerHTML =
         `<span class="st-danger">⚠ SAFETY STOP</span> — ${state.safety_message || "heater problem"} · ${chamber}`;
-    } else {
+    } else if (state.armed) {
+      const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
+      const bandArr = Array.isArray(state.band) ? state.band : null;
+      const bandTxt = bandArr
+        ? ` · hold ${Math.round(bandArr[0])}–${Math.round(bandArr[1])}°`
+        : "";
       const statusWord = on
         ? '<span class="st-heating">heating</span>'
         : '<span class="st-standby">standby</span>';
-      $("heater-detail").innerHTML = `Status: ${statusWord} · ${chamber}${bandTxt ? ` · ${bandTxt}` : ""}`;
+      $("heater-detail").innerHTML = `Status: ${statusWord} · ${chamber}${bandTxt}`;
+    } else {
+      $("heater-detail").innerHTML = "Status: standby";
     }
   }
 
