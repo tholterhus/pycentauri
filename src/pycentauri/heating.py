@@ -465,20 +465,18 @@ class HeatingAutomation:
         self._bed_target = st.temp_bed_target
 
         was_armed = self._armed
-        armed_now = False
         if active and not self._safety_stop:
             # Armed state is re-checked on every push: the slicer can set a
             # chamber target mid-print, which arms the session by itself.
+            # No initial ON here — the hysteresis below handles the arming
+            # push with the same thresholds (an arm-time ON firing inside
+            # the band was a bug: a warm chamber at 44.8° got heated).
             if not was_armed:
                 armed, target, reason = self._evaluate_activation(st)
                 if armed:
                     self._armed = True
                     self._armed_reason = reason
-                    armed_now = True
                     self._start_session()
-                    chamber = st.temp_chamber
-                    if chamber is None or chamber < target + self.cfg.chamber_hysteresis / 2:
-                        self._set(True, f"print start: {reason}")
         elif not active and was_active:
             self._armed = False
             self._armed_reason = ""
@@ -516,19 +514,20 @@ class HeatingAutomation:
 
                 # Hysteresis (skipped on the arming push — the arm already
                 # set the initial state). Learning banks the peak before an
-                # early re-heat.
-                if not armed_now:
-                    if chamber > off_point:
-                        # Learn-start only when the OFF command actually
-                        # dispatches — a re-start on every push above the
-                        # off-point would reset the peak tracker. A phase
-                        # spanning a service downtime stays unlearnable.
-                        if self._applied is not False and not self._resume_open_phase:
-                            self._learn_start(off_point, chamber)
-                        self._set(False, f"chamber {chamber:.1f}° > off {off_point:.1f}°")
-                    elif chamber < on_point:
-                        self._learn_finish()
-                        self._set(True, f"chamber {chamber:.1f}° < on {on_point:.1f}°")
+                # early re-heat. The hysteresis runs on every push — the
+                # arming push included (an arm-time ON firing inside the
+                # band was a bug: a warm chamber got heated pointlessly).
+                if chamber > off_point:
+                    # Learn-start only when the OFF command actually
+                    # dispatches — a re-start on every push above the
+                    # off-point would reset the peak tracker. A phase
+                    # spanning a service downtime stays unlearnable.
+                    if self._applied is not False and not self._resume_open_phase:
+                        self._learn_start(off_point, chamber)
+                    self._set(False, f"chamber {chamber:.1f}° > off {off_point:.1f}°")
+                elif chamber < on_point:
+                    self._learn_finish()
+                    self._set(True, f"chamber {chamber:.1f}° < on {on_point:.1f}°")
 
                 self._learn_track(chamber, now)
 

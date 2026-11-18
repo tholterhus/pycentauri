@@ -1078,26 +1078,7 @@ body {
   white-space: nowrap;
 }
 
-.heating-toggle {
-  display: block;
-  margin: 4px 0 10px;
-  padding: 8px 18px;
-  text-align: center;
-  font-family: var(--f-label);
-  font-size: 11px;
-  background: var(--bg-inset);
-  border: 1px solid var(--rule);
-  color: var(--fg);
-  cursor: pointer;
-}
-
-.heating-toggle.on {
-  border-color: var(--amber);
-  color: var(--amber);
-  background: rgba(255, 179, 71, 0.06);
-}
-
-.heating-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+#heating-enabled-row { margin: 4px 0 10px; }
 
 .heater-graph {
   display: block;

@@ -1056,14 +1056,15 @@ function renderHeating(state) {
     dot.hidden = true;
   }
 
-  // The gear unfolds the settings; the on/off toggle lives inside them.
+  // The gear unfolds the settings; the On/Off buttons live inside them
+  // (same look as the Light section: the current state is highlighted).
   const editable = heatingControlEnabled;
   $("heating-fields").hidden = !heatingOpen;
   $("heating-settings-toggle").hidden = false;
-  const en = $("heating-enabled");
-  en.disabled = !heatingControlEnabled;
-  en.textContent = state.enabled ? "on" : "off";
-  en.classList.toggle("on", !!state.enabled);
+  $("heating-enabled-on").disabled = !heatingControlEnabled;
+  $("heating-enabled-off").disabled = !heatingControlEnabled;
+  $("heating-enabled-on").classList.toggle("active", !!state.enabled);
+  $("heating-enabled-off").classList.toggle("active", !state.enabled);
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
                     "heating-chamber-target", "heating-chamber-hysteresis", "heating-chamber-overshoot",
                     "heating-markers", "heating-save"]) {
@@ -1135,9 +1136,15 @@ function wireHeating() {
     heatingOpen = !heatingOpen;
     $("heating-fields").hidden = !heatingOpen;
   });
-  $("heating-enabled").addEventListener("click", async () => {
-    const ok = await postHeating({ enabled: !heatingEnabledNow });
-    if (!ok) $("heating-enabled").title = "toggle failed — see journal";
+  $("heating-enabled-on").addEventListener("click", async () => {
+    if (heatingEnabledNow) return;
+    const ok = await postHeating({ enabled: true });
+    if (!ok) $("heating-enabled-on").title = "toggle failed — see journal";
+  });
+  $("heating-enabled-off").addEventListener("click", async () => {
+    if (!heatingEnabledNow) return;
+    const ok = await postHeating({ enabled: false });
+    if (!ok) $("heating-enabled-off").title = "toggle failed — see journal";
   });
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
                     "heating-chamber-target", "heating-chamber-hysteresis", "heating-chamber-overshoot",

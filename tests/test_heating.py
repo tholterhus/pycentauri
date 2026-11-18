@@ -237,10 +237,10 @@ async def test_attach_above_max_stays_off_until_cold(tmp_path: Path) -> None:
     rec = Recorder()
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
     await _push(auto, _status(code=13, bed_target=100.0, chamber=50.0, chamber_target=0.0))
-    assert rec.calls == []
+    assert rec.calls == [URL_OFF]  # attach hot: the OFF pins the known state
     assert auto._armed
     await _push(auto, _status(code=13, bed_target=100.0, chamber=39.0, chamber_target=0.0))
-    assert rec.calls == [URL_ON]
+    assert rec.calls == [URL_OFF, URL_ON]
 
 
 # --- session end ----------------------------------------------------------------

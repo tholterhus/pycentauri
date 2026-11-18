@@ -145,7 +145,10 @@
         </div>
         <canvas class="heater-graph" id="heater-graph" height="48" hidden></canvas>
         <div class="heating-fields" id="heating-fields" hidden>
-          <button class="heating-toggle" id="heating-enabled" type="button" disabled>off</button>
+          <div class="adj-modes light-row" id="heating-enabled-row">
+            <button class="btn adj-light" id="heating-enabled-on" type="button" disabled>On</button>
+            <button class="btn adj-light" id="heating-enabled-off" type="button" disabled>Off</button>
+          </div>
           <div class="adj-sub">Turn on chamber heater when…</div>
           <div class="heating-grid">
             <label>Bed temp &gt; °C<input type="number" id="heating-bed-temp" min="0" max="110" step="1"></label>
