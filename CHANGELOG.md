@@ -4,6 +4,24 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.9] - 2026-11-18
+
+### Fixed
+- The arm-time initial ON (chamber below target + hysteresis/2) fired
+  inside the band on a warm print start (44.8 chamber -> a heating blip
+  at 45) and let the chamber climb to 52.5 unattended while the service
+  was down during a deploy round. The arming push now runs through the
+  same hysteresis as every other push (cold -> ON, in-band -> nothing,
+  hot -> harmless OFF pin), and a phase that spans a service downtime
+  stays unlearnable - its overshoot reading is garbage.
+- The marker match uses soft word boundaries: a bare ABS no longer arms
+  on "ABSchneide" (the characters flanking the match must not be
+  alphanumeric), while "_ABS_" / " ABS " style entries carry their own
+  delimiters and match verbatim.
+- The chamber-heating on/off control shows On/Off as two full-width
+  buttons with the Light-section active look; the README documents the
+  chamber-heating feature.
+
 ## [0.18.8] - 2026-11-18
 
 ### Changed
