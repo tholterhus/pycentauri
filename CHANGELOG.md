@@ -4,6 +4,15 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.12] - 2026-11-18
+
+### Changed
+- The heating-phase shading in the graph is a bit more opaque (0.18
+  instead of 0.10). The status line's "hold 40-44" shows the *working*
+  OFF point: the learned overshoot (currently ~0.55°) lowers it below
+  the band top (45), so the thermal-inertia peak lands on the band top
+  instead of overshooting it.
+
 ## [0.18.11] - 2026-11-18
 
 ### Changed

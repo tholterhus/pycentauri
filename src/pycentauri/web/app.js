@@ -970,7 +970,7 @@ function updateHeaterGraph(state) {
   // Heating phases: a very light transparent red over each ON span (from
   // the ON event to the OFF event, or up to the last sample while still
   // heating).
-  ctx.fillStyle = "rgba(235, 92, 78, 0.10)";
+  ctx.fillStyle = "rgba(235, 92, 78, 0.18)";
   for (const [a, b] of heatingSession.phases) {
     const ta = a * 1000;
     const tb = (b != null ? b : lastSample / 1000) * 1000;
