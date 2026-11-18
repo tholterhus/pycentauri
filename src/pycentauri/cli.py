@@ -905,6 +905,11 @@ def cmd_server(
         "--heating-chamber-overshoot",
         help="Learned overshoot °C lowering the OFF point (auto-learned, editable).",
     ),
+    heating_target_max: float = typer.Option(
+        60.0,
+        "--heating-target-max",
+        help="Safety cap °C: the highest chamber target any source (UI, slicer) may set.",
+    ),
     heating_materials: str = typer.Option(
         "",
         "--heating-materials",
@@ -949,6 +954,12 @@ def cmd_server(
     if heating and not 0 <= heating_chamber_overshoot <= 60:
         _echo_err("--heating-chamber-overshoot must be within 0..60 °C.")
         raise typer.Exit(code=2)
+    if heating and not 0 <= heating_target_max <= 60:
+        _echo_err("--heating-target-max must be within 0..60 °C.")
+        raise typer.Exit(code=2)
+    if heating and heating_chamber_target > heating_target_max:
+        _echo_err("--heating-chamber-target must not exceed --heating-target-max.")
+        raise typer.Exit(code=2)
     if not heating and (
         heating_url_on
         or heating_url_off
@@ -957,6 +968,7 @@ def cmd_server(
         or heating_chamber_target != 42.5
         or heating_chamber_hysteresis != 5.0
         or heating_chamber_overshoot != 0.0
+        or heating_target_max != 60.0
     ):
         _echo_err("--heating-* options require --heating.")
         raise typer.Exit(code=2)
@@ -1021,6 +1033,7 @@ def cmd_server(
             chamber_target=heating_chamber_target,
             chamber_hysteresis=heating_chamber_hysteresis,
             chamber_overshoot=heating_chamber_overshoot,
+            target_max=heating_target_max,
             material_markers=[m.strip() for m in heating_materials.split(",") if m.strip()],
         )
         if not heating_cfg.url_on or not heating_cfg.url_off:

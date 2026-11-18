@@ -1077,6 +1077,7 @@ function renderHeating(state) {
     $("heating-url-off").value = s.url_off || "";
     $("heating-bed-temp").value = s.bed_temp ?? "";
     $("heating-chamber-target").value = s.chamber_target ?? "";
+    $("heating-chamber-target").max = s.target_max ?? 60;  // the safety cap from the conf
     $("heating-chamber-hysteresis").value = s.chamber_hysteresis ?? "";
     $("heating-chamber-overshoot").value = s.chamber_overshoot ?? "";
     $("heating-markers").value = (s.material_markers || []).join(",");

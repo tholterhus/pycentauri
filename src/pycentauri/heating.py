@@ -122,6 +122,10 @@ class HeatingConfig:
     # by this value; starts at 0 and is folded in after every heating
     # phase (EMA), clamped to the hysteresis. Editable in the web UI.
     chamber_overshoot: float = 0.0
+    # Safety cap (conf-only): the highest chamber target any source may
+    # set - the web UI's Target field and the slicer-passed TempTargetBox
+    # are both clamped to it.
+    target_max: float = 60.0
     material_markers: list[str] = dataclasses.field(default_factory=list)
     # Where the UI-persisted settings live (wins over .conf/CLI defaults).
     state_path: Path = Path("data/heating.json")
@@ -131,6 +135,12 @@ class HeatingConfig:
 
     def validate(self) -> None:
         """Raise ValueError on settings the hysteresis cannot honor."""
+        if not 0 <= self.target_max <= 60:
+            raise ValueError(f"target_max {self.target_max}°C out of range 0..60")
+        if self.chamber_target > self.target_max:
+            raise ValueError(
+                f"chamber_target {self.chamber_target}°C above target_max {self.target_max}°C"
+            )
         if not 0 <= self.chamber_target <= 60:
             raise ValueError(f"chamber_target {self.chamber_target}°C out of range 0..60")
         if not 1 <= self.chamber_hysteresis <= 30:
@@ -183,14 +193,7 @@ def load_state(cfg: HeatingConfig) -> None:
         # pre-0.18.7 key rename: same value, new name
         with contextlib.suppress(TypeError, ValueError):
             cfg.chamber_hysteresis = float(raw["chamber_factor"])
-    for field in (
-        "enabled",
-        "url_on",
-        "url_off",
-        "bed_temp",
-        "chamber_hysteresis",
-        "chamber_overshoot",
-    ):
+    for field in ("enabled", "url_on", "url_off", "bed_temp", "chamber_hysteresis", "chamber_overshoot"):
         if field not in raw:
             continue
         value = raw[field]
@@ -400,6 +403,7 @@ class HeatingAutomation:
                 "chamber_target": self.cfg.chamber_target,
                 "chamber_hysteresis": self.cfg.chamber_hysteresis,
                 "chamber_overshoot": self.cfg.chamber_overshoot,
+                "target_max": self.cfg.target_max,
                 "material_markers": self.cfg.material_markers,
             },
             "history": "/api/heating/history",
@@ -548,10 +552,7 @@ class HeatingAutomation:
                     self._watch_baseline = chamber_now  # first reading starts the clock
                 else:
                     risen = chamber_now - self._watch_baseline
-                    if (
-                        now - self._watch_started >= self._safety_window
-                        and risen < self._safety_rise
-                    ):
+                    if now - self._watch_started >= self._safety_window and risen < self._safety_rise:
                         self._safety_trip(
                             f"no temperature rise ({risen:+.1f}° in "
                             f"{self._safety_window / 60:.0f} min)"
@@ -572,8 +573,8 @@ class HeatingAutomation:
         fallback target."""
         st_target = st.temp_chamber_target
         if st_target is not None and st_target > 0:
-            return st_target
-        return self.cfg.chamber_target
+            return min(st_target, self.cfg.target_max)
+        return min(self.cfg.chamber_target, self.cfg.target_max)
 
     # --- session (graph data) ------------------------------------------------
 
@@ -590,9 +591,12 @@ class HeatingAutomation:
         armed_since = raw.get("armed_since")
         if not isinstance(armed_since, (int, float)) or time.time() - armed_since > 12 * 3600:
             return  # stale beyond any plausible print - start fresh
-        self._session_samples = [[float(t), float(v)] for t, v in raw.get("samples", [])]
+        self._session_samples = [
+            [float(t), float(v)] for t, v in raw.get("samples", [])
+        ]
         self._session_phases = [
-            [float(a), float(b) if b is not None else None] for a, b in raw.get("phases", [])
+            [float(a), float(b) if b is not None else None]
+            for a, b in raw.get("phases", [])
         ]
         self._armed_at = float(armed_since)
         self._session_open = True
@@ -695,10 +699,7 @@ class HeatingAutomation:
         if learn is None:
             return
         learn["peak"] = max(learn["peak"], chamber)
-        if (
-            chamber <= learn["peak"] - OVERSHOOT_PEAK_FALL_C
-            or now - learn["t"] > OVERSHOOT_MEASURE_MAX_S
-        ):
+        if chamber <= learn["peak"] - OVERSHOOT_PEAK_FALL_C or now - learn["t"] > OVERSHOOT_MEASURE_MAX_S:
             self._learn_finish()
 
     def _learn_finish(self) -> None:

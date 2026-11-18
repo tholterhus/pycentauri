@@ -572,6 +572,23 @@ centauri server --host printer.example --enable-control \
 Requires `--enable-control`; the daemon reports the feature in
 `/api/info` as `light_automation`.
 
+## Chamber heating
+
+The daemon can run a Shelly-controlled heater for the printer room
+(``centauri server --heating``): armed at print start when the bed target
+exceeds a threshold or the filename contains a material marker, the
+chamber temperature is then regulated by the printer's own chamber
+sensor between min/max around a target, switching the heater via two
+HTTP GET endpoints (the Shelly's ON/OFF URLs). The slicer-passed chamber
+target (TempTargetBox) wins as the target when the profile sets one —
+clamped to a safety cap (``HEATING_TARGET_MAX``). The learned overshoot
+lowers the OFF point so the thermal inertia peaks inside the band, a
+safety watchdog turns the heater off when the temperature does not rise
+during a heating phase, and the panel shows the chamber-temperature
+trend of the current print. All settings are editable in the web UI and
+persist server-side (``data/heating-session.json`` /
+``data/heating.json``).
+
 ## Print status codes
 
 `print_status` in the API and library uses the CC1 firmware's code
