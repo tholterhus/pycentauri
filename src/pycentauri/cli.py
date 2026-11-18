@@ -890,11 +890,15 @@ def cmd_server(
     heating_bed_temp: float = typer.Option(
         90.0, "--heating-bed-temp", help="Bed target °C above which a print is chamber-heated."
     ),
-    heating_chamber_min: float = typer.Option(
-        40.0, "--heating-chamber-min", help="Chamber °C below which the heater switches on."
+    heating_chamber_target: float = typer.Option(
+        42.5,
+        "--heating-chamber-target",
+        help="Fallback chamber target °C (used when the slicer sets none).",
     ),
-    heating_chamber_max: float = typer.Option(
-        45.0, "--heating-chamber-max", help="Chamber °C above which the heater switches off."
+    heating_chamber_factor: float = typer.Option(
+        5.0,
+        "--heating-chamber-factor",
+        help="Full swing °C around the target (heater off at target+factor/2).",
     ),
     heating_materials: str = typer.Option(
         "",
@@ -931,16 +935,19 @@ def cmd_server(
     if heating and not enable_control:
         _echo_err("--heating requires --enable-control (it drives the heater).")
         raise typer.Exit(code=2)
-    if heating and heating_chamber_min >= heating_chamber_max:
-        _echo_err("--heating-chamber-min must be below --heating-chamber-max.")
+    if heating and not 1 <= heating_chamber_factor <= 30:
+        _echo_err("--heating-chamber-factor must be within 1..30.")
+        raise typer.Exit(code=2)
+    if heating and not 0 <= heating_chamber_target <= 60:
+        _echo_err("--heating-chamber-target must be within 0..60 °C.")
         raise typer.Exit(code=2)
     if not heating and (
         heating_url_on
         or heating_url_off
         or heating_materials
         or heating_bed_temp != 90.0
-        or heating_chamber_min != 40.0
-        or heating_chamber_max != 45.0
+        or heating_chamber_target != 42.5
+        or heating_chamber_factor != 5.0
     ):
         _echo_err("--heating-* options require --heating.")
         raise typer.Exit(code=2)
@@ -1002,8 +1009,8 @@ def cmd_server(
             url_on=heating_url_on.strip(),
             url_off=heating_url_off.strip(),
             bed_temp=heating_bed_temp,
-            chamber_min=heating_chamber_min,
-            chamber_max=heating_chamber_max,
+            chamber_target=heating_chamber_target,
+            chamber_factor=heating_chamber_factor,
             material_markers=[m.strip() for m in heating_materials.split(",") if m.strip()],
         )
         if not heating_cfg.url_on or not heating_cfg.url_off:

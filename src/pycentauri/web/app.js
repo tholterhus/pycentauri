@@ -487,6 +487,11 @@ const ADJUST_TARGETS = {
       ? `Set bed target to ${g("temp-bed")}°C ? High-temp; check bed adhesive.`
       : null,
   },
+  "temp-chamber": {
+    label: "CHAMBER TEMP",
+    path: "/print/temperature",
+    build: (g) => ({ chamber: g("temp-chamber") }),
+  },
 };
 
 async function applyAdjust(target, getters) {
@@ -535,6 +540,7 @@ function hydrateAdjust(raw) {
     ["fan-chamber",  fans.BoxFan],
     ["temp-nozzle",  raw.TempTargetNozzle],
     ["temp-bed",     raw.TempTargetHotbed],
+    ["temp-chamber", raw.TempTargetBox],
   ];
   for (const [base, v] of targets) {
     if (v == null) continue;
@@ -546,16 +552,6 @@ function hydrateAdjust(raw) {
     const rounded = String(Math.round(+v));
     num.value = rounded;
     slider.value = rounded;
-  }
-  // Chamber row is a read-only display of the current chamber temperature
-  // (no Set — the heater regulation lives in the Chamber heating panel).
-  // Always overwritten, without dirty/focus skips: dragging it snaps back
-  // to the live value, which is exactly the point of a display row.
-  const chNum = $("adj-temp-chamber");
-  const chSlider = $("adj-temp-chamber-slider");
-  if (chNum && chSlider && raw.TempOfBox != null) {
-    chNum.value = (+raw.TempOfBox).toFixed(1);
-    chSlider.value = String(Math.round(+raw.TempOfBox));
   }
 }
 
@@ -595,6 +591,7 @@ function wireAdjust() {
     "fan-chamber":   bindPair("fan-chamber"),
     "temp-nozzle":   bindPair("temp-nozzle"),
     "temp-bed":      bindPair("temp-bed"),
+    "temp-chamber":  bindPair("temp-chamber"),
   };
   for (const btn of document.querySelectorAll("#adjust .adj-apply")) {
     btn.addEventListener("click", () => applyAdjust(btn.dataset.target, getters));
@@ -891,25 +888,36 @@ let heatingControlEnabled = false;
 let heatingDirty = false;
 let heatingOpen = false;
 let heatingEnabledNow = false;
+let heatingArmedSince = null;  // epoch ms of the armed session (graph domain start)
+let heatingLastOn = null;  // last observed heater state (relay flip detection)
 // Client-side chamber-temperature trend for the panel graph — one sample
-// per loadHeating poll (5 s), capped at ~1 h. A page reload starts fresh.
+// per loadHeating poll (5 s), timestamped so the graph can span the whole
+// session duration. A page reload starts fresh.
 let heatingHistory = [];
+let heaterEvents = [];  // {t, on} — heater relay flips seen while polling
 
 function updateHeaterGraph(state) {
   const canvas = $("heater-graph");
   if (!canvas) return;
-  canvas.hidden = !state.enabled;
-  if (!state.enabled) { heatingHistory = []; return; }
+  // The graph spans the armed session: from the print start (session arm)
+  // to now, always full width — a 20-minute and a 20-hour print look the
+  // same, and nothing scrolls out on the left.
+  canvas.hidden = !(state.enabled && state.armed && state.armed_since);
+  if (!state.enabled || !state.armed || !state.armed_since) {
+    heatingHistory = [];
+    heaterEvents = [];
+    return;
+  }
   if (state.chamber_temp != null) {
     heatingHistory.push({ t: Date.now(), v: +state.chamber_temp });
-    if (heatingHistory.length > 720) heatingHistory.shift();
+    if (heatingHistory.length > 20000) heatingHistory.shift();  // ~27 h at 5 s
   }
-  if (heatingHistory.length < 2) { canvas.hidden = true; return; }
 
   const s = state.settings || {};
-  const target = s.chamber_target || null;
-  const bandLo = target != null ? target - 2 : s.chamber_min;
-  const bandHi = target != null ? target : s.chamber_max;
+  const half = (s.chamber_factor ?? 5) / 2;
+  const target = state.target ?? s.chamber_target ?? null;
+  const bandLo = target != null ? target - half : null;
+  const bandHi = target != null ? target + half : null;
   const bands = [bandLo, bandHi].filter((b) => b != null);
 
   const w = canvas.clientWidth || 220;
@@ -923,18 +931,25 @@ function updateHeaterGraph(state) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
+  // x domain: session start → now (rescaled on every render, so the curve
+  // compresses as the print grows instead of scrolling away).
+  const t0 = new Date(state.armed_since).getTime();
+  const t1 = Date.now();
+  const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
+
   let lo = Math.min(...heatingHistory.map((p) => p.v));
   let hi = Math.max(...heatingHistory.map((p) => p.v));
   for (const b of bands) { lo = Math.min(lo, b); hi = Math.max(hi, b); }
   const pad = Math.max(1, (hi - lo) * 0.15);
   lo -= pad;
   hi += pad;
-  const x = (i) => (i / (heatingHistory.length - 1)) * (w - 2) + 1;
   const y = (v) => h - 3 - ((v - lo) / (hi - lo)) * (h - 6);
 
   const css = getComputedStyle(document.documentElement);
   const colLine = (css.getPropertyValue("--amber") || "#ffb347").trim();
   const colBand = (css.getPropertyValue("--fg-faint") || "#504a42").trim();
+  const colOk = (css.getPropertyValue("--ok") || "#8ed19a").trim();
+  const colDanger = (css.getPropertyValue("--danger") || "#eb5c4e").trim();
 
   ctx.lineWidth = 1;
   ctx.strokeStyle = colBand;
@@ -947,13 +962,28 @@ function updateHeaterGraph(state) {
     ctx.stroke();
   }
   ctx.setLineDash([]);
+
+  // Heater events: fine green line where it switched ON, red where OFF.
+  for (const ev of heaterEvents) {
+    if (ev.t < t0 || ev.t > t1) continue;
+    ctx.strokeStyle = ev.on ? colOk : colDanger;
+    ctx.lineWidth = 1;
+    const px = x(ev.t);
+    ctx.beginPath();
+    ctx.moveTo(px, 1);
+    ctx.lineTo(px, h - 1);
+    ctx.stroke();
+  }
+
   ctx.strokeStyle = colLine;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  heatingHistory.forEach((p, i) => {
-    const px = x(i);
+  let started = false;
+  heatingHistory.forEach((p) => {
+    if (p.t < t0) return;  // sample from before this session — clipped
+    const px = x(p.t);
     const py = y(p.v);
-    if (i === 0) ctx.moveTo(px, py);
+    if (!started) { ctx.moveTo(px, py); started = true; }
     else ctx.lineTo(px, py);
   });
   ctx.stroke();
@@ -964,6 +994,23 @@ function renderHeating(state) {
   const on = state.heater_on === true;
   const s = state.settings || {};
   const heatingTarget = s.chamber_target || null;
+  const half = (s.chamber_factor ?? 5) / 2;
+  const liveTarget = state.target ?? (state.armed ? heatingTarget : null);
+
+  // A new armed session resets the graph history and the event markers.
+  const armedSince = state.armed_since ? new Date(state.armed_since).getTime() : null;
+  if (armedSince !== heatingArmedSince) {
+    heatingArmedSince = armedSince;
+    heatingHistory = [];
+    heaterEvents = [];
+  }
+
+  // Heater relay flips seen while polling become event lines in the graph.
+  const heaterWasOn = heatingLastOn;
+  if (heaterWasOn !== null && on !== heaterWasOn && state.armed) {
+    heaterEvents.push({ t: Date.now(), on });
+  }
+  heatingLastOn = state.heater_on;
 
   // Line 1 — the mechanism word: is the automation regulating this print?
   const ind = $("heater-indicator");
@@ -985,13 +1032,14 @@ function renderHeating(state) {
   // Line 2 — the heater itself: heating (relay on) or standby, with the
   // live chamber temperature and the band it holds.
   const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
-  const band = heatingTarget != null
-    ? `hold ${Math.round(heatingTarget - 2)}–${Math.round(+heatingTarget)}°`
-    : `hold ${Math.round(s.chamber_min ?? 0)}–${Math.round(s.chamber_max ?? 0)}°`;
+  const eff = liveTarget ?? heatingTarget;
+  const bandTxt = eff != null
+    ? `hold ${Math.round(eff - half)}–${Math.round(eff + half)}°`
+    : "";
   const statusWord = on
     ? '<span class="st-heating">heating</span>'
     : '<span class="st-standby">standby</span>';
-  $("heater-detail").innerHTML = `Status: ${statusWord} · ${chamber} · ${band}`;
+  $("heater-detail").innerHTML = `Status: ${statusWord} · ${chamber}${bandTxt ? ` · ${bandTxt}` : ""}`;
 
   updateHeaterGraph(state);
 
@@ -1015,8 +1063,8 @@ function renderHeating(state) {
     $("heating-url-on").value = s.url_on || "";
     $("heating-url-off").value = s.url_off || "";
     $("heating-bed-temp").value = s.bed_temp ?? "";
-    $("heating-chamber-min").value = s.chamber_min ?? "";
-    $("heating-chamber-max").value = s.chamber_max ?? "";
+    $("heating-chamber-target").value = s.chamber_target ?? "";
+    $("heating-chamber-factor").value = s.chamber_factor ?? "";
     $("heating-markers").value = (s.material_markers || []).join(",");
   }
 }
@@ -1068,7 +1116,7 @@ function wireHeating() {
     if (!ok) $("heating-enabled").title = "toggle failed — see journal";
   });
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
-                    "heating-chamber-min", "heating-chamber-max", "heating-markers"]) {
+                    "heating-chamber-target", "heating-chamber-factor", "heating-markers"]) {
     $(id).addEventListener("input", () => { heatingDirty = true; });
   }
   $("heating-save").addEventListener("click", async () => {
@@ -1077,8 +1125,8 @@ function wireHeating() {
       url_on: $("heating-url-on").value.trim(),
       url_off: $("heating-url-off").value.trim(),
       bed_temp: parseFloat($("heating-bed-temp").value),
-      chamber_min: parseFloat($("heating-chamber-min").value),
-      chamber_max: parseFloat($("heating-chamber-max").value),
+      chamber_target: parseFloat($("heating-chamber-target").value),
+      chamber_factor: parseFloat($("heating-chamber-factor").value),
       material_markers: $("heating-markers").value,
     };
     const ok = await postHeating(body, btn);

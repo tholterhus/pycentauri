@@ -4,6 +4,32 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.0] - 2026-11-18
+
+### Changed
+- Chamber heating follows the slicer: the ADJUST chamber row is a normal
+  set-slider again (shows the slicer-passed chamber target, Set sends it
+  to the printer via Cmd 403), and the heater logic reads that target per
+  status push — slicer TempTargetBox > 0 wins outright and arms the
+  session by itself (even without a hot bed or marker). When it is 0 but
+  the bed target or a filename marker arms the session, the configured
+  fallback target applies.
+- The min/max pair became target + factor: the heater holds the chamber
+  within ±factor/2 around the resolved target (factor 5 at a 45° target =
+  42.5–47.5). Config/CLI/UI fields: chamber_target (default 42.5 — the
+  center of the old 40/45 pair) and chamber_factor (default 5); an old
+  heating.json with min/max migrates automatically. The ADJUST row's Set
+  writes the printer chamber target, which the logic then follows.
+
+### Fixed
+- The heating panel graph now spans the armed session (x domain =
+  session start → now, rescaled on every render) instead of scrolling
+  out to the left — a 20-minute and a 20-hour print look the same — and
+  draws fine vertical event lines: green where the heater switched ON,
+  red where it switched OFF.
+- The settings gear is visible again (back to the bordered Detect look;
+  the borderless variant was black-on-black).
+
 ## [0.17.9] - 2026-11-18
 
 ### Changed

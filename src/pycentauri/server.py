@@ -317,14 +317,17 @@ class HeatingSettingsBody(BaseModel):
     bed_temp: float | None = Field(
         None, ge=0, le=110, description="Bed target °C that arms a session."
     )
-    chamber_min: float | None = Field(
-        None, ge=0, le=60, description="Chamber °C below which the heater switches on."
-    )
-    chamber_max: float | None = Field(
-        None, ge=0, le=60, description="Chamber °C above which the heater switches off."
-    )
     chamber_target: float | None = Field(
-        None, ge=0, le=60, description="Desired chamber °C (overrides min/max; 0 clears it)."
+        None,
+        ge=0,
+        le=60,
+        description="Fallback chamber target °C (used when the slicer sets none).",
+    )
+    chamber_factor: float | None = Field(
+        None,
+        ge=1,
+        le=30,
+        description="Full swing °C around the target (heater off at target+factor/2).",
     )
     material_markers: list[str] | str | None = Field(
         None,

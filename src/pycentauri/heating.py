@@ -1,15 +1,14 @@
 """Chamber-heating automation: a Shelly-controlled heater for the print room.
 
-The activation is decided at print start — the bed target above a threshold
-(default 90 °C) OR the filename containing a configured material marker
-("ABS", "ASA", ... — case-insensitive substring) arms the session for the
-whole print, latched (a slicer lowering the bed target mid-print does not
-disarm it). While armed, the printer's own chamber sensor (TempOfBox)
-drives an on/off hysteresis between two thresholds via two HTTP GET
-endpoints (the Shelly's "on" and "off" URLs). At print end the heater goes
-off unconditionally and the session disarms. A paused print keeps being
-controlled; attaching mid-print (service restart) re-evaluates the
-activation from the first status push.
+The chamber target is resolved per status push, and the slicer wins: when
+the printer reports a chamber target (``TempTargetBox``) above zero, the
+heater regulates toward it. Otherwise — a print armed via bed target above
+the threshold or a filename marker — the configured fallback target
+applies. The heater holds the chamber inside the swing the "Faktor"
+allows: ±factor/2 around the target (factor 5 at a 45° target = 42.5-47.5).
+At print end the heater goes off unconditionally and the session disarms;
+a paused print keeps being controlled; attaching mid-print re-evaluates
+the activation from the first status push.
 
 Settings persist in a data JSON file that wins over the .conf/CLI defaults
 (the same pattern as the detection threshold): the web UI edits them live
@@ -23,6 +22,7 @@ import contextlib
 import dataclasses
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -47,15 +47,10 @@ STATE_FIELDS = (
     "url_on",
     "url_off",
     "bed_temp",
-    "chamber_min",
-    "chamber_max",
     "chamber_target",
+    "chamber_factor",
     "material_markers",
 )
-
-#: When a chamber target is set (web UI slider), the hysteresis holds the
-#: chamber in a fixed band below the target instead of chamber_min/max.
-CHAMBER_TARGET_BAND = 2.0
 
 
 class HeatingError(RuntimeError):
@@ -82,29 +77,27 @@ class HeatingConfig:
     url_on: str = ""
     url_off: str = ""
     bed_temp: float = 90.0
-    chamber_min: float = 40.0
-    chamber_max: float = 45.0
-    # Desired chamber temperature (web UI slider). When set, it overrides
-    # the min/max pair: ON below target-2°, OFF at/above the target.
-    # 0/None = no target, fall back to chamber_min/chamber_max.
-    chamber_target: float | None = None
+    # Fallback chamber target when the slicer passes none (TempTargetBox 0).
+    chamber_target: float = 42.5
+    # Full swing around the target: the heater switches off at
+    # target + factor/2 and on at target - factor/2 (factor 5 at 45° =
+    # 42.5..47.5).
+    chamber_factor: float = 5.0
     material_markers: list[str] = dataclasses.field(default_factory=list)
     # Where the UI-persisted settings live (wins over .conf/CLI defaults).
     state_path: Path = Path("data/heating.json")
 
     def validate(self) -> None:
         """Raise ValueError on settings the hysteresis cannot honor."""
-        if self.chamber_min >= self.chamber_max:
+        if not 0 <= self.chamber_target <= 60:
+            raise ValueError(f"chamber_target {self.chamber_target}°C out of range 0..60")
+        if not 1 <= self.chamber_factor <= 30:
             raise ValueError(
-                f"chamber_min ({self.chamber_min}°C) must be below "
-                f"chamber_max ({self.chamber_max}°C)"
+                f"chamber_factor {self.chamber_factor} out of range 1..30 "
+                "(it is the full swing around the target)"
             )
         if not 0 <= self.bed_temp <= 110:
             raise ValueError(f"bed_temp {self.bed_temp}°C out of range 0..110")
-        if not 0 <= self.chamber_min <= 60 or not 0 <= self.chamber_max <= 60:
-            raise ValueError("chamber thresholds must be within 0..60 °C")
-        if self.chamber_target is not None and not 0 < self.chamber_target <= 60:
-            raise ValueError(f"chamber_target {self.chamber_target}°C out of range 0..60")
         for name in ("url_on", "url_off"):
             url = getattr(self, name)
             if url and not url.startswith(("http://", "https://")):
@@ -112,7 +105,11 @@ class HeatingConfig:
 
 
 def load_state(cfg: HeatingConfig) -> None:
-    """Overlay the persisted UI settings onto ``cfg`` (JSON wins)."""
+    """Overlay the persisted UI settings onto ``cfg`` (JSON wins).
+
+    Migrates the pre-0.17.9 min/max pair to the target/factor model:
+    target = (min + max) / 2, factor = max - min.
+    """
     try:
         raw = json.loads(cfg.state_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -122,24 +119,37 @@ def load_state(cfg: HeatingConfig) -> None:
         return
     if not isinstance(raw, dict):
         return
-    for field in STATE_FIELDS:
+    if "chamber_min" in raw and "chamber_max" in raw:
+        with contextlib.suppress(TypeError, ValueError):
+            lo = float(raw["chamber_min"])
+            hi = float(raw["chamber_max"])
+            if hi > lo:
+                cfg.chamber_target = round((lo + hi) / 2, 2)
+                cfg.chamber_factor = round(hi - lo, 2)
+                log.info(
+                    "heating: migrated chamber_min/max (%s/%s) to target %s ± factor/2",
+                    lo,
+                    hi,
+                    cfg.chamber_target,
+                )
+    if raw.get("chamber_target"):
+        with contextlib.suppress(TypeError, ValueError):
+            cfg.chamber_target = float(raw["chamber_target"])
+    for field in ("enabled", "url_on", "url_off", "bed_temp", "chamber_factor"):
         if field not in raw:
             continue
         value = raw[field]
-        if field == "material_markers":
-            cfg.material_markers = _coerce_markers(value)
-        elif field == "enabled":
+        if field == "enabled":
             cfg.enabled = bool(value)
-        elif field == "chamber_target":
-            with contextlib.suppress(TypeError, ValueError):
-                cfg.chamber_target = float(value) if value else None
-        elif field in ("bed_temp", "chamber_min", "chamber_max"):
+        elif field in ("bed_temp", "chamber_factor"):
             with contextlib.suppress(TypeError, ValueError):
                 setattr(cfg, field, float(value))
         elif field == "url_on":
             cfg.url_on = str(value)
         elif field == "url_off":
             cfg.url_off = str(value)
+    if "material_markers" in raw:
+        cfg.material_markers = _coerce_markers(raw["material_markers"])
     log.info("heating: settings loaded from %s", cfg.state_path)
 
 
@@ -170,21 +180,17 @@ def _coerce_markers(value: Any) -> list[str]:
 class HeatingAutomation:
     """Drive the chamber heater from the printer's status stream.
 
-    One status stream (``printer.watch()`` with backoff-retry across
-    reconnects, like the other automations) feeds three rules:
-
-    * print start (or attach mid-print / feature enabled mid-print): arm
-      when bed target > ``bed_temp`` or the filename contains a marker —
-      and switch the heater ON unless the chamber already sits above the
-      maximum;
-    * while armed: hysteresis on the chamber sensor — below ``chamber_min``
-      ON, above ``chamber_max`` OFF, in between keep the current state;
-    * print end: heater OFF, session disarmed.
-
-    Commands dedupe through ``_applied`` — the last state we *successfully*
-    commanded (the Shelly relay state is not read back): a failed call
-    leaves the belief unchanged, so the next status push retries it,
-    paced by the exponential backoff until the call lands.
+    The target is resolved per push and the slicer wins: a printer chamber
+    target above zero (``TempTargetBox``) is the setpoint; when it is zero,
+    an armed session uses the configured fallback target. Arming happens at
+    print start (or attach mid-print / feature enabled mid-print) when the
+    slicer target is set, the bed target exceeds ``bed_temp``, or the
+    filename contains a material marker — latched for the whole print. The
+    heater holds the chamber inside ±factor/2 around the target (ON below,
+    OFF above, in between keep the current state); at print end it goes
+    off unconditionally. Commands dedupe through the last *successfully*
+    commanded state and back off exponentially (2 s → 60 s) while the
+    Shelly is unreachable.
     """
 
     def __init__(
@@ -203,15 +209,19 @@ class HeatingAutomation:
         self._active = False  # a job occupies the printer
         self._armed = False  # session: this print wants chamber heat
         self._armed_reason = ""
+        self._armed_at: float | None = None  # epoch s of the last session arm
+        self._last_target: float | None = None  # effective target of the last push
         # Set when an armed session ends while the heater is not confirmed
         # off: the OFF command retries every push (backoff-paced) until the
         # call lands — a failed end-OFF must never leave the heater running.
         self._release_pending = False
-        self._applied: bool | None = None  # heater state we last commanded
+        # Light state we last observed (report is truth) or commanded
+        # (assumed success). ``None`` = never seen; the first push or
+        # command pins it, and every deviation from the temperature target
+        # fires exactly one correction.
+        self._applied: bool | None = None
         self._chamber: float | None = None
         self._bed_target: float | None = None
-        self._first_push = True
-        self._was_enabled = cfg.enabled
         self._retry_not_before = 0.0
         self._retry_backoff = RETRY_BACKOFF_START
         self._last_error = ""
@@ -244,20 +254,16 @@ class HeatingAutomation:
 
         Only the provided keys change; a ValueError (bad ranges/URLs)
         leaves the configuration untouched so the API can answer 400.
-        ``chamber_target`` 0/None explicitly clears the target (fall back
-        to chamber_min/chamber_max).
         """
         field_names = {f.name for f in dataclasses.fields(HeatingConfig)}
         staged: dict[str, Any] = {}
         for key, value in changes.items():
             if key not in field_names or key == "state_path":
                 continue
-            if key == "chamber_target":
-                staged[key] = float(value) if value else None
+            if key == "material_markers":
+                staged[key] = _coerce_markers(value)
             elif value is None:
                 continue
-            elif key == "material_markers":
-                staged[key] = _coerce_markers(value)
             else:
                 staged[key] = value
         # Validate against a candidate copy so a bad value never lands.
@@ -273,9 +279,10 @@ class HeatingAutomation:
             setattr(self.cfg, key, value)
         save_state(self.cfg)
         log.info(
-            "heating: settings updated (enabled=%s target=%s markers=%s)",
+            "heating: settings updated (enabled=%s target=%s factor=%s markers=%s)",
             self.cfg.enabled,
             self.cfg.chamber_target,
+            self.cfg.chamber_factor,
             self.cfg.material_markers,
         )
         return self.state()
@@ -287,6 +294,8 @@ class HeatingAutomation:
             "heater_on": self._applied,
             "armed": self._armed,
             "armed_reason": self._armed_reason,
+            "armed_since": self._armed_at,
+            "target": self._last_target,
             "chamber_temp": self._chamber,
             "bed_target": self._bed_target,
             "last_error": self._last_error,
@@ -295,9 +304,8 @@ class HeatingAutomation:
                 "url_on": self.cfg.url_on,
                 "url_off": self.cfg.url_off,
                 "bed_temp": self.cfg.bed_temp,
-                "chamber_min": self.cfg.chamber_min,
-                "chamber_max": self.cfg.chamber_max,
                 "chamber_target": self.cfg.chamber_target,
+                "chamber_factor": self.cfg.chamber_factor,
                 "material_markers": self.cfg.material_markers,
             },
         }
@@ -310,7 +318,6 @@ class HeatingAutomation:
         while not self._closing:
             try:
                 printer = self._get_printer()
-                self._first_push = True
                 async for st in printer.watch():
                     self._on_status(st)
                 if not self._closing:
@@ -332,15 +339,10 @@ class HeatingAutomation:
         if not self.cfg.enabled:
             self._armed = False
             self._armed_reason = ""
-            self._release_pending = False
+            self._armed_at = None
             if self._applied is True:
                 self._fire(False, "chamber heating disabled")
-            self._was_enabled = False
             return
-
-        first = self._first_push or not self._was_enabled
-        self._first_push = False
-        self._was_enabled = True
 
         code = st.print_status
         active = code is not None and code not in INACTIVE_CODES
@@ -351,19 +353,23 @@ class HeatingAutomation:
 
         was_armed = self._armed
         armed_now = False
-        if active and (first or not was_active):
-            # Print start, attach mid-print, or the feature just got enabled
-            # during a running print — all decide the session now (latched).
-            self._armed, self._armed_reason = self._evaluate_activation(st)
-            if self._armed and not was_armed:
-                armed_now = True
-                chamber = st.temp_chamber
-                if chamber is None or chamber < self._effective_max():
-                    self._set(True, f"print start: {self._armed_reason}")
+        if active:
+            # Armed state is re-checked on every push: the slicer can set a
+            # chamber target mid-print, which arms the session by itself.
+            if not was_armed:
+                armed, target, reason = self._evaluate_activation(st)
+                if armed:
+                    self._armed = True
+                    self._armed_reason = reason
+                    self._armed_at = time.time()
+                    armed_now = True
+                    chamber = st.temp_chamber
+                    if chamber is None or chamber < target + self.cfg.chamber_factor / 2:
+                        self._set(True, f"print start: {reason}")
         elif not active and was_active:
-            was_armed = self._armed
             self._armed = False
             self._armed_reason = ""
+            self._armed_at = None
             if was_armed and self._applied is not False:
                 self._release_pending = True
 
@@ -375,44 +381,66 @@ class HeatingAutomation:
             else:
                 self._fire(False, "print finished")
 
-        # Hysteresis while the session is armed: below the ON point ON,
-        # above the OFF point OFF, in between keep the current state.
+        # Hysteresis while the session is armed: the target follows the
+        # slicer's chamber target when set, else the configured fallback.
         # Skipped on the arming push itself — the arm already set the
         # initial state (an extra dispatch there would fire the same
         # command twice).
+        self._last_target = None
         if self._armed and not armed_now:
             chamber = st.temp_chamber
             if chamber is not None:
-                if chamber > self._effective_max():
-                    self._set(False, f"chamber {chamber:.1f}° > {self._effective_max():.0f}°")
-                elif chamber < self._effective_min():
-                    self._set(True, f"chamber {chamber:.1f}° < {self._effective_min():.0f}°")
+                target = self._effective_target(st)
+                self._last_target = target
+                half = self.cfg.chamber_factor / 2
+                if chamber > target + half:
+                    self._set(
+                        False,
+                        f"chamber {chamber:.1f}° > target {target:.1f}° + {half:.1f}°",
+                    )
+                elif chamber < target - half:
+                    self._set(
+                        True,
+                        f"chamber {chamber:.1f}° < target {target:.1f}° - {half:.1f}°",
+                    )
 
-    def _effective_max(self) -> float:
-        """The OFF point: the chamber target when set, else chamber_max."""
-        if self.cfg.chamber_target is not None:
-            return self.cfg.chamber_target
-        return self.cfg.chamber_max
+    def _effective_target(self, st: Status) -> float:
+        """The chamber target for this push: the slicer's chamber target
+        (``TempTargetBox``) when it is set above zero, else the configured
+        fallback target."""
+        st_target = st.temp_chamber_target
+        if st_target is not None and st_target > 0:
+            return st_target
+        return self.cfg.chamber_target
 
-    def _effective_min(self) -> float:
-        """The ON point: a fixed band below a set target, else chamber_min."""
-        if self.cfg.chamber_target is not None:
-            return self.cfg.chamber_target - CHAMBER_TARGET_BAND
-        return self.cfg.chamber_min
-
-    def _evaluate_activation(self, st: Status) -> tuple[bool, str]:
-        """Decide whether the current print wants chamber heat (latched)."""
+    def _evaluate_activation(self, st: Status) -> tuple[bool, float, str]:
+        """Decide whether the current print wants chamber heat, and with
+        which target. The slicer's chamber target wins outright (it arms
+        the session even without a hot bed); otherwise the bed target above
+        the threshold or a filename marker arms it with the configured
+        fallback target."""
+        st_target = st.temp_chamber_target
+        if st_target is not None and st_target > 0:
+            return True, st_target, f"slicer chamber target {st_target:.0f}°"
         bed_target = st.temp_bed_target
         if bed_target is not None and bed_target > self.cfg.bed_temp:
-            return True, f"bed target {bed_target:.0f}° > {self.cfg.bed_temp:.0f}°"
+            return (
+                True,
+                self.cfg.chamber_target,
+                f"bed target {bed_target:.0f}° > {self.cfg.bed_temp:.0f}°",
+            )
         filename = st.filename or ""
         if filename:
             lowered = filename.lower()
             for marker in self.cfg.material_markers:
                 needle = marker.strip().lower()
                 if needle and needle in lowered:
-                    return True, f'"{filename}" contains "{marker.strip()}"'
-        return False, ""
+                    return (
+                        True,
+                        self.cfg.chamber_target,
+                        f'"{filename}" contains "{marker.strip()}"',
+                    )
+        return False, self.cfg.chamber_target, ""
 
     # --- command path -------------------------------------------------------
 
