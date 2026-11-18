@@ -1036,8 +1036,9 @@ function renderHeating(state) {
     } else if (state.armed) {
       const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
       const bandArr = Array.isArray(state.band) ? state.band : null;
+      const fmtBand = (v) => String(+(+v).toFixed(2));  // 40, 44.45 — exakt, ohne Nullen
       const bandTxt = bandArr
-        ? ` · hold ${Math.round(bandArr[0])}–${Math.round(bandArr[1])}°`
+        ? ` · hold ${fmtBand(bandArr[0])}–${fmtBand(bandArr[1])}°`
         : "";
       const statusWord = on
         ? '<span class="st-heating">heating</span>'

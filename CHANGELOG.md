@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.13] - 2026-11-18
+
+### Changed
+- The status line's hold band shows the exact thresholds ("hold
+  40-44.45") instead of rounding to whole degrees.
+
 ## [0.18.12] - 2026-11-18
 
 ### Changed
