@@ -1011,7 +1011,7 @@ body {
 
 /* --- Chamber heating (Shelly) ------------------------------------------ */
 
-.heating-fields { margin-top: 4px; }
+.heating-fields { margin-top: 14px; }
 
 .heating-grid {
   display: grid;

@@ -294,6 +294,7 @@ class HeatingAutomation:
         self._armed_reason = ""
         self._armed_at: float | None = None  # epoch s of the last session arm
         self._last_target: float | None = None  # effective target of the last push
+        self._last_band: tuple[float, float] | None = None  # (ON, OFF) of the last push
         self._session_open = False
         self._session_samples: list[list[float]] = []  # [[epoch s, °C], ...]
         self._session_phases: list[list[float | None]] = []  # [[ON s, OFF s | None], ...]
@@ -397,6 +398,7 @@ class HeatingAutomation:
             "armed_reason": self._armed_reason,
             "armed_since": self._armed_at,
             "target": self._last_target,
+            "band": self._last_band,
             "chamber_temp": self._chamber,
             "bed_target": self._bed_target,
             "safety_stop": self._safety_stop,
@@ -491,6 +493,7 @@ class HeatingAutomation:
         elif not active and was_active:
             self._armed = False
             self._armed_reason = ""
+            self._last_band = None
             if was_armed:
                 self._end_session()
                 self._learn = None
@@ -519,15 +522,14 @@ class HeatingAutomation:
             if chamber is not None:
                 target = self._effective_target(st)
                 self._last_target = target
-                half = self.cfg.chamber_hysteresis / 2
-                on_point = target - half
-                off_point = max(on_point, target + half - self.cfg.chamber_overshoot)
+                on_point, off_top = self._session_band(st, target)
+                off_point = max(on_point, off_top - self.cfg.chamber_overshoot)
+                self._last_band = (on_point, off_point)
 
-                # Hysteresis (skipped on the arming push — the arm already
-                # set the initial state). Learning banks the peak before an
-                # early re-heat. The hysteresis runs on every push — the
-                # arming push included (an arm-time ON firing inside the
-                # band was a bug: a warm chamber got heated pointlessly).
+                # Hysteresis — runs on every push, the arming push included
+                # (an arm-time ON firing inside the band was a bug: a warm
+                # chamber got heated pointlessly). Learning banks the peak
+                # before an early re-heat.
                 if chamber > off_point:
                     # Learn-start only when the OFF command actually
                     # dispatches — a re-start on every push above the
@@ -666,6 +668,22 @@ class HeatingAutomation:
         if len(self._session_samples) > 20000:
             self._session_samples.pop(0)  # ~27.8 h at the 5 s cadence
         self._persist_session()
+
+    def _session_band(self, st: Status, target: float) -> tuple[float, float]:
+        """The (ON point, OFF point) band for the current push.
+
+        The slicer's chamber target (``TempTargetBox``) and - when the
+        slicer reports one - its minimum (``TempTargetBoxMin``) define the
+        band for this print; otherwise the configured target and
+        hysteresis. The OFF point is later lowered by the learned
+        overshoot.
+        """
+        st_min = st.raw.get("TempTargetBoxMin") if isinstance(st.raw, dict) else None
+        if target > 0 and isinstance(st_min, (int, float)) and 0 < st_min < target:
+            # slicer-passed min: the hysteresis derives from it for this print
+            return float(st_min), target
+        half = self.cfg.chamber_hysteresis / 2
+        return target - half, target + half
 
     def _evaluate_activation(self, st: Status) -> tuple[bool, float, str]:
         """Decide whether the current print wants chamber heat, and with
