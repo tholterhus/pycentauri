@@ -1106,6 +1106,8 @@ body {
   margin: 4px 0 2px;
 }
 
+.heating-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+
 @media (min-width: 900px) {
   .heater-graph { height: 96px; }
 }
