@@ -927,7 +927,7 @@ async def test_controller_sends_telegram_on_fire(
     controller = DetectionController(
         cfg,
         camera=camera,
-        get_printer=lambda: FakePrinter([0] + [PRINTING] * 20 + [9]),
+        get_printer=lambda: FakePrinter([0] + [PRINTING] * 60 + [9], delay=0.02),
         telegram_poster=telegram_poster,
     )
     await controller.start()
@@ -936,9 +936,12 @@ async def test_controller_sends_telegram_on_fire(
     await _wait_for(lambda: bool(tg) or controller.state()["processing"] is False)
     await controller.stop()
 
-    assert len(tg) == 1  # exactly once per print
-    assert tg[0]["type"] == "spaghetti_detected"
-    assert tg[0]["event"]["evidence"]  # evidence JPEG saved alongside
+    # Order-agnostic: under CI load a status alert may post before the
+    # detection alert (or the finished-alert may be cancelled by stop()) —
+    # the contract is exactly ONE detection alert with evidence.
+    dets = [p for p in tg if p["type"] == "spaghetti_detected"]
+    assert len(dets) == 1  # exactly once per print
+    assert dets[0]["event"]["evidence"]  # evidence JPEG saved alongside
 
 
 def test_send_telegram_text_with_inline_photo() -> None:
