@@ -7,7 +7,7 @@
   <title>pycentauri – Centauri Carbon Dashboard</title>
   <link rel="manifest" href="manifest.webmanifest?v=0.13.3">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png?v=0.13.3">
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=">
   <link rel="icon" href="icons/icon.svg?v=0.13.3">
 </head>
 <body>
@@ -140,7 +140,7 @@
           <span class="panel-tag">Chamber heating</span>
           <button class="btn gear-btn" id="heating-settings-toggle" type="button" title="Chamber heating settings">⚙</button>
         </header>
-        <div class="heater-state" hidden>
+        <div class="heater-state" id="heater-state" hidden>
           <span class="heater-detail" id="heater-detail">-</span>
         </div>
         <canvas class="heater-graph" id="heater-graph" height="48" hidden></canvas>
@@ -352,6 +352,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v="></script>
 </body>
 </html>

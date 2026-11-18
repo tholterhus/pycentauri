@@ -4,6 +4,21 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.2] - 2026-11-18
+
+### Fixed
+- The heating panel disappeared again: the new status line referenced
+  `$("heater-state")` while the markup carried only the class, no id —
+  a dead reference whose TypeError crashed renderHeating inside
+  loadHeating's catch-all, keeping the panel hidden forever. The id is
+  in place, and a dead-reference audit (all `$("id")` calls checked
+  against the markup) now guards this bug class.
+- Asset URLs are version-stamped from the running app version at request
+  time (the root route serves the patched index): a release always
+  changes the script/style URLs, so no client can pair a fresh index
+  with a stale cached script — the phone-side failure mode that started
+  this round.
+
 ## [0.18.1] - 2026-11-18
 
 ### Changed

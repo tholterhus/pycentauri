@@ -314,24 +314,15 @@ class HeatingSettingsBody(BaseModel):
     enabled: bool | None = None
     url_on: str | None = Field(None, description="HTTP GET for heater ON (Shelly).")
     url_off: str | None = Field(None, description="HTTP GET for heater OFF (Shelly).")
-    bed_temp: float | None = Field(
-        None, ge=0, le=110, description="Bed target °C that arms a session."
-    )
+    bed_temp: float | None = Field(None, ge=0, le=110, description="Bed target °C that arms a session.")
     chamber_target: float | None = Field(
-        None,
-        ge=0,
-        le=60,
-        description="Fallback chamber target °C (used when the slicer sets none).",
+        None, ge=0, le=60, description="Fallback chamber target °C (used when the slicer sets none)."
     )
     chamber_factor: float | None = Field(
-        None,
-        ge=1,
-        le=30,
-        description="Full swing °C around the target (heater off at target+factor/2).",
+        None, ge=1, le=30, description="Full swing °C around the target (heater off at target+factor/2)."
     )
     material_markers: list[str] | str | None = Field(
-        None,
-        description="Filename markers (list or comma string, e.g. ABS,ASA) that arm a session.",
+        None, description="Filename markers (list or comma string, e.g. ABS,ASA) that arm a session."
     )
 
 
@@ -978,8 +969,27 @@ def create_app(
         app.mount("/ui", _NoCacheStatic(directory=str(_web_root), html=True), name="ui")
 
         @app.get("/", include_in_schema=False)
-        async def root_redirect() -> RedirectResponse:
-            return RedirectResponse(url="/ui/", status_code=307)
+        async def root_index() -> Response:
+            """Serve the dashboard with version-stamped asset URLs.
+
+            The query strings on app.js/styles.css are injected from the
+            running version at request time — every release changes the
+            URLs, so no client can ever serve a stale script against a
+            fresh index (the classic "new HTML + old JS" crash).
+            """
+            index_path = _web_root / "index.html"
+            try:
+                html = index_path.read_text(encoding="utf-8")
+            except OSError:
+                return RedirectResponse(url="/ui/", status_code=307)
+            html = html.replace(
+                'href="styles.css?v="', f'href="/ui/styles.css?v={__version__}"'
+            ).replace('src="app.js?v="', f'src="/ui/app.js?v={__version__}"')
+            return Response(
+                content=html,
+                media_type="text/html",
+                headers={"Cache-Control": "no-cache"},
+            )
     else:
 
         @app.get("/", tags=["meta"])
