@@ -4,6 +4,12 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.11] - 2026-11-18
+
+### Changed
+- Chamber heating panel: the ON/OFF URLs stack full-width, the standby
+  dot blinks green (the heater holds the band while the print runs).
+
 ## [0.18.10] - 2026-11-18
 
 ### Added
