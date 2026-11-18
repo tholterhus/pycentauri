@@ -899,11 +899,10 @@ let heaterEvents = [];  // {t, on} — heater relay flips seen while polling
 function updateHeaterGraph(state) {
   const canvas = $("heater-graph");
   if (!canvas) return;
-  // The graph spans the armed session: from the print start (session arm)
-  // to now, always full width — a 20-minute and a 20-hour print look the
-  // same, and nothing scrolls out on the left.
-  canvas.hidden = !(state.enabled && state.armed && state.armed_since);
-  if (!state.enabled || !state.armed || !state.armed_since) {
+  // Visible while chamber heating is enabled; a new armed session resets
+  // history and events, so the curve starts fresh at the left edge.
+  canvas.hidden = !state.enabled;
+  if (!state.enabled) {
     heatingHistory = [];
     heaterEvents = [];
     return;
@@ -912,16 +911,10 @@ function updateHeaterGraph(state) {
     heatingHistory.push({ t: Date.now(), v: +state.chamber_temp });
     if (heatingHistory.length > 20000) heatingHistory.shift();  // ~27 h at 5 s
   }
-
-  const s = state.settings || {};
-  const half = (s.chamber_factor ?? 5) / 2;
-  const target = state.target ?? s.chamber_target ?? null;
-  const bandLo = target != null ? target - half : null;
-  const bandHi = target != null ? target + half : null;
-  const bands = [bandLo, bandHi].filter((b) => b != null);
+  if (heatingHistory.length < 2) { canvas.hidden = true; return; }
 
   const w = canvas.clientWidth || 220;
-  const h = 48;
+  const h = canvas.clientHeight || 48;
   const dpr = window.devicePixelRatio || 1;
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
     canvas.width = Math.round(w * dpr);
@@ -931,15 +924,16 @@ function updateHeaterGraph(state) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  // x domain: session start → now (rescaled on every render, so the curve
-  // compresses as the print grows instead of scrolling away).
-  const t0 = new Date(state.armed_since).getTime();
-  const t1 = Date.now();
+  // x domain: first sample → newest sample. The curve starts at the left
+  // edge and grows to the right; rescaled on every render so it never
+  // scrolls out on the left, no matter how long the print runs.
+  const t0 = heatingHistory[0].t;
+  const t1 = Math.max(Date.now(), heatingHistory[heatingHistory.length - 1].t);
   const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
 
-  let lo = Math.min(...heatingHistory.map((p) => p.v));
-  let hi = Math.max(...heatingHistory.map((p) => p.v));
-  for (const b of bands) { lo = Math.min(lo, b); hi = Math.max(hi, b); }
+  const vals = heatingHistory.map((p) => p.v);
+  let lo = Math.min(...vals);
+  let hi = Math.max(...vals);
   const pad = Math.max(1, (hi - lo) * 0.15);
   lo -= pad;
   hi += pad;
@@ -947,21 +941,8 @@ function updateHeaterGraph(state) {
 
   const css = getComputedStyle(document.documentElement);
   const colLine = (css.getPropertyValue("--amber") || "#ffb347").trim();
-  const colBand = (css.getPropertyValue("--fg-faint") || "#504a42").trim();
   const colOk = (css.getPropertyValue("--ok") || "#8ed19a").trim();
   const colDanger = (css.getPropertyValue("--danger") || "#eb5c4e").trim();
-
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = colBand;
-  ctx.setLineDash([3, 3]);
-  for (const b of bands) {
-    if (b < lo || b > hi) continue;
-    ctx.beginPath();
-    ctx.moveTo(0, y(b));
-    ctx.lineTo(w, y(b));
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
 
   // Heater events: fine green line where it switched ON, red where OFF.
   for (const ev of heaterEvents) {
@@ -978,12 +959,10 @@ function updateHeaterGraph(state) {
   ctx.strokeStyle = colLine;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  let started = false;
-  heatingHistory.forEach((p) => {
-    if (p.t < t0) return;  // sample from before this session — clipped
+  heatingHistory.forEach((p, i) => {
     const px = x(p.t);
     const py = y(p.v);
-    if (!started) { ctx.moveTo(px, py); started = true; }
+    if (i === 0) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   });
   ctx.stroke();
@@ -1034,6 +1013,18 @@ function renderHeating(state) {
   }
 
   updateHeaterGraph(state);
+
+  // The header dot mirrors the heater state: red while heating, gray
+  // while standby (blink pattern from the detect LED). Hidden when the
+  // mechanism is not regulating a print.
+  const dot = $("heater-dot");
+  if (state.enabled && state.armed) {
+    dot.hidden = false;
+    dot.classList.toggle("heating", on);
+    dot.classList.toggle("standby", !on);
+  } else {
+    dot.hidden = true;
+  }
 
   // The gear unfolds the settings; the on/off toggle lives inside them.
   const editable = heatingControlEnabled;

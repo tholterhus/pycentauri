@@ -4,6 +4,23 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.3] - 2026-11-18
+
+### Changed
+- "Status: heating" is red, and a small blinking dot sits behind the
+  "Chamber heating" title — red while the heater is running, gray while
+  it holds in standby (blink pattern of the detect LED); hidden when no
+  session is armed.
+- Scrollbars are dark and slim everywhere: the white browser-default
+  track glared in the Print history / Files lists. No scrollbar styling
+  existed before (nothing to revert — git-verified) — the sudden change
+  came from the browser side, this makes it deterministic.
+- The chamber-temperature graph grows left to right (x domain = first
+  sample → newest, rescaled each render — nothing scrolls out on the
+  left, however long the print runs), the two dashed band lines are gone
+  (the band stays in the status line), and the canvas is taller on
+  desktop (96 px vs 48 px on phones).
+
 ## [0.18.2] - 2026-11-18
 
 ### Fixed
