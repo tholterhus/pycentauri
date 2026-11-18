@@ -41,6 +41,13 @@ INACTIVE_CODES = frozenset({0, 8, 9, 14})
 RETRY_BACKOFF_START = 2.0
 RETRY_BACKOFF_MAX = 60.0
 
+#: Graph sample cadence: one chamber-temperature point every 5 s while a
+#: session is armed (~27 h at the 20 000-point cap).
+SAMPLE_INTERVAL_S = 5.0
+
+#: How often the session file is rewritten while samples accumulate.
+SESSION_WRITE_INTERVAL_S = 60.0
+
 #: Fields persisted in the state JSON (everything the web UI can edit).
 STATE_FIELDS = (
     "enabled",
@@ -86,6 +93,9 @@ class HeatingConfig:
     material_markers: list[str] = dataclasses.field(default_factory=list)
     # Where the UI-persisted settings live (wins over .conf/CLI defaults).
     state_path: Path = Path("data/heating.json")
+    # Where the armed session's graph data (samples + heater phases) lives —
+    # served via /api/heating/history, survives service restarts.
+    session_path: Path = Path("data/heating-session.json")
 
     def validate(self) -> None:
         """Raise ValueError on settings the hysteresis cannot honor."""
@@ -211,6 +221,16 @@ class HeatingAutomation:
         self._armed_reason = ""
         self._armed_at: float | None = None  # epoch s of the last session arm
         self._last_target: float | None = None  # effective target of the last push
+        # Armed-session graph data, served via /api/heating/history and
+        # persisted to session_path so reloads, other devices and service
+        # restarts all see the same complete graph.
+        self._session_open = False
+        self._session_samples: list[list[float]] = []  # [[epoch s, °C], ...]
+        self._session_phases: list[list[float | None]] = []  # [[ON s, OFF s | None], ...]
+        self._last_sample_s = 0.0
+        self._last_session_write = 0.0
+        self._sample_interval = SAMPLE_INTERVAL_S
+        self._load_session_file()
         # Set when an armed session ends while the heater is not confirmed
         # off: the OFF command retries every push (backoff-paced) until the
         # call lands — a failed end-OFF must never leave the heater running.
@@ -308,6 +328,16 @@ class HeatingAutomation:
                 "chamber_factor": self.cfg.chamber_factor,
                 "material_markers": self.cfg.material_markers,
             },
+            "history": "/api/heating/history",
+        }
+
+    def session_data(self) -> dict[str, Any]:
+        """The armed session's graph data (GET /api/heating/history)."""
+        return {
+            "armed_since": self._armed_at,
+            "open": self._session_open,
+            "samples": self._session_samples,
+            "phases": self._session_phases,
         }
 
     # --- status watch -------------------------------------------------------
@@ -339,7 +369,8 @@ class HeatingAutomation:
         if not self.cfg.enabled:
             self._armed = False
             self._armed_reason = ""
-            self._armed_at = None
+            if self._session_open:
+                self._end_session()
             if self._applied is True:
                 self._fire(False, "chamber heating disabled")
             return
@@ -361,17 +392,22 @@ class HeatingAutomation:
                 if armed:
                     self._armed = True
                     self._armed_reason = reason
-                    self._armed_at = time.time()
                     armed_now = True
+                    self._start_session()
                     chamber = st.temp_chamber
                     if chamber is None or chamber < target + self.cfg.chamber_factor / 2:
                         self._set(True, f"print start: {reason}")
         elif not active and was_active:
             self._armed = False
             self._armed_reason = ""
-            self._armed_at = None
+            if was_armed:
+                self._end_session()
             if was_armed and self._applied is not False:
                 self._release_pending = True
+
+        # Graph samples: one every sample interval while a session is armed.
+        if self._armed:
+            self._collect_sample(st, time.time())
 
         # Session-end release: state-driven so a failed OFF command retries
         # on every push (backoff-paced) until the heater is confirmed off.
@@ -412,6 +448,83 @@ class HeatingAutomation:
         if st_target is not None and st_target > 0:
             return st_target
         return self.cfg.chamber_target
+
+    # --- session (graph data) ------------------------------------------------
+
+    def _load_session_file(self) -> None:
+        # Restore a persisted session when it is still open - a service
+        # restart mid-print must keep the graph complete. A closed session
+        # (previous print ended cleanly) is dropped on the next arm.
+        try:
+            raw = json.loads(self.cfg.session_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, ValueError):
+            return
+        if not isinstance(raw, dict) or not raw.get("open"):
+            return
+        armed_since = raw.get("armed_since")
+        if not isinstance(armed_since, (int, float)) or time.time() - armed_since > 12 * 3600:
+            return  # stale beyond any plausible print - start fresh
+        self._session_samples = [[float(t), float(v)] for t, v in raw.get("samples", [])]
+        self._session_phases = [
+            [float(a), float(b) if b is not None else None] for a, b in raw.get("phases", [])
+        ]
+        self._armed_at = float(armed_since)
+        self._session_open = True
+        self._last_sample_s = time.time()
+        self._last_session_write = time.time()
+        log.info(
+            "heating: session resumed from %s (%d samples, %d phases)",
+            self.cfg.session_path,
+            len(self._session_samples),
+            len(self._session_phases),
+        )
+
+    def _persist_session(self, force: bool = False) -> None:
+        now = time.time()
+        if not force and now - self._last_session_write < SESSION_WRITE_INTERVAL_S:
+            return
+        self._last_session_write = now
+        payload = {
+            "armed_since": self._armed_at,
+            "open": self._session_open,
+            "samples": self._session_samples,
+            "phases": self._session_phases,
+        }
+        try:
+            path = self.cfg.session_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(payload), encoding="utf-8")
+            tmp.replace(path)
+        except OSError as err:
+            log.error("heating: session file %s not writable: %r", path, err)
+
+    def _start_session(self) -> None:
+        # Arm a new graph session - resuming the persisted one when it is
+        # still open (service restart mid-print), fresh otherwise.
+        self._load_session_file()
+        if not self._session_open:
+            self._session_samples = []
+            self._session_phases = []
+            self._armed_at = time.time()
+            self._session_open = True
+            self._last_sample_s = 0.0
+        self._persist_session(force=True)
+
+    def _end_session(self) -> None:
+        self._session_open = False
+        self._persist_session(force=True)
+
+    def _collect_sample(self, st: Status, now: float) -> None:
+        if st.temp_chamber is None:
+            return
+        if now - self._last_sample_s < self._sample_interval:
+            return
+        self._last_sample_s = now
+        self._session_samples.append([now, round(st.temp_chamber, 2)])
+        if len(self._session_samples) > 20000:
+            self._session_samples.pop(0)  # ~27.8 h at the 5 s cadence
+        self._persist_session()
 
     def _evaluate_activation(self, st: Status) -> tuple[bool, float, str]:
         """Decide whether the current print wants chamber heat, and with
@@ -469,6 +582,15 @@ class HeatingAutomation:
                 raise HeatingError("no Shelly URL configured")
             await self._request_fn(url)
             self._applied = on
+            now = time.time()
+            if on:
+                self._session_phases.append([now, None])
+            else:
+                for ph in reversed(self._session_phases):
+                    if ph[1] is None:
+                        ph[1] = now
+                        break
+            self._persist_session(force=True)
             self._retry_backoff = RETRY_BACKOFF_START
             self._retry_not_before = 0.0
             self._last_error = ""

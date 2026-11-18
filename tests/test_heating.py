@@ -81,6 +81,7 @@ def _config(tmp_path: Path, **overrides: Any) -> HeatingConfig:
         "chamber_factor": 5.0,
         "material_markers": [],
         "state_path": tmp_path / "heating.json",
+        "session_path": tmp_path / "heating-session.json",
     }
     values.update(overrides)
     return HeatingConfig(**values)
@@ -253,7 +254,7 @@ async def test_print_end_turns_heater_off(tmp_path: Path) -> None:
     await _push(auto, _status(code=9, chamber=25.0, chamber_target=0.0))  # completed → OFF
     assert rec.calls == [URL_ON, URL_OFF]
     assert not auto._armed
-    assert auto._armed_at is None
+    assert auto._armed_at is not None  # the closed session stays addressable
 
 
 async def test_end_without_session_never_touches_heater(tmp_path: Path) -> None:
@@ -285,6 +286,65 @@ async def test_disable_releases_a_running_heater(tmp_path: Path) -> None:
     await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))
     assert rec.calls == [URL_ON, URL_OFF]
     assert not auto._armed
+
+
+# --- session (graph data) -------------------------------------------------------
+
+
+async def test_session_samples_and_phases_recorded(tmp_path: Path) -> None:
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._sample_interval = 0.0  # sample every push
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))  # ON
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=31.0, chamber_target=45.0))
+    await _push(auto, _status(code=9, chamber=31.5, chamber_target=45.0))  # end → OFF closes
+    data = auto.session_data()
+    assert len(data["samples"]) >= 2
+    assert data["phases"] and data["phases"][0][1] is not None  # phase closed
+    assert data["open"] is False  # session ended
+    assert (tmp_path / "heating-session.json").is_file()
+
+
+async def test_session_resumes_after_service_restart(tmp_path: Path) -> None:
+    """A service restart mid-print must keep the graph: the persisted
+    session file is still open, so the fresh automation resumes it (same
+    armed_since, samples preserved) instead of starting a new graph."""
+    rec1 = Recorder()
+    cfg = _config(tmp_path)
+    auto1 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=rec1)
+    auto1._sample_interval = 0.0
+    await _push(auto1, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))  # ON
+    first = auto1.session_data()
+    assert first["open"] is True
+    assert len(first["samples"]) >= 1
+
+    rec2 = Recorder()
+    auto2 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=rec2)
+    await _push(auto2, _status(code=13, bed_target=100.0, chamber=31.0, chamber_target=45.0))
+    data = auto2.session_data()
+    assert data["open"] is True
+    assert data["samples"][0] == first["samples"][0]  # resumed, not reset
+    assert rec2.calls == [URL_ON]
+
+
+async def test_new_print_starts_a_fresh_session(tmp_path: Path) -> None:
+    """A cleanly ended session (open=False) is dropped on the next arm —
+    a fresh print starts a fresh graph."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._sample_interval = 0.0
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))
+    await _push(auto, _status(code=9, chamber=30.0, chamber_target=45.0))  # ends cleanly
+    first = auto.session_data()
+    assert first["open"] is False
+    n_samples = len(first["samples"])
+
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0)
+    )  # new print
+    data = auto.session_data()
+    assert data["open"] is True
+    assert len(data["samples"]) < n_samples + 5  # fresh, not appended
 
 
 # --- settings + persistence -------------------------------------------------------

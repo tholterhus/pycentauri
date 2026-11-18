@@ -922,6 +922,17 @@ def create_app(
             )
         return auto.state()
 
+    @app.get("/api/heating/history", tags=["heating"])
+    async def heating_history(request: Request) -> dict[str, Any]:
+        """Armed-session graph data: chamber-temp samples and heater phases."""
+        auto: HeatingAutomation | None = getattr(request.app.state, "heating", None)
+        if auto is None:
+            raise HTTPException(
+                status_code=404,
+                detail="heating not enabled. Launch server with --heating.",
+            )
+        return auto.session_data()
+
     @app.post("/api/heating/settings", tags=["heating"])
     async def heating_settings(
         body: HeatingSettingsBody,
