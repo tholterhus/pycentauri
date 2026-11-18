@@ -15,11 +15,14 @@ Changelog](https://keepachangelog.com/en/1.1.0/).
   track glared in the Print history / Files lists. No scrollbar styling
   existed before (nothing to revert — git-verified) — the sudden change
   came from the browser side, this makes it deterministic.
-- The chamber-temperature graph grows left to right (x domain = first
-  sample → newest, rescaled each render — nothing scrolls out on the
-  left, however long the print runs), the two dashed band lines are gone
-  (the band stays in the status line), and the canvas is taller on
-  desktop (96 px vs 48 px on phones).
+- The chamber-temperature graph spans the armed session: left = print
+  start (with a small HH:MM scale, left start / right now), the curve
+  compresses as the print grows — nothing scrolls out, however long the
+  print runs. The dashed min/max band lines are back (the curve must
+  stay inside them — with the left-to-right reading they finally make
+  sense), the canvas is taller on desktop (96 px vs 48 px on phones),
+  and an epoch-seconds/ms unit bug in the session start made the curve
+  bunch up at the right edge.
 
 ## [0.18.2] - 2026-11-18
 

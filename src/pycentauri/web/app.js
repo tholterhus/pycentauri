@@ -899,10 +899,11 @@ let heaterEvents = [];  // {t, on} — heater relay flips seen while polling
 function updateHeaterGraph(state) {
   const canvas = $("heater-graph");
   if (!canvas) return;
-  // Visible while chamber heating is enabled; a new armed session resets
-  // history and events, so the curve starts fresh at the left edge.
-  canvas.hidden = !state.enabled;
-  if (!state.enabled) {
+  // The graph spans the armed session: left = print start (session arm),
+  // right = now. The curve compresses as the print grows — nothing ever
+  // scrolls out, however long the print runs.
+  canvas.hidden = !(state.enabled && state.armed && state.armed_since);
+  if (!state.enabled || !state.armed || !state.armed_since) {
     heatingHistory = [];
     heaterEvents = [];
     return;
@@ -912,6 +913,13 @@ function updateHeaterGraph(state) {
     if (heatingHistory.length > 20000) heatingHistory.shift();  // ~27 h at 5 s
   }
   if (heatingHistory.length < 2) { canvas.hidden = true; return; }
+
+  const s = state.settings || {};
+  const half = (s.chamber_factor ?? 5) / 2;
+  const target = state.target ?? s.chamber_target ?? null;
+  const bandLo = target != null ? target - half : null;
+  const bandHi = target != null ? target + half : null;
+  const bands = [bandLo, bandHi].filter((b) => b != null);
 
   const w = canvas.clientWidth || 220;
   const h = canvas.clientHeight || 48;
@@ -924,16 +932,16 @@ function updateHeaterGraph(state) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  // x domain: first sample → newest sample. The curve starts at the left
-  // edge and grows to the right; rescaled on every render so it never
-  // scrolls out on the left, no matter how long the print runs.
-  const t0 = heatingHistory[0].t;
+  // x domain: session start → now (rescaled on every render, so the curve
+  // compresses as the print grows instead of scrolling away).
+  const t0 = new Date(state.armed_since * 1000).getTime();  // backend sends epoch seconds
   const t1 = Math.max(Date.now(), heatingHistory[heatingHistory.length - 1].t);
   const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
 
   const vals = heatingHistory.map((p) => p.v);
   let lo = Math.min(...vals);
   let hi = Math.max(...vals);
+  for (const b of bands) { lo = Math.min(lo, b); hi = Math.max(hi, b); }
   const pad = Math.max(1, (hi - lo) * 0.15);
   lo -= pad;
   hi += pad;
@@ -941,14 +949,27 @@ function updateHeaterGraph(state) {
 
   const css = getComputedStyle(document.documentElement);
   const colLine = (css.getPropertyValue("--amber") || "#ffb347").trim();
+  const colBand = (css.getPropertyValue("--fg-faint") || "#504a42").trim();
   const colOk = (css.getPropertyValue("--ok") || "#8ed19a").trim();
   const colDanger = (css.getPropertyValue("--danger") || "#eb5c4e").trim();
+
+  // Hold band: dashed min/max lines the curve must stay inside.
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = colBand;
+  ctx.setLineDash([3, 3]);
+  for (const b of bands) {
+    if (b < lo || b > hi) continue;
+    ctx.beginPath();
+    ctx.moveTo(0, y(b));
+    ctx.lineTo(w, y(b));
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
 
   // Heater events: fine green line where it switched ON, red where OFF.
   for (const ev of heaterEvents) {
     if (ev.t < t0 || ev.t > t1) continue;
     ctx.strokeStyle = ev.on ? colOk : colDanger;
-    ctx.lineWidth = 1;
     const px = x(ev.t);
     ctx.beginPath();
     ctx.moveTo(px, 1);
@@ -959,13 +980,23 @@ function updateHeaterGraph(state) {
   ctx.strokeStyle = colLine;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  heatingHistory.forEach((p, i) => {
+  heatingHistory.forEach((p) => {
+    if (p.t < t0) return;  // sample from before this session — clipped
     const px = x(p.t);
     const py = y(p.v);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
+    ctx.lineTo(px, py);
   });
   ctx.stroke();
+
+  // Minimal horizontal scale: session start (left) vs now (right).
+  const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  ctx.fillStyle = colBand;
+  ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.textAlign = "left";
+  ctx.fillText(fmt(t0), 2, h - 1);
+  ctx.textAlign = "right";
+  ctx.fillText(fmt(t1), w - 2, h - 1);
+  ctx.textAlign = "left";
 }
 
 function renderHeating(state) {
