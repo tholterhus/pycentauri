@@ -1088,6 +1088,10 @@ function renderHeating(state) {
   // (the automation always wins). Only a tripped safety stop locks them.
   $("heating-manual-on").disabled = !editable || !!state.safety_stop;
   $("heating-manual-off").disabled = !editable || !!state.safety_stop;
+  // While the heater actually runs, Turn off lights up white-on-red — the
+  // one click that matters is immediately visible. Otherwise both buttons
+  // keep the regular panel look.
+  $("heating-manual-off").classList.toggle("danger", on);
 
   // Hydrate inputs — never while the user is typing in them.
   if (!heatingDirty) {

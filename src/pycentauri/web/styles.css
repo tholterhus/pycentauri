@@ -1099,18 +1099,17 @@ body {
 
 .heating-url-row label { flex: 1; }
 
+/* Same family as the other panel buttons (btn adj-light); only compacted
+   for the URL rows. No standing colors - danger appears exclusively while
+   the heater actually runs, pointing at the one click that matters. */
 .heating-manual {
   flex-shrink: 0;
-  padding: 8px 12px;
-  font-family: var(--f-label);
-  font-weight: 700;
-  font-size: 11px;
-  cursor: pointer;
+  padding: 8px 10px;
+  font-weight: 400;
 }
 
-.heating-manual.on { background: var(--ok); border-color: var(--ok); color: #101014; }
-.heating-manual.off { background: var(--danger); border-color: var(--danger); color: #fff; }
 .heating-manual:disabled { opacity: 0.45; cursor: not-allowed; }
+.heating-manual.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 
 @media (min-width: 900px) {
   .heater-graph { height: 96px; }

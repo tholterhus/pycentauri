@@ -294,7 +294,7 @@ class HeatingAutomation:
         self._armed_reason = ""
         self._armed_at: float | None = None  # epoch s of the last session arm
         self._last_target: float | None = None  # effective target of the last push
-        self._last_band: tuple[float, float] | None = None  # (ON, OFF) of the last push
+        self._last_band: tuple[float, float] | None = None  # nominal (ON, OFF) range
         self._session_open = False
         self._session_samples: list[list[float]] = []  # [[epoch s, °C], ...]
         self._session_phases: list[list[float | None]] = []  # [[ON s, OFF s | None], ...]
@@ -536,7 +536,10 @@ class HeatingAutomation:
                 self._last_target = target
                 on_point, off_top = self._session_band(st, target)
                 off_point = max(on_point, off_top - self.cfg.chamber_overshoot)
-                self._last_band = (on_point, off_point)
+                # The reported band is the plain nominal range (ON point to
+                # OFF top) - the learned overshoot shapes the switching but
+                # stays internal, an "hold 41.5-43.97°" reads like an error.
+                self._last_band = (on_point, off_top)
 
                 # Hysteresis — runs on every push, the arming push included
                 # (an arm-time ON firing inside the band was a bug: a warm
