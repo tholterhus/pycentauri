@@ -462,10 +462,14 @@ The bridge picks the correct camera port for CC1 vs CC2 automatically.
 pycentauri watches every print through the printer's own camera and
 catches failed prints early - with the trained model shipped as a
 release asset, evidence snapshots, optional Telegram push, and
-pause/stop response. Runs on the plain CPU of the box (this deployment
-deliberately serves the CPU model - see below); a Coral Edge TPU is
-supported by the code but not required, and the dashboard shows live
-state, the evidence gallery and the temperature trend.
+pause/stop response. Runs on the plain CPU of the box - measured at
+~50-65 ms per analysis even on this box's weak Celeron (J4105, 2
+threads), far faster than the camera's 1 fps analysis needs. This
+deployment deliberately serves the CPU model because the compiled Coral
+variant measured both slower (~126 ms) and quality-degraded (see the
+design record in docs/CORAL_SPAGHETTI_DETECTION.md); a Coral Edge TPU
+is supported by the code but not required, and the dashboard shows
+live state, the evidence gallery and the temperature trend.
 
 Hardware, setup, tuning, the two-stage classifier and training:
 **[docs/SPAGHETTI.md](docs/SPAGHETTI.md)** - and the design record in

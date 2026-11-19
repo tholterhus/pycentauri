@@ -268,9 +268,16 @@ needs nothing extra at all.
 **The Coral USB Accelerator also works on the Pi** (ARM-64 is officially
 supported for the stick): install the arm64 build of the Edge-TPU runtime,
 plug the stick into a powered port, and pycentauri picks it up like on
-x86 — expect slightly slower inference than a desktop x86 CPU-to-Coral
-setup, but still far below CPU-only latency. Use a decent USB cable and
-avoid underpowered hubs, the stick is picky about power.
+x86. Whether it is actually FASTER is theory, not a promise: on this
+project's own box (a weak Celeron J4105) the compiled TPU variant
+measured ~126 ms per frame — 2.5x slower than the CPU's ~52 ms (USB
+overload per invoke, throttled std runtime). A Pi-class CPU is weaker,
+so the stick may genuinely win there — unmeasured; benchmark both
+variants on your hardware and serve the better one. And regardless of
+speed: the compiled TPU artifact currently fails the quality gate
+([CORAL_SPAGHETTI_DETECTION.md](docs/CORAL_SPAGHETTI_DETECTION.md)),
+so CPU serves everywhere today. Use a decent USB cable and avoid
+underpowered hubs, the stick is picky about power.
 
 Does detection without a Coral work on my CPU?
 

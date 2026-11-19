@@ -167,8 +167,9 @@ just another subscriber, exactly like a browser tab:
      training never needs the TPU), export **fully int8-quantized**
      TFLite, compile with `edgetpu_compiler` (runs on this x86_64
      container) → `model_edgetpu.tflite`.
-   * The same `.tflite` runs on the CPU fallback unchanged (just
-     slower, ~100–300 ms/frame — still fine at 1 fps).
+   * The same `.tflite` runs on the CPU fallback unchanged — measured
+     FASTER than the TPU on the deployment box (~50-65 ms vs ~126 ms per
+     frame; see the latency design record below).
    * Ship models under `data/models/`; `.gitignore` the binaries,
      document the expected file name in the flag help.
 
@@ -235,3 +236,27 @@ TPU fidelity returns. Paths back:
 The v1 model on the Coral scored 0.648-0.715 on the same reference
 frames (measured 4.11.) — the Coral hardware and runtime are fine; the
 artifacts are where quality is lost.
+
+## Design record — 19.11.2026: latency measured, the TPU is not faster
+
+Per-frame interpreter `invoke()` latency on the deployment box
+(Celeron J4105, libedgetpu1-std 16.0, 5 warmups + 30 timed runs,
+300x300x3 uint8 input, same interpreter setup as the service):
+
+* **CPU** (`spaghetti.tflite`, `num_threads=2`, XNNPACK): mean ~52 ms,
+  p95 ~54-64 ms
+* **Edge TPU** (`spaghetti_edgetpu.tflite`, delegate): mean ~126 ms,
+  p95 ~129 ms
+
+The Coral is 2.5x SLOWER than the CPU on this host: the "5-15 ms"
+figures from Coral marketing assume weak hosts without XNNPACK and
+ignore per-invoke USB overhead; with a 2-thread int8 XNNPACK run even a
+weak desktop CPU wins. Consequences:
+
+* The quality-based pause (previous record) stands — and speed is NOT a
+  reason to revisit it on this box.
+* Any future QAT-compiled TPU artifact must win BOTH gates: separation
+  on the reference frames AND latency on the deployment box.
+* Pi-class hosts: unmeasured theory. The CPU is weaker there, so the
+  stick may genuinely help — measure before trusting it.
+

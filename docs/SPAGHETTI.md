@@ -10,13 +10,18 @@ While a print is running, pycentauri watches the printer's own webcam
 through an object-detection model and raises an alert when the print has
 failed into a stringy mess ("spaghetti"). There are two equally
 supported ways to run it: **without a Coral** (the default for most
-people) the analysis runs on your computer's CPU at ~200 ms per look —
-**your camera frames never leave your network**; the only thing that
-ever travels outside is the optional Telegram message (to *your own*
-bot — strictly one-way, nothing is ever received), and the optional
-update check is off by default.
-**with a Google Coral USB Accelerator** its AI chip does the same in
-~5–15 ms — the stick is purely an accelerator, never a requirement.
+people) the analysis runs on your computer's CPU at ~50-65 ms per look
+(measured 19.11.2026 on the deployment box: weak Celeron J4105, 2
+threads) — **your camera frames never leave your network**; the only
+thing that ever travels outside is the optional Telegram message (to
+*your own* bot — strictly one-way, nothing is ever received), and the
+optional update check is off by default.
+**with a Google Coral USB Accelerator** the same model measured ~126 ms
+per look on that box — i.e. SLOWER than the CPU: delegate loading and
+per-invoke USB overhead beat a 2-thread XNNPACK int8 even on a weak
+desktop CPU. The stick is a purely optional accelerator; where it
+actually helps (e.g. a Pi-class CPU) is unmeasured in this project —
+benchmark both variants on your own hardware, never assume.
 ⚠️ **Measure before you trust the compiled model.** The Edge-TPU compiler
 requantizes the TPU segment and can degrade detection quality — with our
 v2 retrain the compiled variant lost the positive/negative separation the
