@@ -39,4 +39,4 @@ __all__ = [
     "discover",
 ]
 
-__version__ = "0.18.17"
+__version__ = "0.18.18"

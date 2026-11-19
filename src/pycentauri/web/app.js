@@ -910,11 +910,13 @@ function updateHeaterGraph(state) {
   if (!state.enabled || !heatingSession) return;
 
   const s = state.settings || {};
+  // The band lines mirror the status line: the nominal range from the
+  // server (state.band, slicer min/target included). Only when the server
+  // has no band for this push do we derive the plain target ± hysteresis/2.
   const half = (s.chamber_hysteresis ?? 5) / 2;
   const target = state.target ?? s.chamber_target ?? null;
-  const bandLo = target != null ? target - half : null;
-  const bandHi = target != null ? target + half : null;
-  const bands = [bandLo, bandHi].filter((b) => b != null);
+  const bandArr = Array.isArray(state.band) ? state.band : null;
+  const bands = bandArr ?? (target != null ? [target - half, target + half] : []);
 
   const w = canvas.clientWidth || 220;
   const h = canvas.clientHeight || 48;
@@ -1814,6 +1816,10 @@ function noteStatusForPoll(pstatus) {
   const wasActive = prev != null && !IDLE_STATUSES.has(prev);
   const nowActive = pstatus != null && !IDLE_STATUSES.has(pstatus);
   if (wasActive !== nowActive) schedulePoll(); // retune immediately
+  // A print just ended (or a new one started): the history panel has no
+  // push of its own, so ride the transition that the status stream gives
+  // us for free instead of polling it on its own clock.
+  if (wasActive && !nowActive) loadHistory();
 }
 
 (async function main() {
