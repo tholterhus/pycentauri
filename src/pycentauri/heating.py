@@ -326,6 +326,10 @@ class HeatingAutomation:
         # A phase already open when the session resumed spans a service
         # downtime - its overshoot reading is garbage and stays unlearned.
         self._resume_open_phase = False
+        # Manual override (runtime, not persisted): True = heater forced on,
+        # False = forced off, None = automatic regulation. Set via the web
+        # UI buttons; cleared when a session arms/ends or the safety trips.
+        self._manual: bool | None = None
         load_state(cfg)
         self._load_session_file()
 
@@ -427,6 +431,17 @@ class HeatingAutomation:
             "phases": self._session_phases,
         }
 
+    def manual_on(self, on: bool) -> dict[str, Any]:
+        """Manual heater override: command the relay directly. Suspends the
+        automatic hysteresis until a session arms/ends or the feature
+        toggles; the safety watchdog stays active (fire risk)."""
+        if self._safety_stop:
+            raise HeatingError("safety stop active - manual commands are locked for this session")
+        self._manual = on
+        if self._applied is not on:
+            self._fire(on, "manual override")
+        return self.state()
+
     # --- status watch -------------------------------------------------------
 
     async def _status_loop(self) -> None:
@@ -460,6 +475,7 @@ class HeatingAutomation:
             self._armed = False
             self._armed_reason = ""
             self._armed_at = None
+            self._manual = None
             if self._session_open:
                 self._end_session()
             self._safety_stop = False
@@ -493,6 +509,7 @@ class HeatingAutomation:
         elif not active and was_active:
             self._armed = False
             self._armed_reason = ""
+            self._manual = None
             self._last_band = None
             if was_armed:
                 self._end_session()
@@ -517,7 +534,7 @@ class HeatingAutomation:
         if self._armed:
             self._collect_sample(st, now)
 
-        if self._armed and not self._safety_stop:
+        if self._armed and not self._safety_stop and self._manual is None:
             chamber = st.temp_chamber
             if chamber is not None:
                 target = self._effective_target(st)
@@ -544,40 +561,33 @@ class HeatingAutomation:
 
                 self._learn_track(chamber, now)
 
-            # Safety watchdog: an ON phase must lift the chamber temperature
-            # within the window — otherwise heater/Shelly/door trouble. The
-            # trip stops heating for the rest of the session and surfaces a
-            # fat red warning in the panel.
-            if self._applied is True:
-                chamber_now = st.temp_chamber
-                if self._watch_started is None:
-                    self._watch_started = now
-                    self._watch_baseline = chamber_now  # may be None until a reading arrives
-                elif chamber_now is None:
-                    if now - self._watch_started >= self._safety_window:
-                        self._safety_trip("no chamber temperature readings while heating")
-                elif self._watch_baseline is None:
-                    self._watch_started = now
-                    self._watch_baseline = chamber_now  # first reading starts the clock
-                else:
-                    risen = chamber_now - self._watch_baseline
-                    if (
-                        now - self._watch_started >= self._safety_window
-                        and risen < self._safety_rise
-                    ):
-                        self._safety_trip(
-                            f"no temperature rise ({risen:+.1f}° in "
-                            f"{self._safety_window / 60:.0f} min)"
-                        )
+        # Safety watchdog: runs whenever the relay is believed ON — during
+        # automatic regulation and manual overrides alike (fire risk). The
+        # trip stops heating for the rest of the session and surfaces a fat
+        # red warning in the panel.
+        if self._applied is True:
+            chamber_now = st.temp_chamber
+            if self._watch_started is None:
+                self._watch_started = now
+                self._watch_baseline = chamber_now  # may be None until a reading arrives
+            elif chamber_now is None:
+                if now - self._watch_started >= self._safety_window:
+                    self._safety_trip("no chamber temperature readings while heating")
+            elif self._watch_baseline is None:
+                self._watch_started = now
+                self._watch_baseline = chamber_now  # first reading starts the clock
             else:
-                self._watch_started = None
-                self._watch_baseline = None
-
-            if self._safety_stop and self._applied is not False:
-                self._fire(False, f"safety stop: {self._safety_message}")
+                risen = chamber_now - self._watch_baseline
+                if now - self._watch_started >= self._safety_window and risen < self._safety_rise:
+                    self._safety_trip(
+                        f"no temperature rise ({risen:+.1f}° in {self._safety_window / 60:.0f} min)"
+                    )
         else:
             self._watch_started = None
             self._watch_baseline = None
+
+        if self._safety_stop and self._applied is not False:
+            self._fire(False, f"safety stop: {self._safety_message}")
 
     def _effective_target(self, st: Status) -> float:
         """The chamber target for this push: the slicer's chamber target
@@ -764,6 +774,7 @@ class HeatingAutomation:
         self._watch_started = None
         self._watch_baseline = None
         self._learn = None
+        self._manual = None
         log.warning("heating: SAFETY STOP — %s", message)
 
     # --- command path -------------------------------------------------------

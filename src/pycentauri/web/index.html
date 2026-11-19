@@ -255,8 +255,14 @@
           </div>
           <div class="adj-sub">Heater switch</div>
           <div class="heating-grid stack">
-            <label>URL ON<input type="text" id="heating-url-on" placeholder="http://shelly…/on" spellcheck="false"></label>
-            <label>URL OFF<input type="text" id="heating-url-off" placeholder="http://shelly…/off" spellcheck="false"></label>
+            <div class="heating-url-row">
+              <label>URL ON<input type="text" id="heating-url-on" placeholder="http://shelly…/on" spellcheck="false"></label>
+              <button class="heating-manual on" id="heating-manual-on" type="button" disabled title="Heater on (manual)">Turn on</button>
+            </div>
+            <div class="heating-url-row">
+              <label>URL OFF<input type="text" id="heating-url-off" placeholder="http://shelly…/off" spellcheck="false"></label>
+              <button class="heating-manual off" id="heating-manual-off" type="button" disabled title="Heater off (manual)">Turn off</button>
+            </div>
           </div>
           <div class="heating-save-row">
             <button class="btn heating-save" id="heating-save" type="button">Save</button>

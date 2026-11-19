@@ -1091,6 +1091,27 @@ body {
 
 .heating-grid.stack { grid-template-columns: 1fr; }
 
+.heating-url-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.heating-url-row label { flex: 1; }
+
+.heating-manual {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-family: var(--f-label);
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.heating-manual.on { background: var(--ok); border-color: var(--ok); color: #101014; }
+.heating-manual.off { background: var(--danger); border-color: var(--danger); color: #fff; }
+.heating-manual:disabled { opacity: 0.45; cursor: not-allowed; }
+
 @media (min-width: 900px) {
   .heater-graph { height: 96px; }
 }

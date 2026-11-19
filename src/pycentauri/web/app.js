@@ -1074,7 +1074,7 @@ function renderHeating(state) {
   $("heating-enabled-off").classList.toggle("active", !state.enabled);
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
                     "heating-chamber-target", "heating-chamber-hysteresis", "heating-chamber-overshoot",
-                    "heating-markers", "heating-save"]) {
+                    "heating-markers", "heating-save", "heating-manual-on", "heating-manual-off"]) {
     $(id).disabled = !editable;
   }
 
@@ -1139,6 +1139,24 @@ async function postHeating(body, btn) {
   }
 }
 
+async function manualCommand(on) {
+  try {
+    const r = await fetch("/api/heating/manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on }),
+    });
+    if (!r.ok) {
+      const detail = (await r.json().catch(() => ({}))).detail || `HTTP ${r.status}`;
+      console.warn("manual heater command failed:", detail);
+      return;
+    }
+    renderHeating(await r.json());
+  } catch (e) {
+    console.warn("manual heater command failed:", e);
+  }
+}
+
 function wireHeating() {
   $("heating-settings-toggle").addEventListener("click", () => {
     heatingOpen = !heatingOpen;
@@ -1153,6 +1171,12 @@ function wireHeating() {
     if (!heatingEnabledNow) return;
     const ok = await postHeating({ enabled: false });
     if (!ok) $("heating-enabled-off").title = "toggle failed — see journal";
+  });
+  $("heating-manual-on").addEventListener("click", async () => {
+    await manualCommand(true);
+  });
+  $("heating-manual-off").addEventListener("click", async () => {
+    await manualCommand(false);
   });
   for (const id of ["heating-url-on", "heating-url-off", "heating-bed-temp",
                     "heating-chamber-target", "heating-chamber-hysteresis", "heating-chamber-overshoot",

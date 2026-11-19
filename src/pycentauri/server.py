@@ -58,7 +58,7 @@ from pycentauri.client import (
 from pycentauri.connect import connect_auto
 from pycentauri.discovery import DiscoveredPrinter
 from pycentauri.discovery import discover as lan_discover
-from pycentauri.heating import HeatingAutomation, HeatingConfig
+from pycentauri.heating import HeatingAutomation, HeatingConfig, HeatingError
 from pycentauri.lighting import LightAutomation, LightConfig
 
 if TYPE_CHECKING:
@@ -306,6 +306,12 @@ class TemperatureBody(BaseModel):
 
 class RefillBody(BaseModel):
     enabled: bool = Field(..., description="true to enable auto-refill, false to disable.")
+
+
+class HeatingManualBody(BaseModel):
+    """Manual heater override - true = heater on, false = heater off."""
+
+    on: bool
 
 
 class HeatingSettingsBody(BaseModel):
@@ -935,6 +941,24 @@ def create_app(
                 detail="heating not enabled. Launch server with --heating.",
             )
         return auto.session_data()
+
+    @app.post("/api/heating/manual", tags=["heating"])
+    async def heating_manual(
+        body: HeatingManualBody,
+        request: Request,
+        manager: PrinterManager = Depends(require_control),
+    ) -> dict[str, Any]:
+        """Manual heater override: on/off without the automatic regulation."""
+        auto: HeatingAutomation | None = getattr(request.app.state, "heating", None)
+        if auto is None:
+            raise HTTPException(
+                status_code=404,
+                detail="heating not enabled. Launch server with --heating.",
+            )
+        try:
+            return auto.manual_on(body.on)
+        except HeatingError as err:
+            raise HTTPException(status_code=409, detail=str(err)) from err
 
     @app.post("/api/heating/settings", tags=["heating"])
     async def heating_settings(
