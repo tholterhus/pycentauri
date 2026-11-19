@@ -841,3 +841,31 @@ async def test_stale_open_session_is_replaced_at_next_print(tmp_path: Path) -> N
     assert data["armed_since"] != old_start  # replaced by a fresh session, not resumed
     assert len(data["samples"]) == 1  # only the new print's sample
     assert data["samples"][0][0] > old_start  # the aged stale sample is gone
+
+
+async def test_closed_session_survives_service_restart(tmp_path: Path) -> None:
+    """The frozen graph of a finished print must survive a service
+    restart: the closed session file is restored (samples, phases, start
+    time) and stays visible until the next print replaces it."""
+    cfg = _config(tmp_path)
+    auto1 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
+    auto1._sample_interval = 0.0
+    await _push(auto1, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))
+    await _push(auto1, _status(code=9, chamber=31.0, chamber_target=45.0))  # end → closed
+    first = auto1.session_data()
+    assert first["open"] is False
+    assert len(first["samples"]) >= 1
+
+    auto2 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
+    data = auto2.session_data()
+    assert data["open"] is False
+    assert data["samples"] == first["samples"]  # frozen graph restored
+    assert data["armed_since"] == first["armed_since"]
+
+    # the next print replaces it with a fresh session
+    auto2._sample_interval = 0.0
+    await _push(auto2, _status(code=13, bed_target=80.0, chamber=25.0, filename="hook.gcode"))
+    fresh = auto2.session_data()
+    assert fresh["open"] is True
+    assert fresh["armed_since"] != first["armed_since"]
+    assert len(fresh["samples"]) == 1

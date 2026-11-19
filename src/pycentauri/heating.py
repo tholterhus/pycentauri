@@ -616,24 +616,31 @@ class HeatingAutomation:
     # --- session (graph data) ------------------------------------------------
 
     def _load_session_file(self) -> None:
-        # Restore a persisted session when it is still open - a service
-        # restart mid-print must keep the graph complete. A closed session
-        # (previous print ended cleanly) is dropped on the next arm.
+        # Restore a persisted session. An OPEN one continues (service
+        # restart mid-print must keep the graph complete); a CLOSED one is
+        # restored as the frozen display graph, so the finished curve - and
+        # its temperature labels - survive service restarts until the next
+        # print replaces it. Stale entries (older than 12 h) drop either
+        # way; the next arm starts fresh.
         try:
             raw = json.loads(self.cfg.session_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, ValueError):
             return
-        if not isinstance(raw, dict) or not raw.get("open"):
+        if not isinstance(raw, dict):
             return
         armed_since = raw.get("armed_since")
         if not isinstance(armed_since, (int, float)) or time.time() - armed_since > 12 * 3600:
             return  # stale beyond any plausible print - start fresh
-        self._session_samples = [[float(t), float(v)] for t, v in raw.get("samples", [])]
+        samples = [[float(t), float(v)] for t, v in raw.get("samples", [])]
+        is_open = bool(raw.get("open"))
+        if not samples and not is_open:
+            return  # an empty closed shell has nothing to show
+        self._session_samples = samples
         self._session_phases = [
             [float(a), float(b) if b is not None else None] for a, b in raw.get("phases", [])
         ]
         self._armed_at = float(armed_since)
-        self._session_open = True
+        self._session_open = is_open
         self._last_sample_s = time.time()
         self._last_session_write = time.time()
         # A phase that was already open at resume spans a service downtime -
