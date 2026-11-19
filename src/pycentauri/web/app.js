@@ -910,13 +910,19 @@ function updateHeaterGraph(state) {
   if (!state.enabled || !heatingSession) return;
 
   const s = state.settings || {};
-  // The band lines mirror the status line: the nominal range from the
-  // server (state.band, slicer min/target included). Only when the server
-  // has no band for this push do we derive the plain target ± hysteresis/2.
-  const half = (s.chamber_hysteresis ?? 5) / 2;
-  const target = state.target ?? s.chamber_target ?? null;
-  const bandArr = Array.isArray(state.band) ? state.band : null;
-  const bands = bandArr ?? (target != null ? [target - half, target + half] : []);
+  // Band lines exist only while the print is actually armed (ABS/ASA with
+  // a target): the nominal range from the server (state.band, slicer
+  // min/target included), falling back to target ± hysteresis/2. A plain
+  // print without chamber heating draws no phantom range — and without
+  // bands in the min/max sweep the y-scale hugs the curve instead of
+  // stretching up to the configured target for no visible reason.
+  let bands = [];
+  if (state.armed) {
+    const half = (s.chamber_hysteresis ?? 5) / 2;
+    const target = state.target ?? s.chamber_target ?? null;
+    bands = Array.isArray(state.band) ? state.band
+      : (target != null ? [target - half, target + half] : []);
+  }
 
   const w = canvas.clientWidth || 220;
   const h = canvas.clientHeight || 48;
