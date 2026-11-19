@@ -969,6 +969,7 @@ function updateHeaterGraph(state) {
   const css = getComputedStyle(document.documentElement);
   const colLine = (css.getPropertyValue("--amber") || "#ffb347").trim();
   const colBand = (css.getPropertyValue("--fg-faint") || "#504a42").trim();
+  const colDim = (css.getPropertyValue("--fg-dim") || "#8a857a").trim();
   const colDanger = (css.getPropertyValue("--danger") || "#eb5c4e").trim();
 
   // Hold band: dashed min/max lines the curve must stay inside.
@@ -1024,7 +1025,7 @@ function updateHeaterGraph(state) {
   // Same font family and dim color as the "Status:" headline.
   const mono = css.getPropertyValue("--f-mono") || "ui-monospace, Menlo, monospace";
   ctx.font = `11px ${mono}`;
-  ctx.fillStyle = css.getPropertyValue("--fg-dim") || "#8a857a";
+  ctx.fillStyle = colDim;
   const endV = state.chamber_temp ?? (heatingSession.samples.length
     ? heatingSession.samples[heatingSession.samples.length - 1][1]
     : null);
@@ -1040,9 +1041,10 @@ function updateHeaterGraph(state) {
   }
   ctx.textAlign = "left";
 
-  // Minimal horizontal scale: session start (left) vs now (right).
+  // Minimal horizontal scale: session start (left) vs now (right). Same
+  // readable dim color as the temperature labels, only smaller.
   const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  ctx.fillStyle = colBand;
+  ctx.fillStyle = colDim;
   ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "left";
   ctx.fillText(fmt(t0), 2, h - 1);
