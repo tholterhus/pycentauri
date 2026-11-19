@@ -15,7 +15,7 @@
 >    failure-ring evidence, two-stage classifier
 > 2. **Chamber heating automation** - a Shelly-controlled heater for the
 >    print room: slicer-follow target, learned overshoot, safety
->    watchdog, manual override, live temperature graph
+>    watchdog, manual on/off buttons, live temperature graph
 > 3. **Chamber light automation** - on motion, while printing, or manual
 > 4. **System installer + hardening** - systemd unit, Coral USB setup
 >    for udev-less containers, PWA dashboard
@@ -483,8 +483,9 @@ ABS and ASA print best in a warm chamber - this printer cannot warm its
 own air, so pycentauri drives an external heater (e.g. a PTC fan heater
 on a Shelly smart plug) and holds the chamber at the temperature your
 slicer profile asks for: armed at print start, regulated by the
-printer's own chamber sensor, unattended, with a safety watchdog and a
-manual override. Hardware, setup, the learned overshoot and the safety
+printer's own chamber sensor, unattended, with a safety watchdog and
+manual on/off buttons. Hardware, setup, the learned overshoot and the
+safety
 watchdog: **[docs/HEATING.md](docs/HEATING.md)**.
 
 ## Reference

@@ -2,7 +2,8 @@
 
 > Moved out of the README - the overview and quick start live there.
 > This document holds the full details: hardware, setup, automation
-> behavior, safety watchdog, overshoot learning and the manual override.
+> behavior, safety watchdog, overshoot learning and the manual
+> on/off buttons.
 
 ## Chamber heating (heated print room)
 
@@ -70,3 +71,12 @@ wrong.
   browser changes and service restarts (the data lives on the box).
 - The settings persist on the box (`data/heating.json`), so every
   device shows the same configuration and graph.
+- **Manual on/off buttons** (in the heater settings, next to the plug
+  URLs) fire the relay directly - one-shot commands, not a mode. The
+  automatic regulation always wins: during a print, the next status
+  update re-evaluates the band and switches the heater back if the
+  click disagrees with it. A manual "Turn on" before a print works as
+  a pre-heat - when the print arms, the hysteresis takes the relay
+  over seamlessly (and keeps heating if the chamber is still cold).
+  After a safety stop, manual commands are locked for the rest of
+  that print.

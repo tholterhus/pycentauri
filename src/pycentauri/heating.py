@@ -326,10 +326,6 @@ class HeatingAutomation:
         # A phase already open when the session resumed spans a service
         # downtime - its overshoot reading is garbage and stays unlearned.
         self._resume_open_phase = False
-        # Manual override (runtime, not persisted): True = heater forced on,
-        # False = forced off, None = automatic regulation. Set via the web
-        # UI buttons; cleared when a session arms/ends or the safety trips.
-        self._manual: bool | None = None
         load_state(cfg)
         self._load_session_file()
 
@@ -432,14 +428,15 @@ class HeatingAutomation:
         }
 
     def manual_on(self, on: bool) -> dict[str, Any]:
-        """Manual heater override: command the relay directly. Suspends the
-        automatic hysteresis until a session arms/ends or the feature
-        toggles; the safety watchdog stays active (fire risk)."""
+        """Manual heater command: fire the relay directly. One-shot - the
+        automatic regulation always wins. While a session is armed the very
+        next status push re-evaluates the band and corrects the relay if it
+        disagrees; outside a print the command persists until the next
+        print arms, the user clicks again or the watchdog trips. The safety
+        watchdog covers manual ON phases exactly like automatic ones."""
         if self._safety_stop:
             raise HeatingError("safety stop active - manual commands are locked for this session")
-        self._manual = on
-        if self._applied is not on:
-            self._fire(on, "manual override")
+        self._set(on, "manual override")
         return self.state()
 
     # --- status watch -------------------------------------------------------
@@ -475,7 +472,6 @@ class HeatingAutomation:
             self._armed = False
             self._armed_reason = ""
             self._armed_at = None
-            self._manual = None
             if self._session_open:
                 self._end_session()
             self._safety_stop = False
@@ -509,7 +505,6 @@ class HeatingAutomation:
         elif not active and was_active:
             self._armed = False
             self._armed_reason = ""
-            self._manual = None
             self._last_band = None
             if was_armed:
                 self._end_session()
@@ -534,7 +529,7 @@ class HeatingAutomation:
         if self._armed:
             self._collect_sample(st, now)
 
-        if self._armed and not self._safety_stop and self._manual is None:
+        if self._armed and not self._safety_stop:
             chamber = st.temp_chamber
             if chamber is not None:
                 target = self._effective_target(st)
@@ -774,7 +769,6 @@ class HeatingAutomation:
         self._watch_started = None
         self._watch_baseline = None
         self._learn = None
-        self._manual = None
         log.warning("heating: SAFETY STOP — %s", message)
 
     # --- command path -------------------------------------------------------

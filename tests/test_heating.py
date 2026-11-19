@@ -724,3 +724,78 @@ async def test_print_end_sends_off_after_failed_on(
     await _push(auto, _status(code=9, chamber=25.0))  # release retry → success
     assert rec.calls == [URL_OFF]
     assert auto._applied is False
+
+
+# --- manual commands: one-shot pulses, the automation always wins ----------------
+
+
+async def test_manual_off_before_print_does_not_silence_regulation(tmp_path: Path) -> None:
+    """The 2026-11-19 incident: a manual OFF left over from before the print
+    silently suspended the hysteresis for the whole print (armed UI, hold
+    band shown, heater never came on). A manual command is a one-shot
+    pulse — the armed print must regulate from the first push."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto.manual_on(False)  # "Turn off" before the print starts
+    await _drain(auto)
+    assert rec.calls == [URL_OFF]
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # arm
+    assert rec.calls == [URL_OFF, URL_ON]  # the hysteresis fired ON on the arming push
+    assert auto._armed
+
+
+async def test_manual_on_preheat_flows_into_band_at_print_start(tmp_path: Path) -> None:
+    """Pre-heat via Turn on: when the print arms, the hysteresis takes the
+    relay over without a double command and governs from then on."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto.manual_on(True)  # pre-heat the room
+    await _drain(auto)
+    assert rec.calls == [URL_ON]
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=0.0)
+    )  # arm below the band: stays ON, no duplicate command
+    assert rec.calls == [URL_ON]
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=45.5, chamber_target=0.0))
+    assert rec.calls == [URL_ON, URL_OFF]  # and the automation rules: OFF above the band
+
+
+async def test_manual_off_mid_print_is_corrected_on_next_push(tmp_path: Path) -> None:
+    """Manual buttons work during a print, but the automation always wins:
+    an OFF below the band survives exactly one push, then ON returns."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON
+    auto.manual_on(False)  # mid-print Turn off
+    await _drain(auto)
+    assert rec.calls == [URL_ON, URL_OFF]
+    await _push(
+        auto, _status(code=13, bed_target=100.0, chamber=25.5, chamber_target=0.0)
+    )  # next push: hysteresis corrects
+    assert rec.calls == [URL_ON, URL_OFF, URL_ON]
+
+
+async def test_manual_on_with_running_heater_is_a_noop(tmp_path: Path) -> None:
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))  # ON
+    auto.manual_on(True)  # already on: no second command
+    await _drain(auto)
+    assert rec.calls == [URL_ON]
+
+
+async def test_manual_commands_locked_after_safety_stop(tmp_path: Path) -> None:
+    """A tripped watchdog locks manual commands for the rest of the session
+    (the heater is suspect - no re-igniting it by hand)."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._safety_window = 0.0
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.0, chamber_target=0.0))
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0))
+    await _push(auto, _status(code=13, bed_target=100.0, chamber=25.4, chamber_target=0.0))  # trip
+    assert auto._safety_stop is True
+    with pytest.raises(heating.HeatingError):
+        auto.manual_on(True)
+    with pytest.raises(heating.HeatingError):
+        auto.manual_on(False)
+    assert rec.calls == [URL_ON, URL_OFF]

@@ -1077,6 +1077,11 @@ function renderHeating(state) {
                     "heating-markers", "heating-save", "heating-manual-on", "heating-manual-off"]) {
     $(id).disabled = !editable;
   }
+  // Manual buttons stay usable during an armed print — a click is a
+  // one-shot relay pulse and the hysteresis corrects on the next push
+  // (the automation always wins). Only a tripped safety stop locks them.
+  $("heating-manual-on").disabled = !editable || !!state.safety_stop;
+  $("heating-manual-off").disabled = !editable || !!state.safety_stop;
 
   // Hydrate inputs — never while the user is typing in them.
   if (!heatingDirty) {
