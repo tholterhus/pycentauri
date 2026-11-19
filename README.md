@@ -5,17 +5,24 @@
 > evolved independently since. The original project is not mine. Main
 > additions here:
 >
-> 1. **Failed-print ("spaghetti") detection** on a Google Coral Edge TPU
->    (Coral optional, runs great on plain CPU): automatic monitoring of every print, evidence
->    snapshots, optional Telegram push, pause/stop response — with a
->    trained model shipped as
->    [release assets](https://github.com/tholterhus/pycentauri/releases/tag/v0.13.0)
-> 2. **System installer + hardening**: systemd unit, Coral USB setup for
->    udev-less containers, PWA dashboard
-> 3. **Training pipeline** for the detection model (dataset assembly,
+> Everything this fork adds on top of upstream:
+>
+> 1. **Failed-print ("spaghetti") detection** - Coral Edge TPU or plain
+>    CPU, trained model as release asset, evidence snapshots, optional
+>    Telegram push, pause/stop response, shift detection, failure-ring
+>    evidence, two-stage classifier
+> 2. **Chamber heating automation** - a Shelly-controlled heater for the
+>    print room: slicer-follow target, learned overshoot, safety
+>    watchdog, manual override, live temperature graph
+> 3. **Chamber light automation** - on motion, while printing, or manual
+> 4. **System installer + hardening** - systemd unit, Coral USB setup
+>    for udev-less containers, PWA dashboard
+> 5. **Training pipeline** for the detection model (dataset assembly,
 >    Mac/Colab scripts, Edge-TPU compilation)
 >
-> Full divergence map: [`docs/FORK.md`](docs/FORK.md).
+> Full divergence map: [`docs/FORK.md`](docs/FORK.md). Detailed feature
+> guides: [docs/SPAGHETTI.md](docs/SPAGHETTI.md) ·
+> [docs/HEATING.md](docs/HEATING.md) · [docs/LIGHT.md](docs/LIGHT.md).
 
 Local-network toolkit for [Elegoo Centauri Carbon](https://www.elegoo.com/)
 3D printers — the **original Centauri Carbon (CC1)** and the **Centauri
@@ -46,6 +53,43 @@ to and speaks the right protocol:
 > and live wire captures. CC1 tested on firmware V1.1.46 and OpenCentauri
 > V0.3.0-o; CC2 tested on firmware 01.03.02.51. Full wire-protocol notes
 > live in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
+
+## Quick start
+
+From a fresh Linux box (x86, Raspberry Pi, VM or container - macOS runs
+it manually without the service) to a working dashboard in three steps:
+
+1. **Get the code and run the installer** (as root, on the box that can
+   reach the printer):
+
+   ```sh
+   git clone https://github.com/tholterhus/pycentauri.git
+   cd pycentauri
+   sudo PYCENTAURI_HOST=<printer-ip> ./install-linux.sh
+   ```
+
+   This sets up a systemd service and the web dashboard. Nothing beyond
+   Python 3.10+ is required, and nothing is downloaded from the internet
+   except the code itself.
+
+2. **Open the dashboard** at `http://<box-ip>:8787/ui` and enter the
+   printer's host or IP (the installer asks for it too). Status, camera,
+   control and print history work right away - read-only by default.
+
+3. **Optional extras**, configured in `/etc/pycentauri.conf` or the web
+   UI:
+
+   - **Telegram push** for print events - a bot token from @BotFather,
+     set as `PYCENTAURI_TELEGRAM_TOKEN` / `_CHAT_ID`
+   - **Failed-print ("spaghetti") detection** - set `PYCENTAURI_DETECT=1`;
+     the trained model ships as a release asset - see
+     [docs/SPAGHETTI.md](docs/SPAGHETTI.md)
+   - **Chamber heating** - a PTC heater on a Shelly smart plug, URLs set
+     in the dashboard's Chamber heating section - see
+     [docs/HEATING.md](docs/HEATING.md)
+   - **Chamber light** - see [docs/LIGHT.md](docs/LIGHT.md)
+
+That's it. Everything below is reference material.
 
 ## Install
 
@@ -411,329 +455,43 @@ idle cost is zero. Tunables: `--fps`, `--bitrate`, `--preset`, `--path`,
 `--port` (standalone) or the `--rtsp-*` variants on `centauri server`.
 The bridge picks the correct camera port for CC1 vs CC2 automatically.
 
-## Spaghetti detection (Coral USB / Edge TPU)
+## Failed-print detection ("spaghetti")
 
-While a print is running, pycentauri watches the printer's own webcam
-through an object-detection model and raises an alert when the print has
-failed into a stringy mess ("spaghetti"). There are two equally
-supported ways to run it: **without a Coral** (the default for most
-people) the analysis runs on your computer's CPU at ~200 ms per look —
-**your camera frames never leave your network**; the only thing that
-ever travels outside is the optional Telegram message (to *your own*
-bot — strictly one-way, nothing is ever received), and the optional
-update check is off by default.
-**with a Google Coral USB Accelerator** its AI chip does the same in
-~5–15 ms — the stick is purely an accelerator, never a requirement.
-⚠️ **Measure before you trust the compiled model.** The Edge-TPU compiler
-requantizes the TPU segment and can degrade detection quality — with our
-v2 retrain the compiled variant lost the positive/negative separation the
-int8 model kept (0.383–0.555 vs 0.648–0.715 on the reference frames).
-Score both variants on your own reference frames and serve the better
-one (the loader picks `*_edgetpu.tflite` when a Coral is present — see
-the "Ship models in pairs" notes below). QAT (quantization-aware
-training) is the path back to TPU parity.
-The detector taps the same
-shared camera stream as the dashboard (the printer never sees a second
-camera connection), skips the first `--detect-grace` seconds of a print,
-and fires at most one alert per print when ≥ 4 of the last 6 frames show a
-detection. The dashboard gains a **DETECT** panel with live state and
-evidence snapshots.
+pycentauri watches every print through the printer's own camera and
+catches failed prints early - with the trained model shipped as a
+release asset, evidence snapshots, optional Telegram push, and
+pause/stop response. Runs on a Coral Edge TPU or plain CPU; the
+dashboard shows live state, the evidence gallery and the temperature
+trend.
 
-### Quick start
+Hardware, setup, tuning, the two-stage classifier and training:
+**[docs/SPAGHETTI.md](docs/SPAGHETTI.md)** - and the design record in
+[CORAL_SPAGHETTI_DETECTION.md](CORAL_SPAGHETTI_DETECTION.md).
 
-```sh
-# 1. install with the detection extra (see INSTALL.md for a full walkthrough)
-pip install 'pycentauri[detect,server]'
+## Chamber light
 
-# 2. fetch a model — the repository ships none
-./scripts/fetch-smoke-model.sh
-
-# 3. optional: install the Edge TPU runtime for a Coral
-#    (see INSTALL.md, "Failed-print detection (Coral) — step by step")
-#    No Coral? Skip this entirely — plain CPU is the normal path
-#    (~200 ms per look instead of ~5-15 ms). Everything else behaves
-#    identically, just slower.
-#    The CPU path works on x86-64, ARM-64 (Raspberry Pi) and macOS.
-#    The Coral runs on Linux x86-64 AND ARM-64 (e.g. Raspberry Pi);
-#    only the model *compiler* is x86-64-only (see scripts/train/README.md).
-
-# 4. verify and run
-centauri detect check
-centauri server --host printer.example --enable-control \
-    --detect --detect-action notify
-```
-
-Notes:
-
-- **A trained model is bundled** — `DETECT_MODEL=auto` (the default)
-  finds it, whether you installed via pip or cloned the repo. Deployed
-  your own model into `data/models/`? That one wins. The optional smoke
-  model (`scripts/fetch-smoke-model.sh`) detects everyday objects, not
-  spaghetti, and exists purely to test the pipeline. How the bundled
-  model was made: [`scripts/train/README.md`](scripts/train/README.md).
-- **Network load & cadence**: detection analyses one frame per second
-  by default — raise it via `--detect-interval` / `DETECT_INTERVAL`
-  (service config) if you want it lazier. Note what does and does not
-  cost network: the camera stream itself is the only real traffic (the
-  printer sends one continuous JPEG flow ("MJPEG"), a few Mbit/s, to
-  the server; every UI
-  viewer pulls its own copy from the server), while the detection adds
-  nothing — it just picks frames from that shared stream. A Telegram
-  alert costs one ~25 KB image.
-- **Default action is notify only**: evidence frames land in
-  `data/evidence/` (and optionally a webhook). Arming `pause|stop`
-  additionally requires `--enable-control`. The armed action **persists
-  across service restarts**; `DETECT_ACTION` in the config is only the
-  initial default.
-- **Ship models in pairs**: an Edge-TPU-compiled `*_edgetpu.tflite` cannot
-  execute on the CPU — on a machine without a Coral the software
-  automatically loads the uncompiled CPU variant (`<name>.tflite`) instead.
-  Note the compiled variant can be *worse*: the compiler requantizes the
-  TPU segment and may degrade separation (our v2 retrain lost it — see the
-  Coral section above). Score both and keep the better one live.
-- **Optional Telegram push**: with `TELEGRAM_TOKEN` / `TELEGRAM_CHAT_ID`
-  (in `/etc/pycentauri.conf`, or `--telegram-token` / `--telegram-chat-id`
-  on the CLI) every alert goes to your chat — a one-liner with the camera
-  frame. This covers detections **and** print-state changes (paused,
-  filament switch, aborted, finished, error). Setup: create a bot via
-  @BotFather, message it once, read the chat id from
-  `https://api.telegram.org/bot<token>/getUpdates` — in the returned
-  JSON look for `"chat":{"id":123456789,...}`; that number is your chat
-  id). Empty values disable it. Telegram is strictly **one-way**:
-  pycentauri never receives anything from Telegram — no polling, no
-  webhook, no listening of any kind.
-- **Optional bot password**: if you secure your bot with a password in
-  @BotFather, put it in `TELEGRAM_PASSWORD` (or `--telegram-password`);
-  pycentauri attaches it to every outgoing Telegram request as the
-  `X-Telegram-Bot-Api-Secret-Token` header — the documented place for a
-  bot secret. Without a bot password nothing needs to be configured:
-  token + chat id are enough to post.
-- Standalone without the HTTP server: `centauri detect watch --host …`.
-  Model debugging against arbitrary JPEGs: `centauri detect test img.jpg`.
-- Any SSD TFLite detector with `TFLite_Detection_PostProcess` outputs and a
-  `.txt` label sidecar works.
-
-### What the model detects — and what it doesn't
-
-The shipped model knows exactly **one failure mode: spaghetti** (a print
-that has detached and turned into a stringy mess). It does **not**
-detect warping, zits/scars, layer shifts, or other defect types — those
-require a retrained multi-class model (spaghetti, blobs, cracks,
-warping), which in turn needs labeled examples of each failure mode on
-your own camera. Until then: treat the detector as a runaway-print
-alarm, not a general print-quality inspector.
-
-### Trained model & training data attribution
-
-A trained 1-class spaghetti model (SSD MobileNet V2 320×320) ships as
-assets of the [v0.13.0 release](https://github.com/tholterhus/pycentauri/releases/tag/v0.13.0):
-`spaghetti_edgetpu.tflite` (the Coral variant),
-`spaghetti.tflite` (int8, the CPU sibling),
-`spaghetti-float32.tflite`, `spaghetti.txt` (labels) and
-`model-result.zip` (the original export bundle).
-
-**One manual step is required**: the pip package does not bundle any
-model — download the files above into `data/models/` (the installer
-only auto-fetches the COCO *smoke* model as a pipeline test) and point
-`DETECT_MODEL` at `data/models/spaghetti_edgetpu.tflite`. Then run
-`centauri detect check`; details in [INSTALL.md](INSTALL.md).
-
-The model was trained on 7,295 images / 13,791 boxes assembled from:
-
-- "3D Printer Spaghetti Detection" dataset by training-l9tjj (Roboflow
-  Universe, Public Domain)
-- "Spaghetti" dataset by aiot-innowork (Roboflow Universe, CC BY 4.0) —
-  modified: only the spaghetti class subset used
-- Base architecture: SSD MobileNet V2 320×320, TensorFlow Object
-  Detection API (Apache-2.0)
-
-## Chamber-light automation
-
-The daemon can run the little Home-Assistant automation pair that used to
-live around the printer — light on when a print starts, light off once the
-nozzle has cooled down:
-
-```sh
-centauri server --host printer.example --enable-control \
-    --light-automation --light-cool-temp 50
-```
-
-- **On** while the nozzle is above `--light-cool-temp` (default 50 °C),
-  **off** while it is below — the print status is irrelevant, only the
-  nozzle temperature decides ("nur die Nozzle-Temp entscheidet"). A print
-  starting cold lights up as soon as the nozzle passes the threshold on
-  its way up; at print end, during a long pause or after an aborted start
-  it goes out on the way down. A light toggled by hand is put back in
-  line with the temperature on the next status push, and attaching to an
-  already hot or cold printer (service restart) normalizes the state
-  immediately. Failed commands back off exponentially instead of retrying
-  every push.
-
-Requires `--enable-control`; the daemon reports the feature in
-`/api/info` as `light_automation`.
+The dashboard can switch the printer's chamber light - on motion, while
+printing, or manually from the UI. Setup and behavior:
+**[docs/LIGHT.md](docs/LIGHT.md)**.
 
 ## Chamber heating (heated print room)
 
-ABS and ASA print best in a warm chamber - and this printer cannot warm
-its own air. This feature adds that: it drives an external heater for
-the room around the printer and holds the chamber at the temperature
-you (or your slicer profile) want, automatically and unattended.
+ABS and ASA print best in a warm chamber - this printer cannot warm its
+own air, so pycentauri drives an external heater (e.g. a PTC fan heater
+on a Shelly smart plug) and holds the chamber at the temperature your
+slicer profile asks for: armed at print start, regulated by the
+printer's own chamber sensor, unattended, with a safety watchdog and a
+manual override. Hardware, setup, the learned overshoot and the safety
+watchdog: **[docs/HEATING.md](docs/HEATING.md)**.
 
-### How it works
+## Reference
 
-A cheap PTC fan heater sits in or under the printer and is plugged into
-a small smart plug (a Shelly). pycentauri switches that plug with two
-plain HTTP addresses (the plug's "on" and "off" commands) - no cloud,
-everything stays inside your own network. While a print runs, the
-printer's own chamber sensor tells pycentauri how warm it is inside,
-and the heater is switched on and off to hold the set temperature.
-When the print ends, the heater turns off by itself. A built-in
-watchdog watches every heating phase: if the temperature does not rise
-while the heater is on (heater faulty or unplugged, Shelly offline, or
-a door left open), the heater is switched off and a red warning appears
-in the dashboard - nothing keeps heating unattended when something is
-wrong.
+- **Print status codes**: [docs/STATUS_CODES.md](docs/STATUS_CODES.md)
+- **Known firmware quirks** (CC1 & CC2): [docs/FIRMWARE_QUIRKS.md](docs/FIRMWARE_QUIRKS.md)
+- **Wire protocols**: [docs/PROTOCOL.md](docs/PROTOCOL.md)
+- **Architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Fork divergence from upstream**: [docs/FORK.md](docs/FORK.md)
 
-### What you need
-
-- **A heater that a smart plug can switch.** The popular variant: a
-  PTC fan heater (PTC ceramic element with a fan, ~300 W, around
-  25-30 EUR) - PTC elements self-regulate and cannot overheat, which
-  makes them safe for unattended use. Ready-made heated-chamber
-  solutions work too; anything that turns on and off with two switch
-  commands is compatible.
-- **A smart plug** (e.g. a Shelly) that exposes two simple switch
-  commands as HTTP addresses.
-- Optional but recommended: **print a bracket** for the heater (ASA or
-  ABS - it lives in a hot chamber) and route the cable out of the
-  printer. One setup that works: the PTC fan heater hangs in a printed
-  holder under the print bed, the cable leaves the printer at the side
-  and runs to a Shelly on the outside.
-
-### Setup
-
-1. Start the server with the feature enabled (`centauri server
-   --heating` - the ON/OFF URLs can be set later in the web UI).
-2. Open the **Chamber heating** section in the dashboard (the gear
-   icon), paste the two switch URLs and enable the feature.
-3. Tell it when to heat: either a bed temperature threshold, filename
-   markers (e.g. ABS,ASA) - or let your slicer set a chamber target.
-4. Adjust the target temperature, the hysteresis (how much the
-   temperature may swing around it) and the safety cap in the same
-   section.
-
-### Details for the curious
-
-- The target temperature follows the slicer when the profile sets a
-  chamber temperature - clamped to a safety cap
-  (`HEATING_TARGET_MAX`) so nothing can heat beyond it.
-- The automation **learns**: it measures how far the chamber overshoots
-  after the heater switches off (thermal inertia) and switches the
-  heater off a little earlier the next time, so the peak stays inside
-  the band.
-- A safety watchdog switches the heater off and shows a fat red
-  warning when a heating phase does not warm the chamber.
-- The graph in the panel shows the chamber temperature of the current
-  print with shaded heating phases - and it survives page reloads,
-  browser changes and service restarts (the data lives on the box).
-- The settings persist on the box (`data/heating.json`), so every
-  device shows the same configuration and graph.
-
-## Print status codes## Print status codes
-
-`print_status` in the API and library uses the CC1 firmware's code
-space, extended with three codes for CC2 Canvas operations:
-
-| Code | Meaning | | Code | Meaning |
-|---|---|---|---|---|
-| 0 | Idle | | 13 | Printing |
-| 1 | Homing | | 14 | Error |
-| 5 | Pausing | | 15 | Leveling |
-| 6 | Paused | | 16 | Preheating |
-| 7 | Stopping | | **27** | **Switching filament** (CC2) |
-| 8 | Stopped | | **28** | **Filament load complete** (CC2) |
-| 9 | Completed | | **29** | **Unloading filament** (CC2) |
-
-The full table (including CC1's resin-inherited codes) is in
-[`docs/PROTOCOL.md`](docs/PROTOCOL.md).
-
-On the CC2, mid-print Canvas filament switches are detected by head
-position: the firmware never fully leaves its "printing" state during a
-switch, but the head parks at the purge chute behind the bed (y ≥ 258 mm,
-physically outside the printable area) for the duration. pycentauri
-reports code 27 the entire time the head is parked there mid-print.
-
-## Safety model
-
-- **Explicit opt-in for writes.** Every surface requires
-  `enable_control=True` / `--enable-control` before any state-changing
-  command is possible. Read-only is the default everywhere.
-- **Bounds-checked heaters.** The library refuses temperature targets
-  outside nozzle 0–300 °C / bed 0–110 °C / chamber 0–60 °C even though
-  the firmware might accept them.
-- **Unauthenticated HTTP surface.** The REST server has no auth of its
-  own. Bind it to loopback (the default) or put an authenticating
-  reverse proxy in front before exposing it beyond localhost.
-- **You own unattended printing.** An agent with control tools can pause,
-  stop, or heat your printer. Leaving one unattended is your call.
-
-## Known firmware quirks
-
-### CC1 (original Centauri Carbon)
-
-- **5 concurrent WebSocket slots, hard.** The 6th connection gets HTTP
-  500 `"too many client"`. Slots free on close. The CLI opens one per
-  invocation; the HTTP/MCP servers hold exactly one long-lived slot.
-- **Paused/errored states don't push Attributes.** Every SDCP command
-  needs the printer's `MainboardID`, which normally arrives in an
-  Attributes push — but not while paused or errored. pycentauri
-  pre-seeds it from UDP discovery on every connect. If you call
-  `Printer.connect()` on a paused printer without discovery, pass
-  `mainboard_id=` yourself.
-- **Unknown commands crash the firmware.** A few unrecognised SDCP
-  commands in quick succession kill the printer's `app` daemon — and any
-  active print with it. Don't probe undocumented command codes against a
-  printer that's doing something you care about.
-- **The push scheduler goes dormant at idle (and a reboot doesn't wake
-  it).** The firmware can enter a state where `Cmd 512` subscribes are
-  acknowledged but no status frame is ever pushed while the printer
-  sits idle — persisting across reboots (verified 2026-07-05 on
-  V0.3.0-o). Starting a print revives pushes at full rate. One-shot
-  `Cmd 0` requests always work, so pycentauri automatically falls back
-  to polling when a subscribe goes quiet (~7 s updates at idle,
-  full-rate pushes while printing). Clients that rely purely on
-  subscribe pushes will hang forever on an idle printer in this state.
-
-### CC2 (Centauri Carbon 2)
-
-- **No UDP discovery.** The CC2 ignores broadcast probes; specify its IP
-  explicitly. Give it a static DHCP lease — it doesn't register a
-  hostname with most routers, so its address drifts otherwise.
-- **Access code required for MQTT**, passed as the password with
-  username `elegoo`. The HTTP bootstrap (`/system/info`) wants the same
-  code as an `X-Token` *query parameter* — it ignores the header form.
-- **The webcam is unauthenticated.** MJPEG on `:8080` (any path) is open
-  to anyone on your LAN, access code or not. That's the firmware's
-  choice, not ours.
-- **Rate limiting.** Rapid-fire MQTT requests (3+ back-to-back) trip a
-  cooldown of a few seconds during which the broker silently drops
-  responses. pycentauri's polling cadence stays under it; your scripts
-  should too.
-- **The firmware resets the speed mode to balanced on every Canvas
-  filament switch.** pycentauri pins your chosen mode and re-applies it
-  automatically, while still honoring a deliberate balanced from the
-  touchscreen — see
-  [CC2 speed pinning](#cc2-speed-pinning-the-firmware-fights-you-so-pycentauri-fights-back)
-  above for how it tells the two apart.
-- **Registrations expire without an app-level PING.** The printer
-  forgets a registered client after several quiet minutes and silently
-  stops answering that session's requests — the MQTT connection itself
-  stays up, so there's no error to catch. pycentauri sends the SDK's
-  `{"type": "PING"}` keepalive every 30 s to hold the registration; if
-  you write your own client, you must too.
-- **File list (method 1044) and video stream (1042) don't respond** on
-  firmware 01.03.02.51, so remote print-start on CC2 requires knowing
-  the filename in advance.
 
 ## Project layout & docs
 
@@ -799,3 +557,4 @@ test after protocol-layer changes.
 - Not affiliated with or endorsed by Elegoo. Reverse-engineered
   protocols can break with any firmware update; nothing here is
   warranted to keep your prints alive.
+
