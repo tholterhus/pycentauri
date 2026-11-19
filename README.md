@@ -7,10 +7,12 @@
 >
 > Everything this fork adds on top of upstream:
 >
-> 1. **Failed-print ("spaghetti") detection** - Coral Edge TPU or plain
->    CPU, trained model as release asset, evidence snapshots, optional
->    Telegram push, pause/stop response, shift detection, failure-ring
->    evidence, two-stage classifier
+> 1. **Failed-print ("spaghetti") detection** - runs on the plain CPU of
+>    the box (a Coral Edge TPU is supported but not required and is
+>    currently unused - the compiled TPU model degraded detection
+>    quality), trained model as release asset, evidence snapshots,
+>    optional Telegram push, pause/stop response, shift detection,
+>    failure-ring evidence, two-stage classifier
 > 2. **Chamber heating automation** - a Shelly-controlled heater for the
 >    print room: slicer-follow target, learned overshoot, safety
 >    watchdog, manual override, live temperature graph
@@ -104,7 +106,7 @@ pip install "pycentauri @ git+https://github.com/tholterhus/pycentauri.git"     
 pip install "pycentauri[mcp] @ git+https://github.com/tholterhus/pycentauri.git"                        # + MCP server
 pip install "pycentauri[server] @ git+https://github.com/tholterhus/pycentauri.git"                     # + HTTP REST/SSE server + web UI
 pip install "pycentauri[mcp,server] @ git+https://github.com/tholterhus/pycentauri.git"                 # all Python surfaces
-pip install "pycentauri[detect,server] @ git+https://github.com/tholterhus/pycentauri.git"              # + failed-print detection (CPU/Coral)
+pip install "pycentauri[detect,server] @ git+https://github.com/tholterhus/pycentauri.git"              # + failed-print detection (CPU)
 ```
 
 For a Linux service installation with an optional systemd unit, see the
@@ -460,9 +462,10 @@ The bridge picks the correct camera port for CC1 vs CC2 automatically.
 pycentauri watches every print through the printer's own camera and
 catches failed prints early - with the trained model shipped as a
 release asset, evidence snapshots, optional Telegram push, and
-pause/stop response. Runs on a Coral Edge TPU or plain CPU; the
-dashboard shows live state, the evidence gallery and the temperature
-trend.
+pause/stop response. Runs on the plain CPU of the box (this deployment
+deliberately serves the CPU model - see below); a Coral Edge TPU is
+supported by the code but not required, and the dashboard shows live
+state, the evidence gallery and the temperature trend.
 
 Hardware, setup, tuning, the two-stage classifier and training:
 **[docs/SPAGHETTI.md](docs/SPAGHETTI.md)** - and the design record in
