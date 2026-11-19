@@ -1016,6 +1016,28 @@ function updateHeaterGraph(state) {
   }
   ctx.stroke();
 
+  // Temperature labels: the live value rides the right edge (heating or
+  // not), the session's initial value stays at the left edge — frozen
+  // graphs keep it until the next print replaces the session. Same font
+  // family and dim color as the "Status:" headline.
+  const mono = css.getPropertyValue("--f-mono") || "ui-monospace, Menlo, monospace";
+  ctx.font = `11px ${mono}`;
+  ctx.fillStyle = css.getPropertyValue("--fg-dim") || "#8a857a";
+  const labelTemp = (v, align, px) => {
+    // slightly above the curve point; clamp away from the canvas edges
+    // and the time labels sitting in the bottom corners
+    ctx.textAlign = align;
+    ctx.fillText(`${(+v).toFixed(1)}°`, px, Math.max(11, Math.min(h - 12, y(v) - 4)));
+  };
+  const endV = state.chamber_temp ?? (heatingSession.samples.length
+    ? heatingSession.samples[heatingSession.samples.length - 1][1]
+    : null);
+  if (endV != null) labelTemp(endV, "right", w - 2);
+  if (heatingSession.samples.length) {
+    labelTemp(heatingSession.samples[0][1], "left", 2);
+  }
+  ctx.textAlign = "left";
+
   // Minimal horizontal scale: session start (left) vs now (right).
   const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   ctx.fillStyle = colBand;
