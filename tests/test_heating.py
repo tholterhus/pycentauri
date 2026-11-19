@@ -799,3 +799,45 @@ async def test_manual_commands_locked_after_safety_stop(tmp_path: Path) -> None:
     with pytest.raises(heating.HeatingError):
         auto.manual_on(False)
     assert rec.calls == [URL_ON, URL_OFF]
+
+
+# --- every print gets a graph session (heater or not) -----------------------------
+
+
+async def test_session_records_for_every_print_without_heating(tmp_path: Path) -> None:
+    """Every print gets a graph session, heater or not — a flat PLA line
+    is honest data. No heater command may fire for this print."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    auto._sample_interval = 0.0  # sample every push
+    await _push(auto, _status(code=13, bed_target=80.0, chamber=25.0, filename="hook.gcode"))
+    assert rec.calls == []  # nothing armed, heater untouched
+    data = auto.session_data()
+    assert data["open"] is True
+    assert len(data["samples"]) >= 1
+    await _push(auto, _status(code=9, chamber=25.5))  # print ends
+    assert rec.calls == []
+    assert auto.session_data()["open"] is False
+
+
+async def test_stale_open_session_is_replaced_at_next_print(tmp_path: Path) -> None:
+    """A session whose print ended while the service was down (open file,
+    nothing sampled for a long time) must not swallow the next print's
+    graph — it is replaced by a fresh session at the print-start push."""
+    cfg = _config(tmp_path)
+    auto1 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
+    auto1._sample_interval = 0.0
+    await _push(auto1, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))
+    old_start = auto1.session_data()["armed_since"]
+    # age the session: pretend its print died an hour ago
+    auto1._session_samples[-1][0] -= 3600
+    auto1._persist_session(force=True)
+
+    auto2 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
+    auto2._sample_interval = 0.0  # sample every push
+    await _push(auto2, _status(code=13, bed_target=80.0, chamber=25.0, filename="hook.gcode"))
+    data = auto2.session_data()
+    assert data["open"] is True
+    assert data["armed_since"] != old_start  # replaced by a fresh session, not resumed
+    assert len(data["samples"]) == 1  # only the new print's sample
+    assert data["samples"][0][0] > old_start  # the aged stale sample is gone

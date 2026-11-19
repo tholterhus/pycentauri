@@ -935,9 +935,12 @@ function updateHeaterGraph(state) {
   const lastSample = heatingSession.samples.length
     ? heatingSession.samples[heatingSession.samples.length - 1][0] * 1000
     : t0;
-  // While the print runs the right edge is "now" (the domain stretches);
-  // after it ends the domain freezes at the last sample.
-  const t1 = state.armed ? Math.max(Date.now(), lastSample) : lastSample;
+  // While the print runs the right edge is "now" (the domain stretches) —
+  // every print gets a session, armed or not (session_open). After the
+  // print ends both flags drop and the domain freezes at the last sample.
+  const t1 = (state.armed || state.session_open)
+    ? Math.max(Date.now(), lastSample)
+    : lastSample;
   const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
 
   let lo = Infinity;
@@ -1113,7 +1116,10 @@ async function loadHeatingHistory() {
     const r = await fetch("/api/heating/history");
     if (r.status === 404) { heatingSession = null; return; }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    heatingSession = await r.json();
+    const d = await r.json();
+    // A session without a start time is an empty shell (fresh box, no
+    // print yet) — treat it as "no session" or the graph draws NaN axes.
+    heatingSession = d.armed_since ? d : null;
   } catch (_) {
     // transient hiccup — keep the last known session
   }

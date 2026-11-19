@@ -56,11 +56,16 @@ RETRY_BACKOFF_START = 2.0
 RETRY_BACKOFF_MAX = 60.0
 
 #: Graph sample cadence: one chamber-temperature point every 5 s while a
-#: session is armed (~27 h at the 20 000-point cap).
+#: print runs (~27 h at the 20 000-point cap).
 SAMPLE_INTERVAL_S = 5.0
 
 #: How often the session file is rewritten while samples accumulate.
 SESSION_WRITE_INTERVAL_S = 60.0
+
+#: A resumed open session whose newest sample is older than this is stale
+#: (its print ended while the service was down) and gets replaced when the
+#: next print opens its session.
+SESSION_STALE_S = 120.0
 
 #: Safety watchdog: a heating phase must raise the chamber temperature by
 #: at least SAFETY_RISE_C within SAFETY_WINDOW_S — otherwise the heater is
@@ -397,6 +402,7 @@ class HeatingAutomation:
             "armed": self._armed,
             "armed_reason": self._armed_reason,
             "armed_since": self._armed_at,
+            "session_open": self._session_open,
             "target": self._last_target,
             "band": self._last_band,
             "chamber_temp": self._chamber,
@@ -491,6 +497,16 @@ class HeatingAutomation:
 
         was_armed = self._armed
         if active and not self._safety_stop:
+            # A graph session opens for EVERY print — the curve records the
+            # chamber even when the heater stays off (a flat PLA line is
+            # honest data). Heater control is unchanged and decided below.
+            if not self._session_open:
+                self._start_session()
+            elif not was_active:
+                # Print start with a session that was open before this push
+                # (resumed from the file at construction): replace it when
+                # it is stale, its print is long gone.
+                self._replace_stale_session()
             # Armed state is re-checked on every push: the slicer can set a
             # chamber target mid-print, which arms the session by itself.
             # No initial ON here — the hysteresis below handles the arming
@@ -501,13 +517,12 @@ class HeatingAutomation:
                 if armed:
                     self._armed = True
                     self._armed_reason = reason
-                    self._start_session()
         elif not active and was_active:
             self._armed = False
             self._armed_reason = ""
             self._last_band = None
+            self._end_session()
             if was_armed:
-                self._end_session()
                 self._learn = None
                 self._watch_started = None
                 self._watch_baseline = None
@@ -525,8 +540,10 @@ class HeatingAutomation:
             else:
                 self._fire(False, "print finished")
 
-        # Graph samples: one every sample interval while a session is armed.
-        if self._armed:
+        # Graph samples: one every sample interval while the print runs.
+        # Gated on active (not session-open) so a stale resumed session
+        # that outlived its print does not collect idle points.
+        if active and self._session_open:
             self._collect_sample(st, now)
 
         if self._armed and not self._safety_stop:
@@ -651,13 +668,20 @@ class HeatingAutomation:
             log.error("heating: session file %s not writable: %r", path, err)
 
     def _start_session(self) -> None:
-        # Arm a new graph session - resuming the persisted one when it is
-        # still open (service restart mid-print), fresh otherwise.
+        # Open a graph session for a print - resuming the persisted one
+        # when it is still open AND current (service restart mid-print).
+        # A stale open session (its print ended while the service was
+        # down, nothing sampled since) is replaced by a fresh one so the
+        # new print does not append into a days-old graph domain.
         self._load_session_file()
+        if self._session_open:
+            last = self._session_samples[-1][0] if self._session_samples else self._armed_at
+            if last is None or time.time() - last > SESSION_STALE_S:
+                self._session_open = False
         if not self._session_open:
             self._session_samples = []
             self._session_phases = []
-            self._armed_at = time.time()
+            self._armed_at = time.time()  # session start = graph domain start
             self._session_open = True
             self._last_sample_s = 0.0
         self._persist_session(force=True)
@@ -665,6 +689,15 @@ class HeatingAutomation:
     def _end_session(self) -> None:
         self._session_open = False
         self._persist_session(force=True)
+
+    def _replace_stale_session(self) -> None:
+        """Print-start push with an already-open (resumed) session: when
+        its newest sample is older than SESSION_STALE_S the session's own
+        print ended while the service was down — replace it so the new
+        print does not append into a stale graph domain."""
+        last = self._session_samples[-1][0] if self._session_samples else self._armed_at
+        if last is None or time.time() - last > SESSION_STALE_S:
+            self._start_session()
 
     def _collect_sample(self, st: Status, now: float) -> None:
         if st.temp_chamber is None:
