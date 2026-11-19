@@ -44,6 +44,23 @@ const PRINT_STATUS = {
   29: { label: "UNLOADING FILAMENT", cls: "state-printing" },
 };
 
+// Locale kit: every human-facing time and number follows the browser's
+// language preferences — 24 h vs AM/PM, decimal comma vs point, thousand
+// groupings. English-first browsers that also accept another language get
+// that other one (embedded preview webviews default to en-US even on
+// German systems); a genuinely English-only browser keeps its conventions.
+const LOCALE = (navigator.languages && navigator.languages.length
+  ? navigator.languages : [navigator.language])
+  .find((l) => l && !/^en\b/.test(l)) || navigator.language || undefined;
+
+const fmtTime = (t) =>
+  new Date(t).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
+
+const fmtNum = (v, frac = 1) => Number(v).toLocaleString(LOCALE, {
+  minimumFractionDigits: frac,
+  maximumFractionDigits: frac,
+});
+
 function fmtSeconds(s) {
   if (s == null || Number.isNaN(+s)) return "—";
   s = Math.max(0, Math.round(+s));
@@ -57,12 +74,12 @@ function fmtSeconds(s) {
 
 function fmtTemp(v, padTo = "---.-") {
   if (v == null || Number.isNaN(+v)) return padTo;
-  return (+v).toFixed(1);
+  return fmtNum(v, 1);
 }
 
 function fmtCoord(v) {
   if (v == null || Number.isNaN(+v)) return "---.--";
-  return (+v).toFixed(2).padStart(6, " ");
+  return fmtNum(v, 2).padStart(6, " ");
 }
 
 function tempPct(actual, target) {
@@ -214,7 +231,7 @@ function renderStatus(raw) {
   }
 
   // Z offset
-  if (raw.ZOffset != null) $("z-offset").textContent = (+raw.ZOffset).toFixed(3);
+  if (raw.ZOffset != null) $("z-offset").textContent = fmtNum(raw.ZOffset, 3);
 
   // Fans
   const fans = raw.CurrentFanSpeed || {};
@@ -366,14 +383,14 @@ function wireControls() {
     const cur = parseFloat($("detect-threshold").textContent) || 0.5;
     const sl = $("threshold-slider");
     sl.value = String(cur);
-    $("threshold-value").textContent = cur.toFixed(2);
+    $("threshold-value").textContent = fmtNum(cur, 2);
     $("threshold-modal").hidden = false;
   });
   $("threshold-cancel")?.addEventListener("click", () => {
     $("threshold-modal").hidden = true;
   });
   $("threshold-slider")?.addEventListener("input", (ev) => {
-    $("threshold-value").textContent = parseFloat(ev.target.value).toFixed(2);
+    $("threshold-value").textContent = fmtNum(parseFloat(ev.target.value), 2);
   });
   $("threshold-set")?.addEventListener("click", async () => {
     const v = parseFloat($("threshold-slider").value);
@@ -798,7 +815,12 @@ function renderDetect(state) {
     card.hidden = false;
     $("detect-event-score").textContent = `${Math.round(ev.score * 100)}%`;
     $("detect-event-label").textContent = ev.label;
-    $("detect-event-when").textContent = ev.when;
+    $("detect-event-when").textContent = (() => {
+      const d = new Date(ev.when);
+      return Number.isNaN(d.getTime()) ? ev.when
+        : d.toLocaleString(LOCALE, { day: "2-digit", month: "2-digit",
+            hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    })();
     const name = (ev.evidence || "").split("/").pop();
     const link = $("detect-event-link");
     link.hidden = !name;
@@ -1033,17 +1055,17 @@ function updateHeaterGraph(state) {
     // slightly above the curve point; clamp away from the canvas edges
     // and the time labels sitting in the bottom corners
     ctx.textAlign = "right";
-    ctx.fillText(`${(+endV).toFixed(1)}°`, w - 2, Math.max(11, Math.min(h - 12, y(endV) - 4)));
+    ctx.fillText(`${fmtNum(endV, 1)}°`, w - 2, Math.max(11, Math.min(h - 12, y(endV) - 4)));
   }
   if (heatingSession.samples.length) {
     ctx.textAlign = "left";
-    ctx.fillText(`${(+heatingSession.samples[0][1]).toFixed(1)}°`, 2, 11);
+    ctx.fillText(`${fmtNum(heatingSession.samples[0][1], 1)}°`, 2, 11);
   }
   ctx.textAlign = "left";
 
   // Minimal horizontal scale: session start (left) vs now (right). Same
   // readable dim color as the temperature labels, only smaller.
-  const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const fmt = fmtTime;
   ctx.fillStyle = colDim;
   ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "left";
@@ -1073,13 +1095,13 @@ function renderHeating(state) {
   } else {
     stateLine.hidden = false;
     if (state.safety_stop) {
-      const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
+      const chamber = (state.chamber_temp != null) ? `${fmtNum(state.chamber_temp, 1)}°` : "—";
       $("heater-detail").innerHTML =
         `<span class="st-danger">⚠ SAFETY STOP</span> — ${state.safety_message || "heater problem"} · ${chamber}`;
     } else if (state.armed) {
-      const chamber = (state.chamber_temp != null) ? `${(+state.chamber_temp).toFixed(1)}°` : "—";
+      const chamber = (state.chamber_temp != null) ? `${fmtNum(state.chamber_temp, 1)}°` : "—";
       const bandArr = Array.isArray(state.band) ? state.band : null;
-      const fmtBand = (v) => String(+(+v).toFixed(2));  // 40, 44.45 — exakt, ohne Nullen
+      const fmtBand = (v) => Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 2 });  // 40, 44,45 — exakt, ohne Nullen
       const bandTxt = bandArr
         ? ` · hold ${fmtBand(bandArr[0])}–${fmtBand(bandArr[1])}°`
         : "";
@@ -1382,8 +1404,8 @@ function setFilesMsg(text, kind) {
 
 function fmtSize(bytes) {
   if (bytes == null) return "";
-  if (bytes >= 1e6) return `${(bytes / 1048576).toFixed(1)} MB`;
-  if (bytes >= 1e3) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes >= 1e6) return `${fmtNum(bytes / 1048576, 1)} MB`;
+  if (bytes >= 1e3) return `${fmtNum(bytes / 1024, 0)} KB`;
   return `${bytes} B`;
 }
 
@@ -1449,7 +1471,7 @@ async function loadFiles() {
     const d = await (await fetch("/disk")).json();
     if (d && d.total_bytes) {
       const freeGb = (d.total_bytes - d.used_bytes) / 1e9;
-      $("files-disk").textContent = `${freeGb.toFixed(1)} GB free`;
+      $("files-disk").textContent = `${fmtNum(freeGb, 1)} GB free`;
     }
   } catch (_) { /* ignore */ }
 }
@@ -1546,8 +1568,9 @@ const HISTORY_STATUS = { 1: "completed", 2: "cancelled" };
 
 function fmtDate(unixSec) {
   if (!unixSec) return "";
-  const d = new Date(unixSec * 1000);
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return new Date(unixSec * 1000).toLocaleString(LOCALE, {
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
 }
 
 function renderHistory(data) {
