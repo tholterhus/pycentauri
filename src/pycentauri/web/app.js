@@ -264,6 +264,12 @@ function connectSSE() {
   src.addEventListener("status", (ev) => {
     try { renderStatus(JSON.parse(ev.data)); } catch (_) {}
   });
+  // The heating panel rides the same stream: every status push carries the
+  // automation state, so the two chamber temperatures on the page (status
+  // panel and heating panel) tick in the same instant.
+  src.addEventListener("heating", (ev) => {
+    try { renderHeating(JSON.parse(ev.data)); } catch (_) {}
+  });
   // SSE in Firefox is prone to silent stalls — the connection appears
   // open but no events arrive. `onerror` fires once and the browser's
   // auto-reconnect doesn't always kick in. The pollOnce safety net in
@@ -1828,13 +1834,14 @@ function noteStatusForPoll(pstatus) {
   connectSSE();
   setInterval(loadInfo, 60000);
   // Session history (graph): 30 s cadence, the live point comes from the
-  // 5 s status/heating polls.
+  // SSE heating events.
   setInterval(loadHeatingHistory, 30000);
   // RTSP state changes are external, poll occasionally.
   setInterval(loadRtsp, 8000);
   // Detection state too (processing flag, window, new evidence).
   setInterval(loadDetect, 5000);
-  // Heating state (armed session, heater, chamber temp).
-  setInterval(loadHeating, 5000);
+  // Heating state (armed session, heater, chamber temp) arrives live on
+  // the SSE stream — this slow poll is only a stall-recovery fallback.
+  setInterval(loadHeating, 30000);
   schedulePoll();
 })();

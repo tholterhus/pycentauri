@@ -698,8 +698,13 @@ def create_app(
         """Server-Sent Events stream of live status pushes.
 
         Clients subscribe once and receive one ``data:`` line per push.
-        Disconnects are handled silently on the server side.
+        Disconnects are handled silently on the server side. When the
+        chamber-heating automation runs, every push also carries a
+        ``heating`` event so the dashboard's two chamber temperatures
+        (status panel and heating panel) always tick together.
         """
+
+        heating: HeatingAutomation | None = getattr(request.app.state, "heating", None)
 
         async def gen() -> AsyncIterator[dict[str, str]]:
             try:
@@ -707,6 +712,11 @@ def create_app(
                     if await request.is_disconnected():
                         break
                     yield {"event": "status", "data": json.dumps(st.raw, default=str)}
+                    if heating is not None:
+                        yield {
+                            "event": "heating",
+                            "data": json.dumps(heating.state(), default=str),
+                        }
             except PrinterError as err:
                 yield {"event": "error", "data": str(err)}
 
