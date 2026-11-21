@@ -224,7 +224,10 @@ function renderStatus(raw) {
 
   // Nozzle/bed rolling windows: own boxes above the chamber graph, drawn
   // per push; the 30 s history fetch refills the window underneath. The
-  // panel hides itself until the server ring has data.
+  // panel hides itself until the server ring has data. The matching
+  // Thermal gauge hides while its graph carries the same number — and
+  // when all three gauges are covered by graphs, the whole Thermal panel
+  // steps aside (each gauge hides, nothing is deleted).
   const tempSpec = (series, temp, target) => ({
     hidden: !(tempRings && tempRings[series] && tempRings[series].samples.length),
     samples: (tempRings && tempRings[series]) ? tempRings[series].samples : [],
@@ -234,10 +237,24 @@ function renderStatus(raw) {
     target: (target != null && +target > 0) ? +target : null,
     targetLabel: (target != null && +target > 0) ? `Target ${fmtNum(target, 1)}°` : "",
   });
-  $("nozzle-graph-panel").hidden = tempSpec("nozzle", noz, nozT).hidden;
-  drawRollingGraph($("nozzle-graph"), { ...tempSpec("nozzle", noz, nozT), lineColorVar: "--cyan" });
-  $("bed-graph-panel").hidden = tempSpec("bed", bed, bedT).hidden;
-  drawRollingGraph($("bed-graph"), { ...tempSpec("bed", bed, bedT), lineColorVar: "--danger" });
+  const nozzleSpec = tempSpec("nozzle", noz, nozT);
+  const bedSpec = tempSpec("bed", bed, bedT);
+  $("nozzle-graph-panel").hidden = nozzleSpec.hidden;
+  $("bed-graph-panel").hidden = bedSpec.hidden;
+  const chamberGraphLive = !!(heatingEnabledNow && heatingSession);
+  let gaugesCovered = true;
+  for (const [sel, graphLive] of [
+    ['.gauge[data-id="nozzle"]', !nozzleSpec.hidden],
+    ['.gauge[data-id="bed"]', !bedSpec.hidden],
+    ['.gauge[data-id="chamber"]', chamberGraphLive],
+  ]) {
+    const g = document.querySelector(sel);
+    if (!g) continue;
+    g.hidden = graphLive;
+    if (!graphLive) gaugesCovered = false;
+  }
+  const thermalPanel = document.getElementById("thermal-panel");
+  if (thermalPanel) thermalPanel.hidden = gaugesCovered;
 
   // Coords "x,y,z"
   if (typeof raw.CurrenCoord === "string") {
@@ -1191,11 +1208,8 @@ function renderHeating(state) {
 
   updateHeaterGraph(state);
 
-  // The rolling graph carries the chamber temperature while it is live —
-  // the Thermal gauge above it would duplicate the same number. Without
-  // the heating feature (or data) the gauge stays visible as before.
-  const chamberGauge = document.querySelector('.gauge[data-id="chamber"]');
-  if (chamberGauge) chamberGauge.hidden = !!(state.enabled && heatingSession);
+  // The Thermal gauge hiding lives in renderStatus — all three gauges
+  // step aside together while their graphs carry the numbers.
 
   // The header dot mirrors the heater state: red while heating, gray
   // while standby (blink pattern from the detect LED). Hidden when the
