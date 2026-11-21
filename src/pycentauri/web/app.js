@@ -222,6 +222,23 @@ function renderStatus(raw) {
   // Chamber often targets 0; show the actual vs a reference of 50°C so the bar conveys warmth.
   $("t-chamber-bar").style.width   = Math.min(100, Math.max(0, (+(cham ?? 0) / 50) * 100)) + "%";
 
+  // Nozzle/bed rolling windows: own boxes above the chamber graph, drawn
+  // per push; the 30 s history fetch refills the window underneath. The
+  // panel hides itself until the server ring has data.
+  const tempSpec = (series, temp, target) => ({
+    hidden: !(tempRings && tempRings[series] && tempRings[series].samples.length),
+    samples: (tempRings && tempRings[series]) ? tempRings[series].samples : [],
+    phases: [],
+    bands: [],
+    live: temp,
+    target: (target != null && +target > 0) ? +target : null,
+    targetLabel: (target != null && +target > 0) ? `Target ${fmtNum(target, 1)}°` : "",
+  });
+  $("nozzle-graph-panel").hidden = tempSpec("nozzle", noz, nozT).hidden;
+  drawRollingGraph($("nozzle-graph"), { ...tempSpec("nozzle", noz, nozT), lineColorVar: "--cyan" });
+  $("bed-graph-panel").hidden = tempSpec("bed", bed, bedT).hidden;
+  drawRollingGraph($("bed-graph"), { ...tempSpec("bed", bed, bedT), lineColorVar: "--danger" });
+
   // Coords "x,y,z"
   if (typeof raw.CurrenCoord === "string") {
     const [x, y, z] = raw.CurrenCoord.split(",");
@@ -921,6 +938,20 @@ let heatingEnabledNow = false;
 // persisted every minute). Refreshed every 30 s; the live point rides the
 // SSE heating events. The canvas only draws while a dashboard is open.
 let heatingSession = null;
+// Nozzle/bed rolling windows (/api/temps/history — same ring mechanics),
+// feeding their own boxes above the chamber graph.
+let tempRings = null;
+
+async function loadTempHistory() {
+  try {
+    const r = await fetch("/api/temps/history");
+    if (r.status === 404) { tempRings = null; return; }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    tempRings = await r.json();
+  } catch (_) {
+    // transient hiccup — keep the last known windows
+  }
+}
 
 // Generic rolling-window temperature chart: one hour of samples from a
 // server-side ring, heater phases, optional hold band and target rule,
@@ -1951,6 +1982,7 @@ function noteStatusForPoll(pstatus) {
   await loadDetect();
   await loadHeating();
   await loadHeatingHistory();
+  await loadTempHistory();
   await pollOnce();
   connectSSE();
   setInterval(loadInfo, 60000);
@@ -1964,5 +1996,8 @@ function noteStatusForPoll(pstatus) {
   // Heating state (armed session, heater, chamber temp) arrives live on
   // the SSE stream — this slow poll is only a stall-recovery fallback.
   setInterval(loadHeating, 30000);
+  // Nozzle/bed rolling windows: 30 s cadence, the live point rides the
+  // status stream.
+  setInterval(loadTempHistory, 30000);
   schedulePoll();
 })();

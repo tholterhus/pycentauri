@@ -55,6 +55,8 @@ def _status(
     chamber: float | None = None,
     chamber_target: float | None = None,
     filename: str | None = None,
+    nozzle: float | None = None,
+    bed: float | None = None,
 ) -> Status:
     payload: dict[str, Any] = {}
     if code is not None:
@@ -68,6 +70,10 @@ def _status(
         payload["TempOfBox"] = chamber
     if chamber_target is not None:
         payload["TempTargetBox"] = chamber_target
+    if nozzle is not None:
+        payload["TempOfNozzle"] = nozzle
+    if bed is not None:
+        payload["TempOfHotbed"] = bed
     return Status.from_payload(payload)
 
 
@@ -802,6 +808,42 @@ async def test_ring_records_without_heating(tmp_path: Path) -> None:
     assert len(auto.session_data()["samples"]) >= 1
     await _push(auto, _status(code=9, chamber=25.5))  # print ends
     assert rec.calls == []
+
+
+async def test_nozzle_bed_rings_record_persist_restore(tmp_path: Path) -> None:
+    """Nozzle/bed get their own rings (same mechanics as the chamber
+    ring): one reading per push, persisted to data/temp-rings.json and
+    restored by a fresh automation."""
+    cfg = _config(tmp_path)
+    auto = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
+    await _push(auto, _status(code=13, chamber=30.0, nozzle=210.5, bed=61.25))
+    await _push(auto, _status(code=13, chamber=30.5, nozzle=212.0, bed=62.0))
+    data = auto.temp_ring_data()
+    assert [v for _, v in data["nozzle"]["samples"]] == [210.5, 212.0]
+    assert [v for _, v in data["bed"]["samples"]] == [61.25, 62.0]
+    auto._persist_temp_rings(force=True)  # the 60 s write gate would catch it in production
+    assert (tmp_path / "temp-rings.json").is_file()
+
+    auto2 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
+    assert auto2.temp_ring_data()["nozzle"]["samples"] == data["nozzle"]["samples"]
+    assert auto2.temp_ring_data()["bed"]["samples"] == data["bed"]["samples"]
+
+
+async def test_temp_ring_window_serves_only_the_last_hour(tmp_path: Path) -> None:
+    """The nozzle/bed windows serve one hour: older readings stay in the
+    ring for the retention margin but never reach the dashboard."""
+    auto = HeatingAutomation(
+        _config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=Recorder()
+    )
+    await _push(auto, _status(code=0, nozzle=25.0, bed=24.0))
+    await _push(auto, _status(code=0, nozzle=26.0, bed=25.0))
+    t, v = auto._ring_nozzle[0]
+    auto._ring_nozzle[0] = (t - 4000, v)
+    tb, vb = auto._ring_bed[0]
+    auto._ring_bed[0] = (tb - 4000, vb)
+    data = auto.temp_ring_data()
+    assert [v for _, v in data["nozzle"]["samples"]] == [26.0]
+    assert [v for _, v in data["bed"]["samples"]] == [25.0]
 
 
 async def test_graph_window_serves_only_the_last_hour(tmp_path: Path) -> None:

@@ -296,11 +296,16 @@ class HeatingAutomation:
         self._armed_reason = ""
         self._last_target: float | None = None  # effective target of the last push
         self._last_band: tuple[float, float] | None = None  # nominal (ON, OFF) range
-        # Rolling chamber-temperature ring: one reading per status push,
-        # prints or not — the graph window is always complete.
+        # Rolling temperature rings: one reading per status push, prints
+        # or not — the graph windows are always complete. Chamber feeds the
+        # heating panel; nozzle/bed get their own dashboard boxes.
         self._ring: deque[tuple[float, float]] = deque(maxlen=RING_MAXLEN)
+        self._ring_nozzle: deque[tuple[float, float]] = deque(maxlen=RING_MAXLEN)
+        self._ring_bed: deque[tuple[float, float]] = deque(maxlen=RING_MAXLEN)
         self._session_phases: list[list[float | None]] = []  # [[ON s, OFF s | None], ...]
         self._last_session_write = 0.0
+        self._last_ring_write = 0.0
+        self._rings_path = cfg.session_path.with_name("temp-rings.json")
         # Set when an armed session ends while the heater is not confirmed
         # off: the OFF command retries every push (backoff-paced) until the
         # call lands - a failed end-OFF must never leave the heater running.
@@ -328,6 +333,7 @@ class HeatingAutomation:
         self._resume_open_phase = False
         load_state(cfg)
         self._load_session_file()
+        self._load_temp_rings()
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -464,10 +470,14 @@ class HeatingAutomation:
     def _on_status(self, st: Status) -> None:
         now = time.time()
 
-        # The graph ring takes one chamber reading per push — prints or
-        # not, enabled or not, so the rolling hour is always complete.
+        # The graph rings take one reading per push — prints or not,
+        # enabled or not, so the rolling hours are always complete.
         if st.temp_chamber is not None:
             self._ring.append((now, round(st.temp_chamber, 2)))
+        if st.temp_nozzle is not None:
+            self._ring_nozzle.append((now, round(st.temp_nozzle, 2)))
+        if st.temp_bed is not None:
+            self._ring_bed.append((now, round(st.temp_bed, 2)))
 
         # Master switch off: release control (heater off — but only if we
         # ever successfully commanded it; a heater we never touched stays
@@ -483,6 +493,7 @@ class HeatingAutomation:
             if self._applied is True:
                 self._fire(False, "chamber heating disabled")
             self._persist_session()
+            self._persist_temp_rings()
             return
 
         code = st.print_status
@@ -584,8 +595,9 @@ class HeatingAutomation:
         if self._safety_stop and self._applied is not False:
             self._fire(False, f"safety stop: {self._safety_message}")
 
-        # Persist the graph ring on a slow gate (~1 write per minute).
+        # Persist the graph rings on a slow gate (~1 write per minute).
         self._persist_session()
+        self._persist_temp_rings()
 
     def _effective_target(self, st: Status) -> float:
         """The chamber target for this push: the slicer's chamber target
@@ -658,6 +670,48 @@ class HeatingAutomation:
             tmp.replace(path)
         except OSError as err:
             log.error("heating: session file %s not writable: %r", path, err)
+
+    def temp_ring_data(self) -> dict[str, Any]:
+        """The rolling nozzle/bed graph windows (GET /api/temps/history):
+        the last hour of readings each, prints and idle hours alike."""
+        cutoff = time.time() - WINDOW_S
+        return {
+            "nozzle": {"samples": [[t, v] for t, v in self._ring_nozzle if t >= cutoff]},
+            "bed": {"samples": [[t, v] for t, v in self._ring_bed if t >= cutoff]},
+        }
+
+    def _persist_temp_rings(self, force: bool = False) -> None:
+        now = time.time()
+        if not force and now - self._last_ring_write < SESSION_WRITE_INTERVAL_S:
+            return
+        self._last_ring_write = now
+        payload = {"nozzle": list(self._ring_nozzle), "bed": list(self._ring_bed)}
+        try:
+            path = self._rings_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(payload), encoding="utf-8")
+            tmp.replace(path)
+        except OSError as err:
+            log.error("heating: temp rings file %s not writable: %r", path, err)
+
+    def _load_temp_rings(self) -> None:
+        try:
+            raw = json.loads(self._rings_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, ValueError):
+            return
+        if not isinstance(raw, dict):
+            return
+        cutoff = time.time() - RING_RETENTION_S
+        self._ring_nozzle = deque(
+            ((float(t), float(v)) for t, v in raw.get("nozzle", []) if float(t) >= cutoff),
+            maxlen=RING_MAXLEN,
+        )
+        self._ring_bed = deque(
+            ((float(t), float(v)) for t, v in raw.get("bed", []) if float(t) >= cutoff),
+            maxlen=RING_MAXLEN,
+        )
+        self._last_ring_write = time.time()
 
     def _session_band(self, st: Status, target: float) -> tuple[float, float]:
         """The (ON point, OFF point) band for the current push.

@@ -71,6 +71,19 @@ wrong.
   phases - and it survives page reloads and service restarts (the data
   lives on the box). It costs nothing while no dashboard is open: the
   server just appends one reading per status push to a small ring.
+- **Nozzle and bed** get the same kind of rolling graph in their own
+  boxes (same mechanics, cyan/red curves, a green rule at the nozzle/bed
+  target while one is set). All three series share the same budget:
+  - **RAM**: the rings cap at 7 200 readings each (enough for 90 min
+    even at one reading per second) - roughly **0.9 MB per ring, ~2.6 MB
+    for all three** in the worst case.
+  - **Disk**: ~29 bytes per reading as JSON - a full ring is ~210 KB;
+    typically (readings land every 5-9 s) a file holds a few hundred
+    readings, i.e. a few tens of KB. Written about once a minute.
+  - **Traffic**: the dashboard fetches a 1-hour window every 30 s -
+    typically ~12-20 KB per series, worst case ~105 KB.
+  - **CPU**: three list appends per status push and ~3 small JSON writes
+    per minute; the canvas only paints while a dashboard is open.
 - The settings persist on the box (`data/heating.json`), so every
   device shows the same configuration and graph.
 - **Manual on/off buttons** (in the heater settings, next to the plug

@@ -228,6 +228,16 @@
         <div class="rtsp-msg" id="rtsp-msg" aria-live="polite"></div>
       </div>
 
+      <div class="panel temp-graph-panel" id="nozzle-graph-panel" hidden>
+        <header class="panel-header"><span class="panel-tag">Nozzle</span></header>
+        <canvas class="heater-graph" id="nozzle-graph" height="48" hidden></canvas>
+      </div>
+
+      <div class="panel temp-graph-panel" id="bed-graph-panel" hidden>
+        <header class="panel-header"><span class="panel-tag">Bed</span></header>
+        <canvas class="heater-graph" id="bed-graph" height="48" hidden></canvas>
+      </div>
+
       <div class="panel heating-panel" id="heating-panel" hidden>
         <header class="panel-header">
           <span class="panel-tag">Chamber<span class="heater-dot" id="heater-dot" hidden></span></span>
