@@ -255,6 +255,8 @@ function renderStatus(raw) {
   }
   const thermalPanel = document.getElementById("thermal-panel");
   if (thermalPanel) thermalPanel.hidden = gaugesCovered;
+  drawRollingGraph($("nozzle-graph"), { ...nozzleSpec, lineColorVar: "--cyan" });
+  drawRollingGraph($("bed-graph"), { ...bedSpec, lineColorVar: "--danger" });
 
   // Coords "x,y,z"
   if (typeof raw.CurrenCoord === "string") {
