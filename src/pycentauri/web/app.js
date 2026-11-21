@@ -1036,17 +1036,51 @@ function drawRollingGraph(canvas, spec) {
 
   // Vertical gridlines every 10 minutes, thicker at the half hour. The
   // window is anchored on its right edge (now), so every mark sits at a
-  // fixed x position in every render — 30 min is exactly the middle.
+  // fixed x position in every render — 30 min is exactly the middle, and
+  // the line ducks out of the centered target label when one is showing.
   ctx.strokeStyle = colBand;
   for (const min of [10, 20, 30, 40, 50]) {
     const gx = x(t1 - min * 60 * 1000);
+    const bottom = (min === 30 && spec.targetLabel) ? h - 11 : h;
     ctx.lineWidth = min === 30 ? 2 : 1;
     ctx.beginPath();
     ctx.moveTo(gx, 0);
-    ctx.lineTo(gx, h);
+    ctx.lineTo(gx, bottom);
     ctx.stroke();
   }
   ctx.lineWidth = 1;
+
+  // Horizontal gridlines on "nice" values with tiny scale labels — a flat
+  // curve (a nozzle holding 265° ± 0.1°) is unreadable without a scale.
+  // Labels sit at the left edge and skip slots too close to each other,
+  // the fixed top-left annotation, or the bottom time labels.
+  {
+    const rawStep = (hi - lo) / 4;
+    const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const norm = rawStep / mag;
+    const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+    const dec = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
+    let lastLabelY = 12;  // the top-left annotation slot
+    ctx.strokeStyle = colBand;
+    ctx.globalAlpha = 0.6;
+    for (let k = Math.ceil(lo / step); k <= Math.floor(hi / step); k++) {
+      const gy = y(k * step);
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(w, gy);
+      ctx.stroke();
+      const labelY = gy - 2;
+      if (Math.abs(labelY - lastLabelY) >= 10 && labelY < h - 12) {
+        ctx.fillStyle = colDim;
+        ctx.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.textAlign = "left";
+        ctx.fillText(fmtNum(k * step, dec), 2, labelY);
+        lastLabelY = labelY;
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = colDim;
+  }
 
   // Heating phases: a very light transparent red over each ON span (from
   // the ON event to the OFF event, or up to the newest sample while
