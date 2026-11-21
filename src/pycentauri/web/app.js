@@ -1033,26 +1033,35 @@ function updateHeaterGraph(state) {
   }
   ctx.stroke();
 
-  // Temperature labels: the live value rides the right edge at its own
-  // height (heating or not), the window's oldest value is a fixed
-  // top-left annotation — a curve-anchored label gets visually overrun on
-  // steep starts (the ABS heater pulled the chamber up within minutes).
-  // Same font family and dim color as the "Status:" headline.
+  // Temperature labels: the live value sits fixed in the top-right corner,
+  // big and in the same bright tone as the thermal gauges above — a
+  // curve-anchored label gets crossed by the line, while the scale's 15%
+  // head-room above the newest value guarantees the corner stays free at
+  // zero cost. The window's oldest value annotates the top-left, and the
+  // chamber target (while a print is armed) sits centered on the time
+  // label line. Same mono family throughout.
   const mono = css.getPropertyValue("--f-mono") || "ui-monospace, Menlo, monospace";
-  ctx.font = `11px ${mono}`;
-  ctx.fillStyle = colDim;
+  const colFg = (css.getPropertyValue("--fg") || "#e8e4dc").trim();
+  ctx.fillStyle = colFg;
+  ctx.font = `14px ${mono}`;
   const endV = state.chamber_temp ?? (heatingSession.samples.length
     ? heatingSession.samples[heatingSession.samples.length - 1][1]
     : null);
   if (endV != null) {
-    // slightly above the curve point; clamp away from the canvas edges
-    // and the time labels sitting in the bottom corners
     ctx.textAlign = "right";
-    ctx.fillText(`${fmtNum(endV, 1)}°`, w - 2, Math.max(11, Math.min(h - 12, y(endV) - 4)));
+    ctx.fillText(`${fmtNum(endV, 1)}°`, w - 2, 12);
   }
   if (heatingSession.samples.length) {
+    ctx.font = `11px ${mono}`;
+    ctx.fillStyle = colDim;
     ctx.textAlign = "left";
-    ctx.fillText(`${fmtNum(heatingSession.samples[0][1], 1)}°`, 2, 11);
+    ctx.fillText(`${fmtNum(heatingSession.samples[0][1], 1)}°`, 2, 12);
+  }
+  if (state.armed && state.target != null) {
+    ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.fillStyle = colDim;
+    ctx.textAlign = "center";
+    ctx.fillText(`Target ${fmtNum(state.target, 1)}°`, w / 2, h - 1);
   }
   ctx.textAlign = "left";
 
