@@ -988,6 +988,20 @@ function updateHeaterGraph(state) {
   const colDim = (css.getPropertyValue("--fg-dim") || "#8a857a").trim();
   const colDanger = (css.getPropertyValue("--danger") || "#eb5c4e").trim();
 
+  // Vertical gridlines every 10 minutes, thicker at the half hour. The
+  // window is anchored on its right edge (now), so every mark sits at a
+  // fixed x position in every render — 30 min is exactly the middle.
+  ctx.strokeStyle = colBand;
+  for (const min of [10, 20, 30, 40, 50]) {
+    const gx = x(t1 - min * 60 * 1000);
+    ctx.lineWidth = min === 30 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(gx, 0);
+    ctx.lineTo(gx, h);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1;
+
   // Hold band: dashed min/max lines the curve must stay inside.
   ctx.lineWidth = 1;
   ctx.strokeStyle = colBand;
