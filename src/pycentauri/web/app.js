@@ -1085,35 +1085,32 @@ function renderHeating(state) {
   const half = (s.chamber_hysteresis ?? 5) / 2;
   const liveTarget = state.target ?? (state.armed ? heatingTarget : null);
 
-  // One line — the heater itself: "Status: heating" (relay on, red) or
-  // "Status: standby", with the live chamber temperature and the band it
-  // holds. A tripped safety stop replaces the line with a fat red
-  // warning. Disabled: no line at all — the gear (in the header) is the
-  // only affordance.
+  // One line — the heater itself, worded by the actual relay state:
+  // "Active heating: enabled" (relay on, red) / "standby" (relay off) /
+  // "disabled" (master switch off — the line stays visible so the panel
+  // explains itself). While a print is armed the live chamber temperature
+  // and the hold band ride along. A tripped safety stop replaces the line
+  // with a fat red warning.
   const stateLine = $("heater-state");
-  if (!state.enabled) {
-    stateLine.hidden = true;
-    $("heater-detail").textContent = "";
+  stateLine.hidden = false;
+  if (state.safety_stop) {
+    const chamber = (state.chamber_temp != null) ? `${fmtNum(state.chamber_temp, 1)}°` : "—";
+    $("heater-detail").innerHTML =
+      `<span class="st-danger">⚠ SAFETY STOP</span> — ${state.safety_message || "heater problem"} · ${chamber}`;
   } else {
-    stateLine.hidden = false;
-    if (state.safety_stop) {
-      const chamber = (state.chamber_temp != null) ? `${fmtNum(state.chamber_temp, 1)}°` : "—";
-      $("heater-detail").innerHTML =
-        `<span class="st-danger">⚠ SAFETY STOP</span> — ${state.safety_message || "heater problem"} · ${chamber}`;
-    } else if (state.armed) {
-      const chamber = (state.chamber_temp != null) ? `${fmtNum(state.chamber_temp, 1)}°` : "—";
-      const bandArr = Array.isArray(state.band) ? state.band : null;
-      const fmtBand = (v) => Number(v).toLocaleString(LOCALE, { maximumFractionDigits: 2 });  // 40, 44,45 — exakt, ohne Nullen
-      const bandTxt = bandArr
-        ? ` · hold ${fmtBand(bandArr[0])}–${fmtBand(bandArr[1])}°`
-        : "";
-      const statusWord = on
-        ? '<span class="st-heating">heating</span>'
-        : '<span class="st-standby">standby</span>';
-      $("heater-detail").innerHTML = `Status: ${statusWord} · ${chamber}${bandTxt}`;
-    } else {
-      $("heater-detail").innerHTML = "Status: standby";
-    }
+    const word = !state.enabled
+      ? '<span class="st-standby">disabled</span>'
+      : (on
+        ? '<span class="st-heating">enabled</span>'
+        : '<span class="st-standby">standby</span>');
+    const extras = state.armed
+      ? ` · ${(state.chamber_temp != null) ? `${fmtNum(state.chamber_temp, 1)}°` : "—"}` +
+        (Array.isArray(state.band)
+          ? ` · hold ${Number(state.band[0]).toLocaleString(LOCALE, { maximumFractionDigits: 2 })}–` +
+            `${Number(state.band[1]).toLocaleString(LOCALE, { maximumFractionDigits: 2 })}°`
+          : "")
+      : "";
+    $("heater-detail").innerHTML = `Active heating: ${word}${extras}`;
   }
 
   updateHeaterGraph(state);
