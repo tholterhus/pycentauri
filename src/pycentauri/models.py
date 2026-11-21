@@ -83,6 +83,12 @@ def _parse_coord(raw: Any) -> tuple[float, float, float] | None:
         return None
 
 
+#: ``print_status`` codes meaning "no job occupies the printer" (IDLE,
+#: STOPPED, COMPLETED, ERROR) — the shared "is the printer busy" partition
+#: for the heating and lighting automations and the dashboard.
+INACTIVE_CODES = frozenset({0, 8, 9, 14})
+
+
 class Status(BaseModel):
     """Normalised view of the ``Status`` payload from an SDCP push.
 

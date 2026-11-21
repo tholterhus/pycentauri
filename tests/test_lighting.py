@@ -111,16 +111,38 @@ async def test_cool_down_turns_light_off() -> None:
     assert printer.calls == [False]
 
 
-async def test_status_is_irrelevant_full_cycle() -> None:
-    """Pause, printing, idle — only the temperature decides. A print that
-    pauses long enough to cool goes dark and lights up again on resume."""
+async def test_activation_turns_light_on_even_cold() -> None:
+    """Any printer activation lights up immediately — preheating starts
+    cold, and the user wants to see what the machine is doing."""
     printer = FakePrinter()
     auto = _automation(printer)
-    auto._on_status(_status(code=13, nozzle=200.0, light=True))  # printing, hot
-    auto._on_status(_status(code=6, nozzle=45.0, light=True))  # paused, cold → OFF
-    auto._on_status(_status(code=13, nozzle=80.0, light=False))  # resumed, warm → ON
+    auto._on_status(_status(code=0, nozzle=30.0, light=False))  # idle, dark
+    auto._on_status(_status(code=16, nozzle=30.0, light=False))  # preheating → ON
     await _drain(auto)
-    assert printer.calls == [False, True]
+    assert printer.calls == [True]
+
+
+async def test_pause_keeps_light_on_while_cooling() -> None:
+    """A paused printer stays lit even as the nozzle cools below the
+    threshold — the safety net darkens it only once it is idle again."""
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto._on_status(_status(code=13, nozzle=200.0, light=True))  # printing
+    auto._on_status(_status(code=6, nozzle=45.0, light=True))  # paused, cold → stays
+    await _drain(auto)
+    assert printer.calls == []
+
+
+async def test_print_end_darkens_after_cool_down() -> None:
+    """Print end keeps the light (nozzle still hot); once idle AND cooled,
+    the threshold net switches it off."""
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto._on_status(_status(code=13, nozzle=200.0, light=True))  # printing
+    auto._on_status(_status(code=9, nozzle=120.0, light=True))  # done, hot → stays
+    auto._on_status(_status(code=9, nozzle=45.0, light=True))  # done, cooled → OFF
+    await _drain(auto)
+    assert printer.calls == [False]
 
 
 async def test_boundary_exactly_50_counts_cold() -> None:

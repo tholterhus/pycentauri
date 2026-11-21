@@ -1,9 +1,12 @@
-"""Chamber-light automation driven purely by the nozzle temperature.
+"""Chamber-light automation driven by printer activity and nozzle heat.
 
 Replaces the Home-Assistant automation pair that used to do exactly this
-job. One input, one target state — the light is ON while the nozzle is
-above a threshold (default 50 °C) and OFF while it is below; the print
-status plays no role. Lives in the server daemon
+job. Two inputs, one target state — the light is ON while the printer
+shows any activity (preheating, printing, a pause, whatever occupies it)
+OR the nozzle is above a threshold (default 50 °C); it goes OFF only once
+the printer is idle again AND the nozzle has cooled below that threshold,
+so the temperature keeps acting as the safety net that eventually darkens
+an idle printer. Lives in the server daemon
 (``centauri server --light-automation``) and follows the same status
 stream as the spaghetti detection — ``printer.watch()`` with backoff-retry
 across reconnects.
@@ -18,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from pycentauri.models import Status
+from pycentauri.models import INACTIVE_CODES, Status
 
 log = logging.getLogger(__name__)
 
@@ -54,19 +57,20 @@ def _light_is_on(st: Status) -> bool | None:
 
 
 class LightAutomation:
-    """Drive the chamber light purely from the nozzle temperature.
+    """Drive the chamber light from printer activity and nozzle heat.
 
     Every status push reconciles the reported light state with the target
-    state (nozzle above ``cool_temp`` → ON, at/below → OFF):
+    state (printer active OR nozzle above ``cool_temp`` → ON, idle AND
+    cooled → OFF):
 
-    * a heat-up crossing the threshold turns the light on — a print
-      starting cold lights up as soon as the nozzle passes the threshold;
-    * a cool-down below the threshold turns it off — print end, long pause,
-      aborted file check, all the same;
-    * a light toggled by hand is put back in line with the temperature on
-      the next push ("nur die Nozzle-Temp entscheidet", beide Richtungen);
-    * attaching to an already hot or cold printer (service restart,
-      outage) normalizes the state immediately.
+    * any activation turns the light on — preheating, a print start, a
+      filament change, whatever occupies the printer;
+    * the temperature threshold stays as the safety net: it lights a
+      merely hot printer and darkens an idle one once it cools down;
+    * a light toggled by hand is put back in line with the target on the
+      next push (beide Richtungen);
+    * attaching to an already hot, cold, busy or idle printer (service
+      restart, outage) normalizes the state immediately.
 
     Reconciliation dedupes via ``_applied`` — the state we last observed or
     commanded — so each correction costs one command; a report that still
@@ -149,10 +153,15 @@ class LightAutomation:
             backoff = min(backoff * 2, 30.0)
 
     def _on_status(self, st: Status) -> None:
-        """Reconcile the reported light state with the temperature target."""
+        """Reconcile the reported light state with the target state: ON
+        while the printer shows any activity (preheating, printing, a
+        pause — anything that occupies it) OR the nozzle is above the
+        threshold; OFF only once it is idle again AND cooled below it."""
+        code = st.print_status
+        active = code is not None and code not in INACTIVE_CODES
         temp = st.temp_nozzle
-        if temp is None:
-            return  # no temperature reading → no decision basis
+        if temp is None and not active:
+            return  # neither a temperature reading nor activity → no basis
         loop = asyncio.get_running_loop()
         observed = _light_is_on(st)
         if observed is not None:
@@ -166,15 +175,17 @@ class LightAutomation:
                 self._applied = observed
                 self._pre_cmd = None
         # Exactly at the threshold counts as the cold side — the partition
-        # must have no gap, or a crossing could fire twice or never.
-        desired = temp > self.cfg.cool_temp
-        if desired != self._applied and self._fire(desired, temp):
+        # must have no gap, or a crossing could fire twice or never. An
+        # active printer always wants light; the threshold is the net that
+        # darkens it again once it goes idle and cools down.
+        desired = active or (temp is not None and temp > self.cfg.cool_temp)
+        if desired != self._applied and self._fire(desired, code, temp):
             self._pre_cmd = self._applied
             self._applied = desired
 
     # --- command path -------------------------------------------------------
 
-    def _fire(self, on: bool, temp: float) -> bool:
+    def _fire(self, on: bool, code: int | None, temp: float | None) -> bool:
         """Dispatch a light command; ``True`` when a task was created."""
         if not self._control_allowed:
             return False
@@ -182,9 +193,15 @@ class LightAutomation:
         if loop.time() < self._retry_not_before:
             return False  # backing off after failures — retry later
         self._cmd_at = loop.time()
-        reason = (
-            f"Düse {'warm' if on else 'kalt'}: {temp:.1f} °C (Schwelle {self.cfg.cool_temp:.0f} °C)"
-        )
+        if on and code is not None:
+            reason = f"Drucker aktiv (Status {code}) — Licht an"
+        elif on:
+            reason = f"Düse warm: {temp:.1f} °C (Schwelle {self.cfg.cool_temp:.0f} °C)"
+        else:
+            reason = (
+                f"Ruhend und abgekühlt: {temp:.1f} °C ≤ Schwelle "
+                f"{self.cfg.cool_temp:.0f} °C — Licht aus"
+            )
         task = asyncio.create_task(self._send(on, reason), name=f"pycentauri-light-{on}")
         self._cmds.add(task)
         task.add_done_callback(self._cmds.discard)

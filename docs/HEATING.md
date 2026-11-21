@@ -66,9 +66,11 @@ wrong.
   the band.
 - A safety watchdog switches the heater off and shows a fat red
   warning when a heating phase does not warm the chamber.
-- The graph in the panel shows the chamber temperature of the current
-  print with shaded heating phases - and it survives page reloads,
-  browser changes and service restarts (the data lives on the box).
+- The graph shows the chamber temperature as a **rolling last-hour
+  window** - prints, idle hours and preheats alike, with shaded heating
+  phases - and it survives page reloads and service restarts (the data
+  lives on the box). It costs nothing while no dashboard is open: the
+  server just appends one reading per status push to a small ring.
 - The settings persist on the box (`data/heating.json`), so every
   device shows the same configuration and graph.
 - **Manual on/off buttons** (in the heater settings, next to the plug

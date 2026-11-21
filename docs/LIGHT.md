@@ -13,16 +13,15 @@ centauri server --host printer.example --enable-control \
     --light-automation --light-cool-temp 50
 ```
 
-- **On** while the nozzle is above `--light-cool-temp` (default 50 °C),
-  **off** while it is below — the print status is irrelevant, only the
-  nozzle temperature decides ("nur die Nozzle-Temp entscheidet"). A print
-  starting cold lights up as soon as the nozzle passes the threshold on
-  its way up; at print end, during a long pause or after an aborted start
-  it goes out on the way down. A light toggled by hand is put back in
-  line with the temperature on the next status push, and attaching to an
-  already hot or cold printer (service restart) normalizes the state
-  immediately. Failed commands back off exponentially instead of retrying
-  every push.
+- **On** at any printer activation — preheating, a print start, a
+  filament change, whatever occupies it — and **on** while the nozzle is
+  above `--light-cool-temp` (default 50 °C). **Off** only once the
+  printer is idle again AND the nozzle has cooled below the threshold:
+  the temperature keeps acting as the safety net that eventually darkens
+  an idle printer. A light toggled by hand is put back in line with the
+  target on the next status push, and attaching to a busy, idle, hot or
+  cold printer (service restart) normalizes the state immediately.
+  Failed commands back off exponentially instead of retrying every push.
 
 Requires `--enable-control`; the daemon reports the feature in
 `/api/info` as `light_automation`.

@@ -37,35 +37,32 @@ import dataclasses
 import json
 import logging
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from pycentauri.models import Status
+from pycentauri.models import INACTIVE_CODES, Status
 
 log = logging.getLogger(__name__)
-
-#: ``print_status`` codes meaning "no job occupies the printer" — same set
-#: the lighting automation and the UI treat as not busy (IDLE, STOPPED,
-#: COMPLETED, ERROR).
-INACTIVE_CODES = frozenset({0, 8, 9, 14})
 
 #: Retry backoff after a failed Shelly call — the hysteresis re-fires on
 #: every status push (1/s) while the heater endpoint stays unreachable.
 RETRY_BACKOFF_START = 2.0
 RETRY_BACKOFF_MAX = 60.0
 
-#: Graph sample cadence: one chamber-temperature point every 5 s while a
-#: print runs (~27 h at the 20 000-point cap).
-SAMPLE_INTERVAL_S = 5.0
+#: The dashboard graph is a rolling window of chamber temperature —
+#: independent of prints. The server keeps samples for RING_RETENTION_S
+#: (90 min of margin for a 60 min window); a status push arrives about
+#: once a second, so the ring is capped accordingly.
+RING_RETENTION_S = 5400.0
+RING_MAXLEN = 7200
 
-#: How often the session file is rewritten while samples accumulate.
+#: How long a window the dashboard asks for.
+WINDOW_S = 3600.0
+
+#: How often the graph file is rewritten while samples accumulate.
 SESSION_WRITE_INTERVAL_S = 60.0
-
-#: A resumed open session whose newest sample is older than this is stale
-#: (its print ended while the service was down) and gets replaced when the
-#: next print opens its session.
-SESSION_STALE_S = 120.0
 
 #: Safety watchdog: a heating phase must raise the chamber temperature by
 #: at least SAFETY_RISE_C within SAFETY_WINDOW_S — otherwise the heater is
@@ -295,17 +292,15 @@ class HeatingAutomation:
         self._status_task: asyncio.Task[None] | None = None
         self._cmds: set[asyncio.Task[None]] = set()
         self._active = False  # a job occupies the printer
-        self._armed = False  # session: this print wants chamber heat
+        self._armed = False  # this print wants chamber heat
         self._armed_reason = ""
-        self._armed_at: float | None = None  # epoch s of the last session arm
         self._last_target: float | None = None  # effective target of the last push
         self._last_band: tuple[float, float] | None = None  # nominal (ON, OFF) range
-        self._session_open = False
-        self._session_samples: list[list[float]] = []  # [[epoch s, °C], ...]
+        # Rolling chamber-temperature ring: one reading per status push,
+        # prints or not — the graph window is always complete.
+        self._ring: deque[tuple[float, float]] = deque(maxlen=RING_MAXLEN)
         self._session_phases: list[list[float | None]] = []  # [[ON s, OFF s | None], ...]
-        self._last_sample_s = 0.0
         self._last_session_write = 0.0
-        self._sample_interval = SAMPLE_INTERVAL_S
         # Set when an armed session ends while the heater is not confirmed
         # off: the OFF command retries every push (backoff-paced) until the
         # call lands - a failed end-OFF must never leave the heater running.
@@ -401,8 +396,6 @@ class HeatingAutomation:
             "heater_on": self._applied,
             "armed": self._armed,
             "armed_reason": self._armed_reason,
-            "armed_since": self._armed_at,
-            "session_open": self._session_open,
             "target": self._last_target,
             "band": self._last_band,
             "chamber_temp": self._chamber,
@@ -425,12 +418,13 @@ class HeatingAutomation:
         }
 
     def session_data(self) -> dict[str, Any]:
-        """The armed session's graph data (GET /api/heating/history)."""
+        """The rolling graph window (GET /api/heating/history): the last
+        hour of chamber temperature plus the heating phases overlapping
+        it — prints and idle hours alike."""
+        cutoff = time.time() - WINDOW_S
         return {
-            "armed_since": self._armed_at,
-            "open": self._session_open,
-            "samples": self._session_samples,
-            "phases": self._session_phases,
+            "samples": [[t, v] for t, v in self._ring if t >= cutoff],
+            "phases": self._prune_phases(WINDOW_S),
         }
 
     def manual_on(self, on: bool) -> dict[str, Any]:
@@ -470,6 +464,11 @@ class HeatingAutomation:
     def _on_status(self, st: Status) -> None:
         now = time.time()
 
+        # The graph ring takes one chamber reading per push — prints or
+        # not, enabled or not, so the rolling hour is always complete.
+        if st.temp_chamber is not None:
+            self._ring.append((now, round(st.temp_chamber, 2)))
+
         # Master switch off: release control (heater off — but only if we
         # ever successfully commanded it; a heater we never touched stays
         # untouched). A manual off→on toggle clears a safety stop: the user
@@ -477,15 +476,13 @@ class HeatingAutomation:
         if not self.cfg.enabled:
             self._armed = False
             self._armed_reason = ""
-            self._armed_at = None
-            if self._session_open:
-                self._end_session()
             self._safety_stop = False
             self._safety_message = ""
             self._watch_started = None
             self._watch_baseline = None
             if self._applied is True:
                 self._fire(False, "chamber heating disabled")
+            self._persist_session()
             return
 
         code = st.print_status
@@ -497,16 +494,6 @@ class HeatingAutomation:
 
         was_armed = self._armed
         if active and not self._safety_stop:
-            # A graph session opens for EVERY print — the curve records the
-            # chamber even when the heater stays off (a flat PLA line is
-            # honest data). Heater control is unchanged and decided below.
-            if not self._session_open:
-                self._start_session()
-            elif not was_active:
-                # Print start with a session that was open before this push
-                # (resumed from the file at construction): replace it when
-                # it is stale, its print is long gone.
-                self._replace_stale_session()
             # Armed state is re-checked on every push: the slicer can set a
             # chamber target mid-print, which arms the session by itself.
             # No initial ON here — the hysteresis below handles the arming
@@ -521,7 +508,6 @@ class HeatingAutomation:
             self._armed = False
             self._armed_reason = ""
             self._last_band = None
-            self._end_session()
             if was_armed:
                 self._learn = None
                 self._watch_started = None
@@ -539,12 +525,6 @@ class HeatingAutomation:
                 self._release_pending = False
             else:
                 self._fire(False, "print finished")
-
-        # Graph samples: one every sample interval while the print runs.
-        # Gated on active (not session-open) so a stale resumed session
-        # that outlived its print does not collect idle points.
-        if active and self._session_open:
-            self._collect_sample(st, now)
 
         if self._armed and not self._safety_stop:
             chamber = st.temp_chamber
@@ -604,6 +584,9 @@ class HeatingAutomation:
         if self._safety_stop and self._applied is not False:
             self._fire(False, f"safety stop: {self._safety_message}")
 
+        # Persist the graph ring on a slow gate (~1 write per minute).
+        self._persist_session()
+
     def _effective_target(self, st: Status) -> float:
         """The chamber target for this push: the slicer's chamber target
         (``TempTargetBox``) when it is set above zero, else the configured
@@ -613,58 +596,60 @@ class HeatingAutomation:
             return min(st_target, self.cfg.target_max)
         return min(self.cfg.chamber_target, self.cfg.target_max)
 
-    # --- session (graph data) ------------------------------------------------
+    # --- graph ring (rolling window) -----------------------------------------
 
     def _load_session_file(self) -> None:
-        # Restore a persisted session. An OPEN one continues (service
-        # restart mid-print must keep the graph complete); a CLOSED one is
-        # restored as the frozen display graph, so the finished curve - and
-        # its temperature labels - survive service restarts until the next
-        # print replaces it. Stale entries (older than 12 h) drop either
-        # way; the next arm starts fresh.
+        # Restore the graph ring and heating phases from the persisted
+        # file — the rolling hour survives service restarts. Samples older
+        # than the retention window drop at restore; an "open" print
+        # session marker from a file older than any plausible print is
+        # treated as closed.
         try:
             raw = json.loads(self.cfg.session_path.read_text(encoding="utf-8"))
         except (FileNotFoundError, OSError, ValueError):
             return
         if not isinstance(raw, dict):
             return
-        armed_since = raw.get("armed_since")
-        if not isinstance(armed_since, (int, float)) or time.time() - armed_since > 12 * 3600:
-            return  # stale beyond any plausible print - start fresh
-        samples = [[float(t), float(v)] for t, v in raw.get("samples", [])]
-        is_open = bool(raw.get("open"))
-        if not samples and not is_open:
-            return  # an empty closed shell has nothing to show
-        self._session_samples = samples
+        cutoff = time.time() - RING_RETENTION_S
+        self._ring = deque(
+            ((float(t), float(v)) for t, v in raw.get("samples", []) if float(t) >= cutoff),
+            maxlen=RING_MAXLEN,
+        )
         self._session_phases = [
-            [float(a), float(b) if b is not None else None] for a, b in raw.get("phases", [])
+            [float(a), float(b) if b is not None else None]
+            for a, b in raw.get("phases", [])
+            if b is None or float(b) >= cutoff
         ]
-        self._armed_at = float(armed_since)
-        self._session_open = is_open
-        self._last_sample_s = time.time()
+        if not self._ring and not self._session_phases and not raw.get("open"):
+            return  # an empty shell has nothing to show
         self._last_session_write = time.time()
-        # A phase that was already open at resume spans a service downtime -
+        # A phase that was already open at restore spans a service downtime -
         # its overshoot reading is garbage and stays unlearned.
         if any(ph[1] is None for ph in self._session_phases):
             self._resume_open_phase = True
         log.info(
-            "heating: session resumed from %s (%d samples, %d phases)",
+            "heating: graph restored from %s (%d samples, %d phases)",
             self.cfg.session_path,
-            len(self._session_samples),
+            len(self._ring),
             len(self._session_phases),
         )
+
+    def _prune_phases(self, retention: float = RING_RETENTION_S) -> list[list[float | None]]:
+        """Heating phases overlapping the given retention window; the
+        in-memory list is trimmed along the way so it cannot grow
+        unbounded across long uptimes."""
+        cutoff = time.time() - retention
+        kept = [p for p in self._session_phases if p[1] is None or p[1] >= cutoff]
+        if len(kept) != len(self._session_phases):
+            self._session_phases = kept
+        return kept
 
     def _persist_session(self, force: bool = False) -> None:
         now = time.time()
         if not force and now - self._last_session_write < SESSION_WRITE_INTERVAL_S:
             return
         self._last_session_write = now
-        payload = {
-            "armed_since": self._armed_at,
-            "open": self._session_open,
-            "samples": self._session_samples,
-            "phases": self._session_phases,
-        }
+        payload = {"samples": list(self._ring), "phases": self._prune_phases()}
         try:
             path = self.cfg.session_path
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -673,49 +658,6 @@ class HeatingAutomation:
             tmp.replace(path)
         except OSError as err:
             log.error("heating: session file %s not writable: %r", path, err)
-
-    def _start_session(self) -> None:
-        # Open a graph session for a print - resuming the persisted one
-        # when it is still open AND current (service restart mid-print).
-        # A stale open session (its print ended while the service was
-        # down, nothing sampled since) is replaced by a fresh one so the
-        # new print does not append into a days-old graph domain.
-        self._load_session_file()
-        if self._session_open:
-            last = self._session_samples[-1][0] if self._session_samples else self._armed_at
-            if last is None or time.time() - last > SESSION_STALE_S:
-                self._session_open = False
-        if not self._session_open:
-            self._session_samples = []
-            self._session_phases = []
-            self._armed_at = time.time()  # session start = graph domain start
-            self._session_open = True
-            self._last_sample_s = 0.0
-        self._persist_session(force=True)
-
-    def _end_session(self) -> None:
-        self._session_open = False
-        self._persist_session(force=True)
-
-    def _replace_stale_session(self) -> None:
-        """Print-start push with an already-open (resumed) session: when
-        its newest sample is older than SESSION_STALE_S the session's own
-        print ended while the service was down — replace it so the new
-        print does not append into a stale graph domain."""
-        last = self._session_samples[-1][0] if self._session_samples else self._armed_at
-        if last is None or time.time() - last > SESSION_STALE_S:
-            self._start_session()
-
-    def _collect_sample(self, st: Status, now: float) -> None:
-        if st.temp_chamber is None:
-            return
-        if now - self._last_sample_s < self._sample_interval:
-            return
-        self._last_sample_s = now
-        self._session_samples.append([now, round(st.temp_chamber, 2)])
-        if len(self._session_samples) > 20000:
-            self._session_samples.pop(0)  # ~27.8 h at the 5 s cadence
-        self._persist_session()
 
     def _session_band(self, st: Status, target: float) -> tuple[float, float]:
         """The (ON point, OFF point) band for the current push.

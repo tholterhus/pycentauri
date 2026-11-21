@@ -15,8 +15,10 @@
 >    failure-ring evidence, two-stage classifier
 > 2. **Chamber heating automation** - a Shelly-controlled heater for the
 >    print room: slicer-follow target, learned overshoot, safety
->    watchdog, manual on/off buttons, live temperature graph
-> 3. **Chamber light automation** - on motion, while printing, or manual
+>    watchdog, manual on/off buttons, a rolling last-hour chamber graph
+> 3. **Chamber light automation** - on any printer activity (preheat,
+>    print, filament change) or a hot nozzle; off when idle and cool, or
+>    manual
 > 4. **System installer + hardening** - systemd unit, Coral USB setup
 >    for udev-less containers, PWA dashboard
 > 5. **Training pipeline** for the detection model (dataset assembly,

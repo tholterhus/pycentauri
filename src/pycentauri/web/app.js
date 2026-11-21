@@ -916,18 +916,17 @@ let heatingControlEnabled = false;
 let heatingDirty = false;
 let heatingOpen = false;
 let heatingEnabledNow = false;
-// The armed session's graph data (samples + heater phases) comes from the
-// server (/api/heating/history, persisted in data/heating-session.json) —
-// identical on every device. Refreshed every 30 s; the live point comes
-// from the fast /api/heating poll.
+// The rolling graph data (chamber samples + heater phases) comes from the
+// server (/api/heating/history — a ~1 Hz ring kept in the automation,
+// persisted every minute). Refreshed every 30 s; the live point rides the
+// SSE heating events. The canvas only draws while a dashboard is open.
 let heatingSession = null;
 
 function updateHeaterGraph(state) {
   const canvas = $("heater-graph");
   if (!canvas) return;
-  // The graph spans the armed session: left = print start (session arm),
-  // right = the newest sample. After the print ends it freezes and stays
-  // visible until the next armed session replaces it.
+  // Rolling last-hour window of chamber temperature — prints, idle hours
+  // and preheats alike. No session to freeze: the window always slides.
   canvas.hidden = !(state.enabled && heatingSession);
   if (!state.enabled || !heatingSession) return;
 
@@ -957,18 +956,13 @@ function updateHeaterGraph(state) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
-  // x domain: session start → now (rescaled on every render, so the curve
-  // compresses as the print grows instead of scrolling away).
-  const t0 = heatingSession.armed_since * 1000;  // backend sends epoch seconds
+  // x domain: the last hour, anchored on the newest sample (a slightly
+  // skewed client clock must never clip the fresh points off the edge).
   const lastSample = heatingSession.samples.length
     ? heatingSession.samples[heatingSession.samples.length - 1][0] * 1000
-    : t0;
-  // While the print runs the right edge is "now" (the domain stretches) —
-  // every print gets a session, armed or not (session_open). After the
-  // print ends both flags drop and the domain freezes at the last sample.
-  const t1 = (state.armed || state.session_open)
-    ? Math.max(Date.now(), lastSample)
-    : lastSample;
+    : Date.now();
+  const t1 = Math.max(Date.now(), lastSample);
+  const t0 = t1 - 3600 * 1000;
   const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
 
   let lo = Infinity;
@@ -1040,10 +1034,9 @@ function updateHeaterGraph(state) {
   ctx.stroke();
 
   // Temperature labels: the live value rides the right edge at its own
-  // height (heating or not), the session's initial value is a fixed
+  // height (heating or not), the window's oldest value is a fixed
   // top-left annotation — a curve-anchored label gets visually overrun on
   // steep starts (the ABS heater pulled the chamber up within minutes).
-  // Frozen graphs keep both until the next print replaces the session.
   // Same font family and dim color as the "Status:" headline.
   const mono = css.getPropertyValue("--f-mono") || "ui-monospace, Menlo, monospace";
   ctx.font = `11px ${mono}`;
@@ -1116,6 +1109,12 @@ function renderHeating(state) {
 
   updateHeaterGraph(state);
 
+  // The rolling graph carries the chamber temperature while it is live —
+  // the Thermal gauge above it would duplicate the same number. Without
+  // the heating feature (or data) the gauge stays visible as before.
+  const chamberGauge = document.querySelector('.gauge[data-id="chamber"]');
+  if (chamberGauge) chamberGauge.hidden = !!(state.enabled && heatingSession);
+
   // The header dot mirrors the heater state: red while heating, gray
   // while standby (blink pattern from the detect LED). Hidden when the
   // mechanism is not regulating a print.
@@ -1171,9 +1170,9 @@ async function loadHeatingHistory() {
     if (r.status === 404) { heatingSession = null; return; }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
-    // A session without a start time is an empty shell (fresh box, no
-    // print yet) — treat it as "no session" or the graph draws NaN axes.
-    heatingSession = d.armed_since ? d : null;
+    // A window without samples is an empty shell (fresh box) — treat it
+    // as "no data" or the graph draws NaN axes.
+    heatingSession = (d.samples && d.samples.length) ? d : null;
   } catch (_) {
     // transient hiccup — keep the last known session
   }

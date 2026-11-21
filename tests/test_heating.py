@@ -254,7 +254,6 @@ async def test_print_end_turns_heater_off(tmp_path: Path) -> None:
     await _push(auto, _status(code=9, chamber=25.0, chamber_target=0.0))  # completed → OFF
     assert rec.calls == [URL_ON, URL_OFF]
     assert not auto._armed
-    assert auto._armed_at is not None  # the closed session stays addressable
 
 
 async def test_end_without_session_never_touches_heater(tmp_path: Path) -> None:
@@ -466,14 +465,13 @@ async def test_downtime_phase_is_not_learned(tmp_path: Path) -> None:
     the heater unattended) has a garbage overshoot - it must not be banked."""
     rec = Recorder()
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
-    auto._sample_interval = 0.0
     await _push(
         auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0)
     )  # arm + ON
     # simulate: the service went down, the chamber climbed to 52.5 during
     # the gap, then the service resumed (session file already open).
     data = auto.session_data()
-    auto._session_samples.append([data["phases"][0][0] + 330, 52.5])
+    auto._ring.append((data["phases"][0][0] + 330, 52.5))
     auto._resume_open_phase = True  # what the restart-resume would set
     await _push(auto, _status(code=13, bed_target=100.0, chamber=52.5, chamber_target=45.0))  # OFF
     await _push(
@@ -522,60 +520,52 @@ async def test_disable_releases_a_running_heater(tmp_path: Path) -> None:
 # --- session (graph data) -------------------------------------------------------
 
 
-async def test_session_samples_and_phases_recorded(tmp_path: Path) -> None:
+async def test_graph_ring_records_and_persists(tmp_path: Path) -> None:
+    """The ring takes one chamber reading per push — prints or not — and
+    heating phases are recorded and closed when the OFF lands."""
     rec = Recorder()
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
-    auto._sample_interval = 0.0  # sample every push
     await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))  # ON
     await _push(auto, _status(code=13, bed_target=100.0, chamber=31.0, chamber_target=45.0))
     await _push(auto, _status(code=9, chamber=31.5, chamber_target=45.0))  # end → OFF closes
     data = auto.session_data()
-    assert len(data["samples"]) >= 2
+    assert len(data["samples"]) >= 3
     assert data["phases"] and data["phases"][0][1] is not None  # phase closed
-    assert data["open"] is False  # session ended
     assert (tmp_path / "heating-session.json").is_file()
 
 
-async def test_session_resumes_after_service_restart(tmp_path: Path) -> None:
-    """A service restart mid-print must keep the graph: the persisted
-    session file is still open, so the fresh automation resumes it (same
-    armed_since, samples preserved) instead of starting a new graph."""
+async def test_graph_survives_service_restart_mid_print(tmp_path: Path) -> None:
+    """A service restart mid-print must keep the graph: the restored ring
+    carries the same samples, and the armed print regulates as before."""
     rec1 = Recorder()
     cfg = _config(tmp_path)
     auto1 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=rec1)
-    auto1._sample_interval = 0.0
     await _push(auto1, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))  # ON
     first = auto1.session_data()
-    assert first["open"] is True
     assert len(first["samples"]) >= 1
 
     rec2 = Recorder()
     auto2 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=rec2)
     await _push(auto2, _status(code=13, bed_target=100.0, chamber=31.0, chamber_target=45.0))
     data = auto2.session_data()
-    assert data["open"] is True
-    assert data["samples"][0] == first["samples"][0]  # resumed, not reset
+    assert data["samples"][0] == first["samples"][0]  # restored, not reset
     assert rec2.calls == [URL_ON]
 
 
-async def test_new_print_starts_a_fresh_session(tmp_path: Path) -> None:
-    """A cleanly ended session (open=False) is dropped on the next arm —
-    a fresh print starts a fresh graph."""
+async def test_ring_is_continuous_across_prints(tmp_path: Path) -> None:
+    """The rolling ring has no per-print reset: a print ending and the
+    next starting just keep appending to the same temperature history."""
     rec = Recorder()
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
-    auto._sample_interval = 0.0
     await _push(auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))
-    await _push(auto, _status(code=9, chamber=30.0, chamber_target=45.0))  # ends cleanly
-    first = auto.session_data()
-    assert first["open"] is False
-    n_samples = len(first["samples"])
+    await _push(auto, _status(code=9, chamber=30.5, chamber_target=45.0))  # ends
+    n_after_first = len(auto.session_data()["samples"])
 
     await _push(
         auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0)
-    )  # new print
+    )  # next print
     data = auto.session_data()
-    assert data["open"] is True
-    assert len(data["samples"]) < n_samples + 5  # fresh, not appended
+    assert len(data["samples"]) == n_after_first + 1  # continuous, not reset
 
 
 # --- target safety cap ----------------------------------------------------------
@@ -593,8 +583,6 @@ async def test_target_cap_clamps_slicer_target(tmp_path: Path) -> None:
     await _push(
         auto, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=55.0)
     )  # arm + ON
-    data = auto.session_data()
-    assert data["open"] is True
     assert auto._last_target == 50.0  # clamped
     assert rec.calls == [URL_ON]
 
@@ -801,71 +789,46 @@ async def test_manual_commands_locked_after_safety_stop(tmp_path: Path) -> None:
     assert rec.calls == [URL_ON, URL_OFF]
 
 
-# --- every print gets a graph session (heater or not) -----------------------------
+# --- the rolling graph ring (prints or not) ---------------------------------------
 
 
-async def test_session_records_for_every_print_without_heating(tmp_path: Path) -> None:
-    """Every print gets a graph session, heater or not — a flat PLA line
+async def test_ring_records_without_heating(tmp_path: Path) -> None:
+    """The ring records every print regardless of arming — a flat PLA line
     is honest data. No heater command may fire for this print."""
     rec = Recorder()
     auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
-    auto._sample_interval = 0.0  # sample every push
     await _push(auto, _status(code=13, bed_target=80.0, chamber=25.0, filename="hook.gcode"))
     assert rec.calls == []  # nothing armed, heater untouched
-    data = auto.session_data()
-    assert data["open"] is True
-    assert len(data["samples"]) >= 1
+    assert len(auto.session_data()["samples"]) >= 1
     await _push(auto, _status(code=9, chamber=25.5))  # print ends
     assert rec.calls == []
-    assert auto.session_data()["open"] is False
 
 
-async def test_stale_open_session_is_replaced_at_next_print(tmp_path: Path) -> None:
-    """A session whose print ended while the service was down (open file,
-    nothing sampled for a long time) must not swallow the next print's
-    graph — it is replaced by a fresh session at the print-start push."""
+async def test_graph_window_serves_only_the_last_hour(tmp_path: Path) -> None:
+    """The served window holds one hour: older samples stay in the ring
+    for the retention margin but never reach the dashboard."""
+    rec = Recorder()
+    auto = HeatingAutomation(_config(tmp_path), get_printer=lambda: FakePrinter([]), request_fn=rec)
+    await _push(auto, _status(code=0, chamber=25.0))
+    await _push(auto, _status(code=0, chamber=26.0))
+    # age the first sample beyond the window
+    t, v = auto._ring[0]
+    auto._ring[0] = (t - 4000, v)
+    data = auto.session_data()
+    assert [v for _, v in data["samples"]] == [26.0]
+
+
+async def test_graph_survives_restart_after_print(tmp_path: Path) -> None:
+    """The finished print's graph survives a service restart: the restored
+    ring serves the same samples and phases to the next dashboard."""
     cfg = _config(tmp_path)
     auto1 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
-    auto1._sample_interval = 0.0
     await _push(auto1, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))
-    old_start = auto1.session_data()["armed_since"]
-    # age the session: pretend its print died an hour ago
-    auto1._session_samples[-1][0] -= 3600
-    auto1._persist_session(force=True)
-
-    auto2 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
-    auto2._sample_interval = 0.0  # sample every push
-    await _push(auto2, _status(code=13, bed_target=80.0, chamber=25.0, filename="hook.gcode"))
-    data = auto2.session_data()
-    assert data["open"] is True
-    assert data["armed_since"] != old_start  # replaced by a fresh session, not resumed
-    assert len(data["samples"]) == 1  # only the new print's sample
-    assert data["samples"][0][0] > old_start  # the aged stale sample is gone
-
-
-async def test_closed_session_survives_service_restart(tmp_path: Path) -> None:
-    """The frozen graph of a finished print must survive a service
-    restart: the closed session file is restored (samples, phases, start
-    time) and stays visible until the next print replaces it."""
-    cfg = _config(tmp_path)
-    auto1 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
-    auto1._sample_interval = 0.0
-    await _push(auto1, _status(code=13, bed_target=100.0, chamber=30.0, chamber_target=45.0))
-    await _push(auto1, _status(code=9, chamber=31.0, chamber_target=45.0))  # end → closed
+    await _push(auto1, _status(code=9, chamber=31.0, chamber_target=45.0))  # end
     first = auto1.session_data()
-    assert first["open"] is False
     assert len(first["samples"]) >= 1
 
     auto2 = HeatingAutomation(cfg, get_printer=lambda: FakePrinter([]), request_fn=Recorder())
     data = auto2.session_data()
-    assert data["open"] is False
-    assert data["samples"] == first["samples"]  # frozen graph restored
-    assert data["armed_since"] == first["armed_since"]
-
-    # the next print replaces it with a fresh session
-    auto2._sample_interval = 0.0
-    await _push(auto2, _status(code=13, bed_target=80.0, chamber=25.0, filename="hook.gcode"))
-    fresh = auto2.session_data()
-    assert fresh["open"] is True
-    assert fresh["armed_since"] != first["armed_since"]
-    assert len(fresh["samples"]) == 1
+    assert data["samples"] == first["samples"]  # restored, not reset
+    assert data["phases"] == first["phases"]
