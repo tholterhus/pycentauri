@@ -922,28 +922,18 @@ let heatingEnabledNow = false;
 // SSE heating events. The canvas only draws while a dashboard is open.
 let heatingSession = null;
 
-function updateHeaterGraph(state) {
-  const canvas = $("heater-graph");
-  if (!canvas) return;
-  // Rolling last-hour window of chamber temperature — prints, idle hours
-  // and preheats alike. No session to freeze: the window always slides.
-  canvas.hidden = !(state.enabled && heatingSession);
-  if (!state.enabled || !heatingSession) return;
+// Generic rolling-window temperature chart: one hour of samples from a
+// server-side ring, heater phases, optional hold band and target rule,
+// fixed corner labels. The canvas only draws while a dashboard is open —
+// the server appends readings at ~1 Hz regardless. Reusable for any
+// series the backend keeps a ring of (chamber today; nozzle/bed when
+// their rings land — build the ring, call this).
+const GRAPH_WINDOW_MS = 3600 * 1000;
 
-  const s = state.settings || {};
-  // Band lines exist only while the print is actually armed (ABS/ASA with
-  // a target): the nominal range from the server (state.band, slicer
-  // min/target included), falling back to target ± hysteresis/2. A plain
-  // print without chamber heating draws no phantom range — and without
-  // bands in the min/max sweep the y-scale hugs the curve instead of
-  // stretching up to the configured target for no visible reason.
-  let bands = [];
-  if (state.armed) {
-    const half = (s.chamber_hysteresis ?? 5) / 2;
-    const target = state.target ?? s.chamber_target ?? null;
-    bands = Array.isArray(state.band) ? state.band
-      : (target != null ? [target - half, target + half] : []);
-  }
+function drawRollingGraph(canvas, spec) {
+  if (!canvas) return;
+  canvas.hidden = !!spec.hidden;
+  if (spec.hidden) return;
 
   const w = canvas.clientWidth || 220;
   const h = canvas.clientHeight || 48;
@@ -958,24 +948,28 @@ function updateHeaterGraph(state) {
 
   // x domain: the last hour, anchored on the newest sample (a slightly
   // skewed client clock must never clip the fresh points off the edge).
-  const lastSample = heatingSession.samples.length
-    ? heatingSession.samples[heatingSession.samples.length - 1][0] * 1000
+  const samples = spec.samples || [];
+  const phases = spec.phases || [];
+  const lastSample = samples.length
+    ? samples[samples.length - 1][0] * 1000
     : Date.now();
   const t1 = Math.max(Date.now(), lastSample);
-  const t0 = t1 - 3600 * 1000;
+  const t0 = t1 - GRAPH_WINDOW_MS;
   const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
 
+  const bands = spec.bands || [];
   let lo = Infinity;
   let hi = -Infinity;
-  for (const [, v] of heatingSession.samples) {
+  for (const [, v] of samples) {
     lo = Math.min(lo, v);
     hi = Math.max(hi, v);
   }
-  if (state.chamber_temp != null) {
-    lo = Math.min(lo, +state.chamber_temp);
-    hi = Math.max(hi, +state.chamber_temp);
+  if (spec.live != null) {
+    lo = Math.min(lo, +spec.live);
+    hi = Math.max(hi, +spec.live);
   }
   for (const b of bands) { lo = Math.min(lo, b); hi = Math.max(hi, b); }
+  if (spec.target != null) { lo = Math.min(lo, spec.target); hi = Math.max(hi, spec.target); }
   if (lo === Infinity || hi === -Infinity) { lo = 0; hi = 1; }
   const pad = Math.max(1, (hi - lo) * 0.15);
   lo -= pad;
@@ -983,10 +977,12 @@ function updateHeaterGraph(state) {
   const y = (v) => h - 3 - ((v - lo) / (hi - lo)) * (h - 6);
 
   const css = getComputedStyle(document.documentElement);
-  const colLine = (css.getPropertyValue("--amber") || "#ffb347").trim();
-  const colBand = (css.getPropertyValue("--fg-faint") || "#504a42").trim();
-  const colDim = (css.getPropertyValue("--fg-dim") || "#8a857a").trim();
-  const colDanger = (css.getPropertyValue("--danger") || "#eb5c4e").trim();
+  const read = (name, fb) => (css.getPropertyValue(name) || fb).trim();
+  const colLine = spec.lineColorVar ? read(spec.lineColorVar, "#ffb347") : read("--amber", "#ffb347");
+  const colBand = read("--fg-faint", "#504a42");
+  const colDim = read("--fg-dim", "#8a857a");
+  const colOk = read("--ok", "#8ed19a");
+  const colFg = read("--fg", "#e8e4dc");
 
   // Vertical gridlines every 10 minutes, thicker at the half hour. The
   // window is anchored on its right edge (now), so every mark sits at a
@@ -1002,6 +998,18 @@ function updateHeaterGraph(state) {
   }
   ctx.lineWidth = 1;
 
+  // Heating phases: a very light transparent red over each ON span (from
+  // the ON event to the OFF event, or up to the newest sample while
+  // still heating).
+  ctx.fillStyle = "rgba(235, 92, 78, 0.18)";
+  for (const [a, b] of phases) {
+    const ta = a * 1000;
+    const tb = (b != null ? b : lastSample / 1000) * 1000;
+    const xa = Math.max(0, x(ta));
+    const xb = Math.min(w, x(Math.max(tb, ta)));
+    if (xb > xa) ctx.fillRect(xa, 0, xb - xa, h);
+  }
+
   // Hold band: dashed min/max lines the curve must stay inside.
   ctx.lineWidth = 1;
   ctx.strokeStyle = colBand;
@@ -1015,23 +1023,23 @@ function updateHeaterGraph(state) {
   }
   ctx.setLineDash([]);
 
-  // Heating phases: a very light transparent red over each ON span (from
-  // the ON event to the OFF event, or up to the last sample while still
-  // heating).
-  ctx.fillStyle = "rgba(235, 92, 78, 0.18)";
-  for (const [a, b] of heatingSession.phases) {
-    const ta = a * 1000;
-    const tb = (b != null ? b : lastSample / 1000) * 1000;
-    const xa = Math.max(0, x(ta));
-    const xb = Math.min(w, x(Math.max(tb, ta)));
-    if (xb > xa) ctx.fillRect(xa, 0, xb - xa, h);
+  // Target rule: a fine pastel-green line at the regulated target (the
+  // hold band brackets it); nothing without a target.
+  if (spec.target != null && spec.target > 0) {
+    ctx.strokeStyle = colOk;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(0, y(spec.target));
+    ctx.lineTo(w, y(spec.target));
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   ctx.strokeStyle = colLine;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   let started = false;
-  for (const [t, v] of heatingSession.samples) {
+  for (const [t, v] of samples) {
     const px = x(t * 1000);
     const py = y(v);
     if (!started) { ctx.moveTo(px, py); started = true; }
@@ -1039,56 +1047,79 @@ function updateHeaterGraph(state) {
   }
   // Live tail: the newest server sample can be up to 30 s old — extend the
   // curve with the current temperature from the fast poll.
-  if (state.chamber_temp != null) {
+  if (spec.live != null) {
     const px = x(Date.now());
-    const py = y(+state.chamber_temp);
+    const py = y(+spec.live);
     if (!started) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   }
   ctx.stroke();
 
-  // Temperature labels: the live value sits fixed in the top-right corner,
-  // big and in the same bright tone as the thermal gauges above — a
-  // curve-anchored label gets crossed by the line, while the scale's 15%
-  // head-room above the newest value guarantees the corner stays free at
-  // zero cost. The window's oldest value annotates the top-left, and the
-  // chamber target (while a print is armed) sits centered on the time
-  // label line. Same mono family throughout.
-  const mono = css.getPropertyValue("--f-mono") || "ui-monospace, Menlo, monospace";
-  const colFg = (css.getPropertyValue("--fg") || "#e8e4dc").trim();
-  ctx.fillStyle = colFg;
-  ctx.font = `14px ${mono}`;
-  const endV = state.chamber_temp ?? (heatingSession.samples.length
-    ? heatingSession.samples[heatingSession.samples.length - 1][1]
-    : null);
+  // Labels: the live value sits fixed in the top-right corner, big and in
+  // the same bright tone as the thermal gauges above — a curve-anchored
+  // label gets crossed by the line, while the scale's 15% head-room above
+  // the newest value guarantees the corner stays free at zero cost. The
+  // window's oldest value annotates the top-left; the caller's target
+  // label sits centered on the time label line. Same mono family.
+  const mono = read("--f-mono", "ui-monospace, Menlo, monospace");
+  const endV = spec.live ?? (samples.length ? samples[samples.length - 1][1] : null);
   if (endV != null) {
+    ctx.fillStyle = colFg;
+    ctx.font = `14px ${mono}`;
     ctx.textAlign = "right";
     ctx.fillText(`${fmtNum(endV, 1)}°`, w - 2, 12);
   }
-  if (heatingSession.samples.length) {
+  if (samples.length) {
+    ctx.fillStyle = colDim;
     ctx.font = `11px ${mono}`;
-    ctx.fillStyle = colDim;
     ctx.textAlign = "left";
-    ctx.fillText(`${fmtNum(heatingSession.samples[0][1], 1)}°`, 2, 12);
+    ctx.fillText(`${fmtNum(samples[0][1], 1)}°`, 2, 12);
   }
-  if (state.armed && state.target != null) {
-    ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
+  if (spec.targetLabel) {
     ctx.fillStyle = colDim;
+    ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
     ctx.textAlign = "center";
-    ctx.fillText(`Target ${fmtNum(state.target, 1)}°`, w / 2, h - 1);
+    ctx.fillText(spec.targetLabel, w / 2, h - 1);
   }
-  ctx.textAlign = "left";
-
-  // Minimal horizontal scale: session start (left) vs now (right). Same
-  // readable dim color as the temperature labels, only smaller.
-  const fmt = fmtTime;
+  // Minimal horizontal scale: window start (left) vs now (right), same
+  // readable dim color as the labels, only smaller.
   ctx.fillStyle = colDim;
   ctx.font = "9px ui-monospace, SFMono-Regular, Menlo, monospace";
   ctx.textAlign = "left";
-  ctx.fillText(fmt(t0), 2, h - 1);
+  ctx.fillText(fmtTime(t0), 2, h - 1);
   ctx.textAlign = "right";
-  ctx.fillText(fmt(t1), w - 2, h - 1);
+  ctx.fillText(fmtTime(t1), w - 2, h - 1);
   ctx.textAlign = "left";
+}
+
+function updateHeaterGraph(state) {
+  const canvas = $("heater-graph");
+  if (!canvas) return;
+  // Band lines exist only while the print is actually armed (ABS/ASA with
+  // a target): the nominal range from the server (state.band, slicer
+  // min/target included), falling back to target ± hysteresis/2. A plain
+  // print without chamber heating draws no phantom range — and without
+  // bands in the min/max sweep the y-scale hugs the curve instead of
+  // stretching up to the configured target for no visible reason.
+  const s = state.settings || {};
+  let bands = [];
+  if (state.armed) {
+    const half = (s.chamber_hysteresis ?? 5) / 2;
+    const target = state.target ?? s.chamber_target ?? null;
+    bands = Array.isArray(state.band) ? state.band
+      : (target != null ? [target - half, target + half] : []);
+  }
+  drawRollingGraph(canvas, {
+    hidden: !(state.enabled && heatingSession),
+    samples: heatingSession ? heatingSession.samples : [],
+    phases: heatingSession ? heatingSession.phases : [],
+    bands,
+    live: state.chamber_temp,
+    target: (state.armed && state.target != null) ? state.target : null,
+    targetLabel: (state.armed && state.target != null)
+      ? `Target ${fmtNum(state.target, 1)}°` : "",
+    lineColorVar: "--amber",
+  });
 }
 
 function renderHeating(state) {
