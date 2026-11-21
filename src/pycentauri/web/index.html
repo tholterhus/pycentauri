@@ -241,12 +241,12 @@
       <div class="panel heating-panel" id="heating-panel" hidden>
         <header class="panel-header">
           <span class="panel-tag">Chamber<span class="heater-dot" id="heater-dot" hidden></span></span>
-          <button class="btn gear-btn" id="heating-settings-toggle" type="button" title="Chamber heating settings">⚙</button>
         </header>
+        <canvas class="heater-graph" id="heater-graph" height="48" hidden></canvas>
         <div class="heater-state" id="heater-state" hidden>
           <span class="heater-detail" id="heater-detail">-</span>
+          <button class="btn gear-btn" id="heating-settings-toggle" type="button" title="Chamber heating settings">⚙</button>
         </div>
-        <canvas class="heater-graph" id="heater-graph" height="48" hidden></canvas>
         <div class="heating-fields" id="heating-fields" hidden>
           <div class="adj-modes light-row" id="heating-enabled-row">
             <button class="btn adj-light" id="heating-enabled-on" type="button" disabled>On</button>

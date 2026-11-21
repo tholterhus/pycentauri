@@ -1053,8 +1053,9 @@ body {
 .heater-state {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 10px;
-  margin: 6px 0 2px;
+  margin: 8px 0 2px;  /* small gap below the graph, box looks like the others */
 }
 
 .heater-indicator {

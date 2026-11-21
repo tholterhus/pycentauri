@@ -1070,7 +1070,9 @@ function drawRollingGraph(canvas, spec) {
       ctx.lineTo(w, gy);
       ctx.stroke();
       const labelY = gy - 2;
-      if (Math.abs(labelY - lastLabelY) >= 10 && labelY < h - 12) {
+      // the top-left corner belongs to the window's start annotation —
+      // scale labels stay below it
+      if (labelY >= 26 && Math.abs(labelY - lastLabelY) >= 10 && labelY < h - 12) {
         ctx.fillStyle = colDim;
         ctx.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
         ctx.textAlign = "left";
