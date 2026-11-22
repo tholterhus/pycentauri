@@ -1008,17 +1008,23 @@ function drawRollingGraph(canvas, spec) {
   const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
 
   const bands = spec.bands || [];
-  // Display smoothing: a light EMA over the drawn series kills the
+  // Display smoothing: a strong EMA over the drawn series kills the
   // sensor's micro-jitter (±0.1° ticks at ~1 Hz) that makes the line look
-  // ragged and thick. Rendering only — the stored data stays raw, and the
-  // corner labels keep showing the real readings. The live tail is part
-  // of the same series, so the smoothing continues seamlessly into "now".
-  const alpha = 0.35;
+  // ragged and thick, then one point per pixel column survives (newest
+  // wins) so dense stretches cannot pile up either. Rendering only — the
+  // stored data stays raw, and the corner labels keep showing the real
+  // readings. The live tail is part of the same series, so the smoothing
+  // continues seamlessly into "now".
+  const alpha = 0.15;
   const pts = [];
   let ema = null;
+  let lastPx = -1;
   for (const [t, v] of samples) {
     ema = ema == null ? +v : ema + alpha * (+v - ema);
-    pts.push([t * 1000, ema]);
+    const px = Math.round(x(t * 1000));
+    if (px !== lastPx) pts.push([t * 1000, ema]);
+    else pts[pts.length - 1] = [t * 1000, ema];
+    lastPx = px;
   }
   if (spec.live != null) {
     ema = ema == null ? +spec.live : ema + alpha * (+spec.live - ema);
