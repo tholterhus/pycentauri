@@ -102,6 +102,10 @@ class LightAutomation:
         self._cmd_at = 0.0  # monotonic ts of the last dispatched command
         self._retry_not_before = 0.0
         self._retry_backoff = RETRY_BACKOFF_START
+        #: A hand toggle from the dashboard pins the light: ON survives the
+        #: cool-down net until the user turns it off again. OFF hands
+        #: control straight back to the automation.
+        self._manual = False
 
     # --- lifecycle ----------------------------------------------------------
 
@@ -156,7 +160,8 @@ class LightAutomation:
         """Reconcile the reported light state with the target state: ON
         while the printer shows any activity (preheating, printing, a
         pause — anything that occupies it) OR the nozzle is above the
-        threshold; OFF only once it is idle again AND cooled below it."""
+        threshold OR the user pinned it on by hand; OFF only once it is
+        idle again AND cooled below it AND unpinned."""
         code = st.print_status
         active = code is not None and code not in INACTIVE_CODES
         temp = st.temp_nozzle
@@ -172,16 +177,40 @@ class LightAutomation:
             ):
                 pass  # the report predates our command's effect — lag, ignore
             else:
+                first_seed = self._applied is None
                 self._applied = observed
                 self._pre_cmd = None
+                if first_seed and observed and not active and temp is not None:
+                    if temp <= self.cfg.cool_temp:
+                        # Lit while idle and cold — the automation would
+                        # never have done that, so it must be a hand
+                        # toggle: the pin keeps it through this downtime.
+                        self._manual = True
         # Exactly at the threshold counts as the cold side — the partition
         # must have no gap, or a crossing could fire twice or never. An
         # active printer always wants light; the threshold is the net that
-        # darkens it again once it goes idle and cools down.
-        desired = active or (temp is not None and temp > self.cfg.cool_temp)
+        # darkens it again once it goes idle and cools down — unless the
+        # user pinned it on by hand (they turn it off themselves).
+        desired = active or self._manual or (temp is not None and temp > self.cfg.cool_temp)
         if desired != self._applied and self._fire(desired, code, temp):
             self._pre_cmd = self._applied
             self._applied = desired
+
+    def note_manual(self, on: bool) -> None:
+        """Record a hand toggle from the dashboard: ON pins the light (the
+        cool-down net does not darken it again until the user turns it off
+        by hand), OFF hands control straight back to the automation."""
+        self._manual = bool(on)
+        if self._applied is not on:
+            # Mirror the command bookkeeping of _fire so a lagging report
+            # inside LAG_GRACE_S is not mistaken for a deviation.
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            self._pre_cmd = self._applied
+            self._cmd_at = loop.time()
+            self._applied = bool(on)
 
     # --- command path -------------------------------------------------------
 

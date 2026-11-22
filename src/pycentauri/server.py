@@ -1194,13 +1194,16 @@ def create_app(
 
     @app.post("/light", tags=["control"])
     async def set_light(
-        body: LightBody, manager: PrinterManager = Depends(require_control)
+        body: LightBody, request: Request, manager: PrinterManager = Depends(require_control)
     ) -> dict[str, Any]:
         """Turn the chamber light on/off."""
         try:
             result = await manager.printer.set_light(body.on)
         except PrinterError as err:
             raise HTTPException(status_code=502, detail=str(err)) from err
+        light_auto: LightAutomation | None = getattr(request.app.state, "light", None)
+        if light_auto is not None:
+            light_auto.note_manual(body.on)
         return {"ok": True, "response": result.inner}
 
     @app.post("/files/upload", tags=["control"])

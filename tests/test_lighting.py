@@ -170,13 +170,43 @@ async def test_manual_off_while_hot_is_corrected() -> None:
     assert printer.calls == [True]
 
 
-async def test_manual_on_while_cold_is_corrected() -> None:
+async def test_manual_on_pins_while_cold() -> None:
+    """A hand toggle from the dashboard pins the light: the cool-down net
+    does not darken it again while it is only idle and cold."""
     printer = FakePrinter()
     auto = _automation(printer)
-    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # user on, cold → OFF
-    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # lag: deduped
+    auto._on_status(_status(code=0, nozzle=30.0, light=False))  # idle, cold, dark
+    auto.note_manual(True)  # user turns the light on by hand
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # lit: nothing
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # still cold: pin holds
     await _drain(auto)
-    assert printer.calls == [False]
+    assert printer.calls == []
+
+
+async def test_manual_off_hands_back_to_the_net() -> None:
+    """A manual OFF unpins immediately: idle and cold stays off, and an
+    active printer re-lights per the activation rule."""
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto.note_manual(True)
+    auto.note_manual(False)
+    auto._on_status(_status(code=0, nozzle=30.0, light=False))  # idle, cold: stays off
+    auto._on_status(_status(code=16, nozzle=30.0, light=False))  # activation → ON
+    await _drain(auto)
+    assert printer.calls == [True]
+
+
+async def test_attach_lit_idle_cold_pins_the_light() -> None:
+    """A light that is already lit while the printer is idle and cold must
+    be a hand toggle (the automation would never have lit it) — a service
+    restart keeps it instead of darkening it."""
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # attach lit+cold
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # pin holds
+    await _drain(auto)
+    assert printer.calls == []
+    assert auto._manual is True
 
 
 # --- attach normalizes the state ---------------------------------------------
@@ -191,27 +221,32 @@ async def test_attach_hot_dark_seeds_on() -> None:
     assert printer.calls == [True]
 
 
-async def test_attach_cold_lit_seeds_off() -> None:
-    """Service restart during cool-down (cold, lit) → light off immediately."""
+async def test_attach_cold_lit_pins_instead_of_correcting() -> None:
+    """A light already lit while idle and cold (e.g. a hand toggle before
+    the service restart) is pinned, not darkened — the old restart-kills-
+    the-light behavior is gone."""
     printer = FakePrinter()
     auto = _automation(printer)
     auto._on_status(_status(code=0, nozzle=45.0, light=True))
     await _drain(auto)
-    assert printer.calls == [False]
+    assert printer.calls == []
+    assert auto._manual is True
 
 
 # --- robustness ---------------------------------------------------------------
 
 
 async def test_no_temperature_no_action() -> None:
-    """Without a temperature reading there is no decision basis — but the
-    first real reading reconciles the light immediately."""
+    """Without a temperature reading there is no decision basis — and when
+    the first real reading reveals a lit light in an idle-cold state, it
+    is pinned as a hand toggle instead of corrected."""
     printer = FakePrinter()
     auto = _automation(printer)
     auto._on_status(_status(code=0, nozzle=None, light=True))
-    auto._on_status(_status(code=0, nozzle=45.0, light=True))  # cold, lit → OFF
+    auto._on_status(_status(code=0, nozzle=45.0, light=True))  # cold, lit → pin
     await _drain(auto)
-    assert printer.calls == [False]
+    assert printer.calls == []
+    assert auto._manual is True
 
 
 async def test_unknown_light_state_still_acts_without_spam() -> None:
