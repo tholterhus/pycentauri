@@ -1008,15 +1008,28 @@ function drawRollingGraph(canvas, spec) {
   const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * (w - 2) + 1;
 
   const bands = spec.bands || [];
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (const [, v] of samples) {
-    lo = Math.min(lo, v);
-    hi = Math.max(hi, v);
+  // Display smoothing: a light EMA over the drawn series kills the
+  // sensor's micro-jitter (±0.1° ticks at ~1 Hz) that makes the line look
+  // ragged and thick. Rendering only — the stored data stays raw, and the
+  // corner labels keep showing the real readings. The live tail is part
+  // of the same series, so the smoothing continues seamlessly into "now".
+  const alpha = 0.35;
+  const pts = [];
+  let ema = null;
+  for (const [t, v] of samples) {
+    ema = ema == null ? +v : ema + alpha * (+v - ema);
+    pts.push([t * 1000, ema]);
   }
   if (spec.live != null) {
-    lo = Math.min(lo, +spec.live);
-    hi = Math.max(hi, +spec.live);
+    ema = ema == null ? +spec.live : ema + alpha * (+spec.live - ema);
+    pts.push([Date.now(), ema]);
+  }
+
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const [, v] of pts) {
+    lo = Math.min(lo, v);
+    hi = Math.max(hi, v);
   }
   for (const b of bands) { lo = Math.min(lo, b); hi = Math.max(hi, b); }
   if (spec.target != null) { lo = Math.min(lo, spec.target); hi = Math.max(hi, spec.target); }
@@ -1122,21 +1135,13 @@ function drawRollingGraph(canvas, spec) {
   }
 
   ctx.strokeStyle = colLine;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.25;
   ctx.beginPath();
   let started = false;
-  for (const [t, v] of samples) {
-    const px = x(t * 1000);
+  for (const [t, v] of pts) {
+    const px = x(t);
     const py = y(v);
     if (!started) { ctx.moveTo(px, py); started = true; }
-    else ctx.lineTo(px, py);
-  }
-  // Live tail: the newest server sample can be up to 30 s old — extend the
-  // curve with the current temperature from the fast poll.
-  if (spec.live != null) {
-    const px = x(Date.now());
-    const py = y(+spec.live);
-    if (!started) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   }
   ctx.stroke();
@@ -1159,7 +1164,7 @@ function drawRollingGraph(canvas, spec) {
     ctx.fillStyle = colDim;
     ctx.font = `11px ${mono}`;
     ctx.textAlign = "left";
-    ctx.fillText(`${fmtNum(samples[0][1], 1)}°`, 2, 12);
+    ctx.fillText(`${fmtNum(pts[0][1], 1)}°`, 2, 12);
   }
   if (spec.targetLabel) {
     ctx.fillStyle = colDim;
