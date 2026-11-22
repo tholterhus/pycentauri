@@ -180,12 +180,17 @@ class LightAutomation:
                 first_seed = self._applied is None
                 self._applied = observed
                 self._pre_cmd = None
-                if first_seed and observed and not active and temp is not None:
-                    if temp <= self.cfg.cool_temp:
-                        # Lit while idle and cold — the automation would
-                        # never have done that, so it must be a hand
-                        # toggle: the pin keeps it through this downtime.
-                        self._manual = True
+                # Lit while idle and cold — the automation would never have
+                # done that, so it must be a hand toggle: the pin keeps it
+                # through this downtime.
+                if (
+                    first_seed
+                    and observed
+                    and not active
+                    and temp is not None
+                    and temp <= self.cfg.cool_temp
+                ):
+                    self._manual = True
         # Exactly at the threshold counts as the cold side — the partition
         # must have no gap, or a crossing could fire twice or never. An
         # active printer always wants light; the threshold is the net that
