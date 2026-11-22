@@ -221,6 +221,33 @@ async def test_attach_hot_dark_seeds_on() -> None:
     assert printer.calls == [True]
 
 
+async def test_printer_toggle_on_while_cold_pins() -> None:
+    """Toggling the light ON at the printer itself (external report) is as
+    manual as a dashboard click: the automation must not darken it."""
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto._on_status(_status(code=0, nozzle=30.0, light=False))  # idle, cold, dark
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # printer ON → pin
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # pin holds
+    await _drain(auto)
+    assert printer.calls == []
+    assert auto._manual is True
+
+
+async def test_printer_toggle_off_unpins() -> None:
+    """Toggling the light OFF at the printer unpins a hand-pinned light —
+    idle and cold it stays dark, no correction fights the human."""
+    printer = FakePrinter()
+    auto = _automation(printer)
+    auto.note_manual(True)
+    auto._on_status(_status(code=0, nozzle=30.0, light=True))  # pinned, lit
+    auto._on_status(_status(code=0, nozzle=30.0, light=False))  # printer OFF → unpin
+    auto._on_status(_status(code=0, nozzle=30.0, light=False))  # stays dark
+    await _drain(auto)
+    assert printer.calls == []
+    assert auto._manual is False
+
+
 async def test_attach_cold_lit_pins_instead_of_correcting() -> None:
     """A light already lit while idle and cold (e.g. a hand toggle before
     the service restart) is pinned, not darkened — the old restart-kills-

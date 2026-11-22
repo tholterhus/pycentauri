@@ -177,20 +177,25 @@ class LightAutomation:
             ):
                 pass  # the report predates our command's effect — lag, ignore
             else:
-                first_seed = self._applied is None
+                was_applied = self._applied
+                first_seed = was_applied is None
                 self._applied = observed
                 self._pre_cmd = None
-                # Lit while idle and cold — the automation would never have
-                # done that, so it must be a hand toggle: the pin keeps it
-                # through this downtime.
+                # A toggle at the printer itself is as manual as a dashboard
+                # click: lit while the automation wants dark (idle and cold
+                # — a state we never produce) is a hand toggle and pins the
+                # light; dark while pinned unpins it again. The most recent
+                # human action wins.
                 if (
-                    first_seed
-                    and observed
+                    observed
                     and not active
                     and temp is not None
                     and temp <= self.cfg.cool_temp
+                    and (first_seed or was_applied is False)
                 ):
                     self._manual = True
+                if not observed and self._manual:
+                    self._manual = False
         # Exactly at the threshold counts as the cold side — the partition
         # must have no gap, or a crossing could fire twice or never. An
         # active printer always wants light; the threshold is the net that

@@ -22,10 +22,12 @@ centauri server --host printer.example --enable-control \
   a manually lit chamber is not darkened by the cool-down net — it stays
   on until you turn it off by hand, and a manual off hands control
   straight back to the automation (an active printer re-lights per the
-  rule above). The same pin survives service restarts: a light already
-  lit while the printer sits idle and cold is recognized as a hand
-  toggle. Failed commands back off exponentially instead of retrying
-  every push.
+  rule above). A toggle **at the printer itself** is treated the same
+  way: lighting it up while the printer sits idle and cold pins it, and
+  switching it off unpins - the most recent human action wins. The pin
+  survives service restarts: a light already lit while the printer sits
+  idle and cold is recognized as a hand toggle. Failed commands back off
+  exponentially instead of retrying every push.
 
 Requires `--enable-control`; the daemon reports the feature in
 `/api/info` as `light_automation`.
