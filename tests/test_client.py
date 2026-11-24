@@ -480,3 +480,26 @@ async def test_adjust_disabled_without_control(monkeypatch: pytest.MonkeyPatch) 
                 except ControlDisabledError:
                     continue
                 raise AssertionError("expected ControlDisabledError")
+async def test_send_raw_connection_closed_raises_printer_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import websockets.exceptions
+
+    from pycentauri.client import PrinterError
+
+    async with _fake_printer() as server:
+        monkeypatch.setattr("pycentauri.client.WS_PORT", server.port)
+        async with await Printer.connect("127.0.0.1") as printer:
+            await asyncio.wait_for(printer.wait_for_mainboard(), timeout=2)
+
+            async def _boom(_text: str) -> None:
+                for fut in printer._pending.values():
+                    if not fut.done():
+                        fut.set_exception(PrinterError("connection closed"))
+                raise websockets.exceptions.ConnectionClosedError(None, None)
+
+            assert printer._ws is not None
+            monkeypatch.setattr(printer._ws, "send", _boom)
+            with pytest.raises(PrinterError, match="connection closed"):
+                await printer.status()
+            assert printer._pending == {}

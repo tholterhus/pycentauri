@@ -145,6 +145,7 @@ class PrinterManager:
 
     async def _run(self) -> None:
         backoff = RECONNECT_BACKOFF_START
+        last_err: str | None = None
         while not self._closing:
             # Learn the mainboard via discovery if we don't have one yet.
             if self._mainboard_id is None:
@@ -171,6 +172,7 @@ class PrinterManager:
                             timeout=5.0,
                         )
                 log.info("connected to %s", self.host)
+                last_err = None
                 # The MJPEG port differs per model (CC1 :3031, CC2 :8080)
                 # and we only know which we got after connecting.
                 if self._rtsp_config is not None:
@@ -188,7 +190,12 @@ class PrinterManager:
                     while not self._closing and not self._printer._closed:
                         await asyncio.sleep(2.0)
             except Exception as e:
-                log.warning("connection to %s failed: %r", self.host, e)
+                err_repr = repr(e)
+                if err_repr != last_err:
+                    log.warning("connection to %s failed: %s", self.host, err_repr)
+                    last_err = err_repr
+                else:
+                    log.debug("connection to %s still failing: %s", self.host, err_repr)
 
             if self._closing:
                 break

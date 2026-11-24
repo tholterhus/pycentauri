@@ -458,3 +458,46 @@ async def test_stream_raw_serves_octet_stream_with_boundary_header(
         assert r.headers["cache-control"] == "no-store"
         assert r.content == frame + frame
     await server.stop()
+async def test_printer_manager_deduplicates_reconnect_warnings(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import asyncio
+    import logging
+
+    from pycentauri.client import PrinterError
+
+    monkeypatch.setattr(server_module, "RECONNECT_BACKOFF_START", 0.001)
+    monkeypatch.setattr(server_module, "RECONNECT_BACKOFF_MAX", 0.001)
+
+    attempts = 0
+
+    class _DummyPrinter:
+        _closed = False
+        camera_port = 3031
+
+        async def _reader(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            self._closed = True
+
+    async def _fake_connect(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        nonlocal attempts
+        attempts += 1
+        if attempts in (1, 2, 3, 5):
+            raise PrinterError("offline")
+        p = _DummyPrinter()
+        p._reader = asyncio.create_task(asyncio.sleep(0))  # type: ignore[assignment]
+        return p
+
+    monkeypatch.setattr(server_module, "connect_auto", _fake_connect)
+    manager = server_module.PrinterManager("127.0.0.1", mainboard_id=MAINBOARD)
+    with caplog.at_level(logging.WARNING, logger="pycentauri.server"):
+        task = asyncio.create_task(manager._run())
+        while attempts < 5:
+            await asyncio.sleep(0.005)
+        manager._closing = True
+        await task
+
+    warnings = [r.message for r in caplog.records if "connection to 127.0.0.1 failed" in r.message]
+    assert len(warnings) == 2

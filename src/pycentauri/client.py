@@ -641,7 +641,10 @@ class Printer:
     async def _send_raw(self, text: str) -> None:
         if self._ws is None:
             raise PrinterError("not connected")
-        await self._ws.send(text)
+        try:
+            await self._ws.send(text)
+        except websockets.ConnectionClosed as err:
+            raise PrinterError("connection closed") from err
 
     async def _ensure_subscribed(self) -> None:
         mid = await self.wait_for_mainboard()
@@ -671,6 +674,8 @@ class Printer:
             raise RequestTimeoutError(f"cmd {cmd} timed out after {timeout}s") from err
         finally:
             self._pending.pop(request_id, None)
+            if fut.done() and not fut.cancelled():
+                fut.exception()
 
     async def _read_loop(self) -> None:
         assert self._ws is not None
