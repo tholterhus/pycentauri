@@ -458,6 +458,8 @@ async def test_stream_raw_serves_octet_stream_with_boundary_header(
         assert r.headers["cache-control"] == "no-store"
         assert r.content == frame + frame
     await server.stop()
+
+
 async def test_printer_manager_deduplicates_reconnect_warnings(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

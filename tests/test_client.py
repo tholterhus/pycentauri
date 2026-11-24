@@ -480,6 +480,8 @@ async def test_adjust_disabled_without_control(monkeypatch: pytest.MonkeyPatch) 
                 except ControlDisabledError:
                     continue
                 raise AssertionError("expected ControlDisabledError")
+
+
 async def test_send_raw_connection_closed_raises_printer_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
