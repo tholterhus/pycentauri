@@ -4,6 +4,19 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.41] - 2026-11-24
+
+### Fixed
+- `PrinterManager._run()` (`server.py`): deduplicate repeated identical offline
+  reconnect errors — log `WARNING` only once per failure streak (and again on
+  error change or after a successful reconnect), demoting subsequent retries to
+  `DEBUG` so long printer power-offs do not spam the journal.
+- `Printer._send_raw()` / `Printer._request()` (`client.py`): translate
+  `websockets.ConnectionClosed` into `PrinterError("connection closed")` (fixing
+  unhandled `ConnectionClosedError` tracebacks on `/events/status` SSE) and
+  consume exceptions on cancelled/aborted `_pending` futures to eliminate
+  `Future exception was never retrieved` errors on sudden disconnects.
+
 ## [0.18.13] - 2026-11-18
 
 ### Changed
